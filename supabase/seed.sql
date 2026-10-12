@@ -1,0 +1,2 @@
+-- Demo seed: run scripts/seed-demo.ts after creating an organizer account locally.
+-- Keeps migrations free of invalid auth.users FK references.

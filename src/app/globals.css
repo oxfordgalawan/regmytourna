@@ -1,0 +1,262 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * RegMyTourna palette
+ *   ink      #000000  — page ground
+ *   espresso #1F1610  — raised surfaces
+ *   umber    #45301A  — accents, active states, rules
+ *   bone     #E0DAC8  — type, primary actions
+ * Everything else is a tint/shade of these four.
+ */
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-espresso: var(--espresso);
+  --color-umber: var(--umber);
+  --color-bone: var(--bone);
+  --color-brass: var(--brass);
+  --color-rust: var(--rust);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+
+  /* legacy aliases so older classes keep resolving */
+  --color-brand-forest: var(--umber);
+  --color-brand-cream: var(--bone);
+  --color-brand-lime: var(--bone);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-big-shoulders);
+  --font-heading: var(--font-geist-sans);
+  --font-serif: var(--font-instrument-serif);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-rise: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-flip: flip 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-dot: pulse-dot 1.8s ease-in-out infinite;
+}
+
+:root {
+  color-scheme: dark;
+
+  --ink: #000000;
+  --espresso: #1f1610;
+  --umber: #45301a;
+  --bone: #e0dac8;
+  --brass: #b98e5a;
+  --rust: #c4573c;
+
+  --surface: #120d09;
+  --surface-2: #2a1f16;
+  --line: rgb(224 218 200 / 0.1);
+
+  --background: var(--ink);
+  --foreground: var(--bone);
+  --card: var(--surface);
+  --card-foreground: var(--bone);
+  --popover: var(--espresso);
+  --popover-foreground: var(--bone);
+  --primary: var(--bone);
+  --primary-foreground: var(--ink);
+  --secondary: var(--espresso);
+  --secondary-foreground: var(--bone);
+  --muted: var(--espresso);
+  --muted-foreground: rgb(224 218 200 / 0.6);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--bone);
+  --destructive: var(--rust);
+  --border: var(--line);
+  --input: rgb(224 218 200 / 0.16);
+  --ring: var(--brass);
+  --chart-1: var(--bone);
+  --chart-2: var(--brass);
+  --chart-3: var(--umber);
+  --chart-4: var(--espresso);
+  --chart-5: var(--rust);
+  --radius: 0.625rem;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--bone);
+  --sidebar-primary: var(--bone);
+  --sidebar-primary-foreground: var(--ink);
+  --sidebar-accent: var(--espresso);
+  --sidebar-accent-foreground: var(--bone);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brass);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: clip;
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: var(--umber);
+    color: var(--bone);
+  }
+  :focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Condensed scoreboard headline */
+  .display {
+    font-family: var(--font-big-shoulders);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 0.9;
+    text-transform: uppercase;
+  }
+  /* Small all-caps label used for eyebrows / table heads */
+  .eyebrow {
+    font-family: var(--font-geist-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+  /* Fine court-line grid used behind hero areas */
+  .court-grid {
+    background-image:
+      linear-gradient(to right, rgb(224 218 200 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(224 218 200 / 0.05) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+  /* Subtle film grain to keep large dark fields from looking flat */
+  .grain {
+    position: relative;
+    isolation: isolate;
+  }
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.07;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.7s cubic-bezier(0.2, 0.8, 0.2, 1),
+      transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes flip {
+  from {
+    opacity: 0;
+    transform: translateY(-40%) rotateX(70deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
