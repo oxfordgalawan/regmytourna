@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -19,6 +20,11 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const tournamentsActive = pathname.startsWith("/tournaments");
   const { ref: navRef, style: pillStyle, ready: pillReady } = useSlidingIndicator<HTMLElement>(tournamentsActive);
 
@@ -48,9 +54,10 @@ export function SiteHeader() {
       // stays pinned while page content animates underneath (see globals.css)
       style={{ viewTransitionName: "site-header" }}
       className={cn(
-        "sticky top-0 z-50 border-b pt-[env(safe-area-inset-top)] transition-colors duration-300",
+        "sticky top-0 border-b pt-[env(safe-area-inset-top)] transition-colors duration-300",
+        open ? "z-[90]" : "z-50",
         scrolled || open
-          ? "border-line bg-ink/85 backdrop-blur-md"
+          ? "border-line bg-ink/95 backdrop-blur-md"
           : "border-transparent bg-transparent"
       )}
     >
@@ -100,32 +107,41 @@ export function SiteHeader() {
         </button>
       </div>
 
-      {open && (
-        <div
-          id="mobile-menu"
-          className="fixed inset-x-0 top-[calc(4rem+env(safe-area-inset-top))] bottom-0 z-40 flex flex-col border-t border-line bg-ink px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-in fade-in-0 md:hidden"
-        >
-          <nav className="flex flex-col" aria-label="Mobile">
-            {navLinks.map((link, i) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className="display flex items-center justify-between border-b border-line py-5 text-4xl text-bone animate-rise"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                {link.label}
-                <span className="font-mono text-xs font-normal text-muted-foreground">
-                  0{i + 1}
-                </span>
-              </Link>
-            ))}
-          </nav>
-          <div className="mt-auto grid gap-2 [&>*]:w-full">
-            <AuthNavButtons stacked />
-          </div>
-        </div>
-      )}
+      {mounted &&
+        open &&
+        createPortal(
+          <div
+            id="mobile-menu"
+            className="fixed inset-0 z-[80] flex flex-col bg-ink md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Site menu"
+          >
+            <div className="h-16 shrink-0 pt-[env(safe-area-inset-top)]" aria-hidden />
+            <div className="flex min-h-0 flex-1 flex-col border-t border-line px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-in fade-in-0">
+              <nav className="flex flex-col" aria-label="Mobile">
+                {navLinks.map((link, i) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setOpen(false)}
+                    className="display flex items-center justify-between border-b border-line py-5 text-4xl text-bone animate-rise"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  >
+                    {link.label}
+                    <span className="font-mono text-xs font-normal text-muted-foreground">
+                      0{i + 1}
+                    </span>
+                  </Link>
+                ))}
+              </nav>
+              <div className="mt-auto grid gap-2 pt-8 [&>*]:w-full">
+                <AuthNavButtons stacked />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </header>
   );
 }
