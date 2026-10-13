@@ -28,7 +28,8 @@ async function challongeFetch<T>(
       signal: controller.signal,
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+        "Authorization-Type": "v2",
+        "Content-Type": "application/vnd.api+json",
         Accept: "application/json",
         ...(init?.headers ?? {}),
       },
@@ -88,36 +89,61 @@ export class ChallongeService {
     return challongeFetch<{ data: unknown }>(`/tournaments/${id}.json`, this.accessToken);
   }
 
-  async createTournament(body: Record<string, unknown>) {
-    return challongeFetch<{ data: unknown }>("/tournaments.json", this.accessToken, {
-      method: "POST",
-      body: JSON.stringify({ tournament: body }),
-    });
+  /** POST /tournaments — `attributes` built by `toChallongeTournament`. */
+  async createTournament(attributes: Record<string, unknown>) {
+    return challongeFetch<{ data: { id: string; attributes?: Record<string, unknown> } }>(
+      "/tournaments.json",
+      this.accessToken,
+      { method: "POST", body: JSON.stringify({ data: { type: "tournaments", attributes } }) }
+    );
+  }
+
+  /** Fetches every page of a list endpoint. */
+  private async listAll<T>(path: string): Promise<T[]> {
+    const perPage = 50;
+    const all: T[] = [];
+    for (let page = 1; page <= 40; page++) {
+      const sep = path.includes("?") ? "&" : "?";
+      const res = await challongeFetch<{ data: T[] }>(
+        `${path}${sep}page=${page}&per_page=${perPage}`,
+        this.accessToken
+      );
+      const items = res.data ?? [];
+      all.push(...items);
+      if (items.length < perPage) break;
+    }
+    return all;
   }
 
   async listParticipants(tournamentId: string) {
-    return challongeFetch<{ data: unknown[] }>(
-      `/tournaments/${tournamentId}/participants.json`,
-      this.accessToken
+    return this.listAll<{ id: string; attributes?: Record<string, unknown> }>(
+      `/tournaments/${tournamentId}/participants.json`
     );
   }
 
   async createParticipant(tournamentId: string, name: string, misc?: Record<string, unknown>) {
-    return challongeFetch<{ data: unknown }>(
+    return challongeFetch<{ data: { id: string } }>(
       `/tournaments/${tournamentId}/participants.json`,
       this.accessToken,
       {
         method: "POST",
-        body: JSON.stringify({ participant: { name, ...misc } }),
+        body: JSON.stringify({ data: { type: "Participants", attributes: { name, ...misc } } }),
       }
     );
   }
 
-  async updateParticipant(tournamentId: string, participantId: string, body: Record<string, unknown>) {
+  /** POST /participants/bulk_add — adds everyone in one call, in the given (seed) order. */
+  async bulkAddParticipants(tournamentId: string, names: string[]) {
+    if (!names.length) return;
     return challongeFetch<{ data: unknown }>(
-      `/tournaments/${tournamentId}/participants/${participantId}.json`,
+      `/tournaments/${tournamentId}/participants/bulk_add.json`,
       this.accessToken,
-      { method: "PUT", body: JSON.stringify({ participant: body }) }
+      {
+        method: "POST",
+        body: JSON.stringify({
+          data: { type: "Participants", attributes: { participants: names.map((name) => ({ name })) } },
+        }),
+      }
     );
   }
 
@@ -129,146 +155,31 @@ export class ChallongeService {
     );
   }
 
-  async listMatches(tournamentId: string) {
-    return challongeFetch<{ data: unknown[] }>(
-      `/tournaments/${tournamentId}/matches.json`,
-      this.accessToken
-    );
-  }
-
-  async getMatch(tournamentId: string, matchId: string) {
-    return challongeFetch<{ data: unknown }>(
-      `/tournaments/${tournamentId}/matches/${matchId}.json`,
-      this.accessToken
-    );
-  }
-
-  async reportScore(
-    tournamentId: string,
-    matchId: string,
-    scoresCsv: string,
-    isFinal = true
-  ) {
-    return challongeFetch<{ data: unknown }>(
-      `/tournaments/${tournamentId}/matches/${matchId}.json`,
-      this.accessToken,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          match: {
-            scores_csv: scoresCsv,
-            ...(isFinal ? { winner_id: undefined } : {}),
-          },
-        }),
-      }
-    );
-  }
-
-  async syncParticipants(regmyTournamentId: string, challongeTournamentId: string) {
+  /** Creates the Challonge bracket for one category and records it on the division. */
+  async createBracketForDivision(
+    divisionId: string,
+    attributes: Record<string, unknown>
+  ): Promise<{ id: string; url: string }> {
     const admin = createAdminClient();
-    const job = await admin
-      .from("integration_sync_jobs")
-      .insert({
-        tournament_id: regmyTournamentId,
-        user_id: this.userId,
-        job_type: "sync_participants",
-        status: "running",
+    const created = await this.createTournament(attributes);
+    const id = String(created.data.id);
+    const attrs = created.data.attributes ?? {};
+    const url =
+      typeof attrs.full_challonge_url === "string"
+        ? attrs.full_challonge_url
+        : `https://challonge.com/${String(attrs.url ?? attributes.url)}`;
+    await admin
+      .from("tournament_divisions")
+      .update({
+        challonge_tournament_id: id,
+        challonge_url: url,
+        challonge_state: typeof attrs.state === "string" ? attrs.state : "pending",
+        challonge_sync_status: "pending",
       })
-      .select("id")
-      .single();
-
-    try {
-      const { data: regs } = await admin
-        .from("registrations")
-        .select("id, challonge_participant_id, registration_players(guest_name, profiles(full_name))")
-        .eq("tournament_id", regmyTournamentId)
-        .eq("status", "confirmed");
-
-      for (const reg of regs ?? []) {
-        if (reg.challonge_participant_id) continue;
-        const players = (reg.registration_players ?? []) as Array<{
-          guest_name: string | null;
-          profiles: { full_name: string } | { full_name: string }[] | null;
-        }>;
-        const name =
-          players
-            .map((p) => {
-              const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
-              return prof?.full_name || p.guest_name;
-            })
-            .filter(Boolean)
-            .join(" / ") || "Participant";
-        const created = await this.createParticipant(challongeTournamentId, name);
-        const participantId = (created as { data?: { id?: string } }).data?.id;
-        if (participantId) {
-          await admin
-            .from("registrations")
-            .update({
-              challonge_participant_id: String(participantId),
-              challonge_sync_status: "synced",
-              challonge_last_synced_at: new Date().toISOString(),
-            })
-            .eq("id", reg.id);
-        }
-      }
-
-      await admin
-        .from("integration_sync_jobs")
-        .update({ status: "completed", last_success_at: new Date().toISOString() })
-        .eq("id", job.data!.id);
-      await admin
-        .from("tournaments")
-        .update({
-          challonge_sync_status: "synced",
-          challonge_last_synced_at: new Date().toISOString(),
-        })
-        .eq("id", regmyTournamentId);
-    } catch (err) {
-      await admin
-        .from("integration_sync_jobs")
-        .update({
-          status: "failed",
-          error_message: err instanceof Error ? err.message : "Sync failed",
-        })
-        .eq("id", job.data!.id);
-      throw err;
-    }
+      .eq("id", divisionId);
+    return { id, url };
   }
 
-  async syncMatches(regmyTournamentId: string, challongeTournamentId: string) {
-    const admin = createAdminClient();
-    const remote = await this.listMatches(challongeTournamentId);
-    const items = (remote.data ?? []) as Array<{
-      id: string;
-      attributes?: Record<string, unknown>;
-    }>;
-
-    for (const item of items) {
-      const attrs = item.attributes ?? {};
-      const challongeMatchId = String(item.id);
-      const { data: existing } = await admin
-        .from("matches")
-        .select("id")
-        .eq("tournament_id", regmyTournamentId)
-        .eq("challonge_match_id", challongeMatchId)
-        .maybeSingle();
-
-      const payload = {
-        tournament_id: regmyTournamentId,
-        challonge_match_id: challongeMatchId,
-        team_a_label: String(attrs.player1_name ?? "TBD"),
-        team_b_label: String(attrs.player2_name ?? "TBD"),
-        status: attrs.state === "complete" ? "completed" : "scheduled",
-        match_number: typeof attrs.identifier === "number" ? attrs.identifier : null,
-      };
-
-      if (existing) {
-        await admin.from("matches").update(payload).eq("id", existing.id);
-      } else {
-        await admin.from("matches").insert(payload);
-      }
-    }
-  }
 }
 
 async function refreshAccessToken(

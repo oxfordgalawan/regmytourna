@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { NAV_BACK } from "@/lib/nav-transitions";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, MonitorPlay } from "lucide-react";
 import { requireUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createClient } from "@/lib/supabase/server";
 import { TournamentNav } from "@/components/organizer/tournament-nav";
+import { RouteTransition } from "@/components/motion/route-transition";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +34,7 @@ export default async function TournamentManageLayout({
     <div className="space-y-8">
       <div>
         <Link
+          transitionTypes={NAV_BACK}
           href="/organizer/tournaments"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
         >
@@ -62,7 +65,7 @@ export default async function TournamentManageLayout({
         </div>
       </div>
       <TournamentNav tournamentId={id} />
-      <div className="animate-rise">{children}</div>
+      <RouteTransition scope="tab">{children}</RouteTransition>
     </div>
   );
 }

@@ -2,13 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { createTournamentAction } from "@/app/actions/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CategoryBuilder } from "@/components/organizer/category-builder";
+import { FormSection } from "@/components/organizer/form-section";
+import { SPORTS } from "@/lib/categories";
+import { CoverImageUpload } from "@/components/images/cover-image-upload";
+import { registrationDeadline, validateSchedule } from "@/lib/validations/schedule";
+import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 import { cn } from "@/lib/utils";
 
 const publishOptions = [
@@ -21,45 +27,35 @@ function slugify(value: string) {
   return value
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
 }
 
-function FormSection({
-  step,
-  title,
-  description,
-  children,
-}: {
-  step: number;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="grid gap-6 border-t border-line py-10 first:border-t-0 first:pt-0 lg:grid-cols-[15rem_1fr] lg:gap-12">
-      <div>
-        <p className="font-mono text-xs text-brass">0{step}</p>
-        <h2 className="mt-2 text-lg font-semibold text-bone">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-      <div className="grid gap-5 sm:grid-cols-2">{children}</div>
-    </section>
-  );
+/** While typing: same rules as `slugify` but keeps a trailing hyphen so "manila-" can be typed. */
+function slugDraft(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 60);
 }
 
 function Field({
   id,
   label,
   hint,
+  error,
   className,
   children,
 }: {
   id?: string;
   label: string;
   hint?: string;
+  error?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -67,7 +63,13 @@ function Field({
     <div className={cn("space-y-2", className)}>
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {error ? (
+        <p className="text-xs text-[#e58a72] animate-in fade-in-0" role="alert">
+          {error}
+        </p>
+      ) : (
+        hint && <p className="text-xs text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 }
@@ -106,17 +108,31 @@ export function TournamentForm() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
+  const [street, setStreet] = useState("");
+  const [schedule, setSchedule] = useState({
+    startDate: "",
+    endDate: "",
+    registrationOpensAt: "",
+    registrationClosesAt: "",
+  });
+  const scheduleErrors = validateSchedule(schedule);
+  const setDate = (key: keyof typeof schedule) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setSchedule((s) => ({ ...s, [key]: e.target.value }));
+  const deadline = schedule.startDate ? registrationDeadline(schedule.startDate) : undefined;
+  const [place, setPlace] = useState<PlaceSelection | null>(null);
 
   const effectiveSlug = slugEdited ? slug : slugify(name);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (Object.keys(scheduleErrors).length) {
+      setError("Please fix the dates in step 2.");
+      document.getElementById("startDate")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const pesos = Number(fd.get("entryFeePesos") || 0);
-    fd.set("entryFeeCents", String(Math.round(pesos * 100)));
-    fd.delete("entryFeePesos");
     const result = await createTournamentAction(fd);
     setLoading(false);
     if (result.error) {
@@ -153,26 +169,69 @@ export function TournamentForm() {
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
-        <Field
-          id="slug"
-          label="Page address"
-          hint={`regmytourna.com/tournaments/${effectiveSlug || "your-event"}`}
-        >
-          <Input
-            id="slug"
-            name="slug"
-            required
-            pattern="[a-z0-9]+(-[a-z0-9]+)*"
-            placeholder="manila-open-2026"
-            value={effectiveSlug}
-            onChange={(e) => {
-              setSlugEdited(true);
-              setSlug(slugify(e.target.value));
-            }}
-          />
-        </Field>
-        <Field id="sport" label="Sport">
-          <Input id="sport" name="sport" defaultValue="pickleball" />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="slug">Page address</Label>
+            {slugEdited ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSlugEdited(false);
+                  setSlug("");
+                }}
+                className="text-xs text-muted-foreground underline-offset-4 hover:text-bone hover:underline"
+              >
+                Match name
+              </button>
+            ) : (
+              <span className="rounded-full bg-umber/40 px-2 py-0.5 font-mono text-[0.6rem] tracking-wider text-brass uppercase">
+                Auto
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+              /tournaments/
+            </span>
+            <Input
+              id="slug"
+              name="slug"
+              required
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              placeholder="fills in from the name"
+              value={effectiveSlug}
+              className="pl-[7.5rem] font-mono"
+              onChange={(e) => {
+                const typed = slugDraft(e.target.value);
+                // clearing the field goes back to following the name
+                setSlugEdited(typed !== "");
+                setSlug(typed);
+              }}
+              onBlur={() => slugEdited && setSlug((s) => slugify(s))}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {slugEdited
+              ? "Custom address. Letters, numbers and hyphens."
+              : "Created from the tournament name — type here to change it."}
+          </p>
+        </div>
+        <Field id="sport" label="Sport" hint="More sports are coming soon.">
+          <div className="relative">
+            <select
+              id="sport"
+              name="sport"
+              defaultValue="pickleball"
+              className="h-11 w-full appearance-none rounded-lg border border-input bg-ink/40 pr-10 pl-3.5 text-base text-bone outline-none hover:border-bone/30 focus-visible:border-brass md:text-sm"
+            >
+              {SPORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
         </Field>
         <Field id="description" label="Short description" className="sm:col-span-2">
           <Textarea
@@ -186,62 +245,104 @@ export function TournamentForm() {
 
       <FormSection step={2} title="When" description="Event days and the registration window.">
         <Field id="startDate" label="First day">
-          <Input id="startDate" name="startDate" type="date" />
+          <Input id="startDate" name="startDate" type="date" value={schedule.startDate} onChange={setDate("startDate")} />
         </Field>
-        <Field id="endDate" label="Last day" hint="Leave empty for a one-day event.">
-          <Input id="endDate" name="endDate" type="date" />
+        <Field id="endDate" label="Last day" hint="Leave empty for a one-day event." error={scheduleErrors.endDate}>
+          <Input
+            id="endDate"
+            name="endDate"
+            type="date"
+            min={schedule.startDate || undefined}
+            value={schedule.endDate}
+            onChange={setDate("endDate")}
+            aria-invalid={Boolean(scheduleErrors.endDate)}
+          />
         </Field>
-        <Field id="registrationOpensAt" label="Entries open">
-          <Input id="registrationOpensAt" name="registrationOpensAt" type="datetime-local" />
+        <Field
+          id="registrationOpensAt"
+          label="Registration period opens"
+          hint={schedule.startDate ? undefined : "Pick the first day above to limit these dates."}
+          error={scheduleErrors.registrationOpensAt}
+        >
+          <Input
+            id="registrationOpensAt"
+            name="registrationOpensAt"
+            type="datetime-local"
+            max={deadline}
+            value={schedule.registrationOpensAt}
+            onChange={setDate("registrationOpensAt")}
+            aria-invalid={Boolean(scheduleErrors.registrationOpensAt)}
+          />
         </Field>
-        <Field id="registrationClosesAt" label="Entries close">
-          <Input id="registrationClosesAt" name="registrationClosesAt" type="datetime-local" />
+        <Field
+          id="registrationClosesAt"
+          label="Registration period closes"
+          hint={schedule.startDate ? "On or before the first day." : undefined}
+          error={scheduleErrors.registrationClosesAt}
+        >
+          <Input
+            id="registrationClosesAt"
+            name="registrationClosesAt"
+            type="datetime-local"
+            min={schedule.registrationOpensAt || undefined}
+            max={deadline}
+            value={schedule.registrationClosesAt}
+            onChange={setDate("registrationClosesAt")}
+            aria-invalid={Boolean(scheduleErrors.registrationClosesAt)}
+          />
         </Field>
       </FormSection>
 
       <FormSection step={3} title="Where" description="Help players find the venue.">
-        <Field id="venueName" label="Venue">
-          <Input id="venueName" name="venueName" placeholder="Rizal Memorial Courts" />
+        <Field id="venueName" label="Venue name" className="sm:col-span-2">
+          <Input id="venueName" name="venueName" placeholder="e.g. Riverside Sports Complex" />
         </Field>
-        <Field id="city" label="City">
-          <Input id="city" name="city" placeholder="Manila" />
+        <Field
+          id="venueStreet"
+          label="Street, purok or landmark"
+          hint="Optional — whatever helps players find the gate."
+          className="sm:col-span-2"
+        >
+          <Input
+            id="venueStreet"
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            placeholder="e.g. 123 Rizal St., Purok 4, beside the covered court"
+          />
         </Field>
-        <Field id="venueAddress" label="Full address" className="sm:col-span-2">
-          <Input id="venueAddress" name="venueAddress" />
-        </Field>
+        <div className="sm:col-span-2">
+          <PlaceSearchCombobox
+            id="venuePlace"
+            value={place}
+            onChange={setPlace}
+            label="Barangay & city/municipality"
+            hint="Start typing, then pick from the list."
+            placeholder="e.g. Brgy Holy Spirit, Quezon City"
+          />
+        </div>
+        {/* what the server stores: city/region for listings, plus one readable address */}
+        <input type="hidden" name="city" value={place?.cityMunicipalityName ?? ""} />
+        <input type="hidden" name="region" value={place?.regionName ?? ""} />
+        <input
+          type="hidden"
+          name="venueAddress"
+          value={[street.trim(), place?.label].filter(Boolean).join(", ")}
+        />
       </FormSection>
 
-      <FormSection step={4} title="Entries" description="Fees, limits and the rules of play.">
-        <Field id="entryFeePesos" label="Default entry fee" hint="Per entry. Divisions can override this.">
-          <div className="relative">
-            <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted-foreground">
-              ₱
-            </span>
-            <Input
-              id="entryFeePesos"
-              name="entryFeePesos"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="0.01"
-              defaultValue={0}
-              className="pl-8 font-mono"
-            />
-          </div>
-        </Field>
-        <Field id="maxCapacity" label="Max entries" hint="Optional. Leave empty for no cap.">
-          <Input id="maxCapacity" name="maxCapacity" type="number" min={1} inputMode="numeric" />
-        </Field>
+      <CategoryBuilder />
+
+      <FormSection step={6} title="Rules & extras" description="The fine print and finishing touches.">
         <Field id="rules" label="Rules & eligibility" className="sm:col-span-2">
           <Textarea
             id="rules"
             name="rules"
             rows={4}
-            placeholder="Rally scoring to 11, win by 2. Players must be DUPR-rated within the division range."
+            placeholder="Rally scoring to 11, win by 2. Players must be DUPR-rated within the category range."
           />
         </Field>
-        <Field id="coverImageUrl" label="Cover image URL" className="sm:col-span-2">
-          <Input id="coverImageUrl" name="coverImageUrl" type="url" placeholder="https://" />
+        <Field label="Cover photo" hint="Optional. Shown at the top of your tournament page." className="sm:col-span-2">
+          <CoverImageUpload />
         </Field>
         <Toggle
           name="waitlistEnabled"
@@ -250,7 +351,7 @@ export function TournamentForm() {
         />
       </FormSection>
 
-      <FormSection step={5} title="Publish" description="Choose who can see it.">
+      <FormSection step={7} title="Publish" description="Choose who can see it.">
         <div className="grid gap-2 sm:col-span-2 sm:grid-cols-3" role="radiogroup" aria-label="Publication status">
           {publishOptions.map((opt) => {
             const active = status === opt.value;
@@ -286,7 +387,7 @@ export function TournamentForm() {
       <input type="hidden" name="status" value={status} />
       <input type="hidden" name="currency" value="PHP" />
 
-      <div className="sticky bottom-0 z-20 -mx-4 mt-4 flex items-center justify-end gap-3 border-t border-line bg-ink/90 px-4 py-4 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border">
+      <div className="sticky bottom-[var(--app-bottom-nav,0px)] z-20 -mx-4 mt-4 flex items-center justify-end gap-3 border-t border-line bg-ink/90 px-4 py-4 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border">
         <p className="mr-auto hidden text-sm text-muted-foreground sm:block">
           {publishOptions.find((o) => o.value === status)?.hint}
         </p>

@@ -17,6 +17,12 @@ export const signupSchema = z
       .regex(/[0-9]/, "Include at least one number"),
     confirmPassword: z.string(),
     accountType: z.enum(["player", "organizer"]),
+    placePsgcCode: z
+      .string()
+      .regex(/^\d{10}$/, "Invalid place code")
+      .optional()
+      .or(z.literal("")),
+    placeLabel: z.string().optional(),
     acceptTerms: z.literal(true, {
       errorMap: () => ({ message: "You must accept the terms" }),
     }),
@@ -24,6 +30,10 @@ export const signupSchema = z
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
+  })
+  .refine((data) => !data.placePsgcCode || Boolean(data.placeLabel?.trim()), {
+    message: "Select a place from the list",
+    path: ["placeLabel"],
   });
 
 export const forgotPasswordSchema = z.object({

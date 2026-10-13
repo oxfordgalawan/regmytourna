@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Big_Shoulders, Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { NavigationProgress } from "@/components/motion/navigation-progress";
+import { RouteTransition } from "@/components/motion/route-transition";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,6 +42,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#000000",
+  // required for env(safe-area-inset-*) to be non-zero on iPhone
+  viewportFit: "cover",
   colorScheme: "dark",
 };
 
@@ -56,8 +60,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
-        {children}
-        <Toaster richColors closeButton theme="dark" />
+        <NavigationProgress />
+        <RouteTransition scope="area" className="flex min-h-full flex-1 flex-col">
+          {children}
+        </RouteTransition>
+        <Toaster richColors closeButton theme="dark" mobileOffset={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} />
       </body>
     </html>
   );

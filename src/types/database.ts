@@ -14,6 +14,8 @@ export type Profile = {
   account_type: AccountType;
   avatar_url: string | null;
   phone: string | null;
+  place_psgc_code: string | null;
+  place_label: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -62,6 +64,12 @@ export type TournamentDivision = {
   registration_closes_at: string | null;
   eligibility_notes: string | null;
   sort_order: number;
+  bracket_config: Record<string, unknown> | null;
+  challonge_tournament_id: string | null;
+  challonge_url: string | null;
+  challonge_state: string | null;
+  challonge_sync_status: string | null;
+  challonge_last_synced_at: string | null;
 };
 
 export type ChallongeAccount = {
@@ -114,4 +122,9 @@ export type Match = {
   games_won_a: number;
   games_won_b: number;
   challonge_match_id: string | null;
+  round_label?: string | null;
+  team_a_registration_id?: string | null;
+  team_b_registration_id?: string | null;
+  challonge_player1_id?: string | null;
+  challonge_player2_id?: string | null;
 };

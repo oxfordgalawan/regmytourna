@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/require-user";
 import { tournamentFormSchema, divisionSchema } from "@/lib/validations/tournament";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/env/server";
+import { categoriesPayloadSchema, categoryName, categoryType } from "@/lib/categories";
+import { defaultConfigFor } from "@/lib/bracket-format";
+import { validateSchedule } from "@/lib/validations/schedule";
 
 export async function createTournamentAction(formData: FormData) {
   if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
@@ -38,7 +41,27 @@ export async function createTournamentAction(formData: FormData) {
     return { error: parsed.error.flatten().fieldErrors };
   }
 
+  // validate categories before anything is written
+  let rawCategories: unknown = [];
+  try {
+    rawCategories = JSON.parse(String(formData.get("categories") ?? "[]"));
+  } catch {
+    return { error: "Categories could not be read. Please try again." };
+  }
+  const categories = categoriesPayloadSchema.safeParse(rawCategories);
+  if (!categories.success) {
+    return { error: categories.error.issues[0]?.message ?? "Please check your categories." };
+  }
+
   const v = parsed.data;
+  const scheduleError = Object.values(validateSchedule(v))[0];
+  if (scheduleError) return { error: scheduleError };
+
+  // covers must come from our own (optimized) bucket, not arbitrary sites
+  const coverPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/tournament-covers/${user.id}/`;
+  if (v.coverImageUrl && !v.coverImageUrl.startsWith(coverPrefix)) {
+    return { error: "Please upload the cover photo again." };
+  }
   const supabase = await createClient();
   const { data: tournament, error } = await supabase
     .from("tournaments")
@@ -64,35 +87,35 @@ export async function createTournamentAction(formData: FormData) {
       cover_image_url: v.coverImageUrl || null,
       is_public: v.isPublic,
       waitlist_enabled: v.waitlistEnabled,
+      allow_walk_in_payment: formData.get("allowWalkInPayment") === "on",
     })
     .select("id, slug")
     .single();
 
   if (error) return { error: error.message };
 
-  await supabase.from("tournament_organizers").insert({
+  await admin.from("tournament_organizers").insert({
     tournament_id: tournament.id,
     user_id: user.id,
     role: "owner",
   });
 
-  const defaultDivisions = [
-    { name: "Men's Singles", format: "singles" as const },
-    { name: "Women's Singles", format: "singles" as const },
-    { name: "Men's Doubles", format: "doubles" as const },
-    { name: "Women's Doubles", format: "doubles" as const },
-    { name: "Mixed Doubles", format: "doubles" as const },
-    { name: "Open Division", format: "singles" as const },
-  ];
-  await supabase.from("tournament_divisions").insert(
-    defaultDivisions.map((d, i) => ({
+  const { error: divisionsError } = await admin.from("tournament_divisions").insert(
+    categories.data.map((c, i) => ({
       tournament_id: tournament.id,
-      name: d.name,
-      format: d.format,
+      name: categoryName(c.type, c.title),
+      format: categoryType(c.type).format,
+      capacity: c.capacity ?? null,
+      entry_fee_cents: c.entryFeeCents ?? v.entryFeeCents,
+      bracket_config: c.bracketConfig ?? defaultConfigFor(c.capacity ?? 16),
       sort_order: i,
-      entry_fee_cents: v.entryFeeCents,
     }))
   );
+  if (divisionsError) {
+    // don't leave a tournament behind with no categories
+    await admin.from("tournaments").delete().eq("id", tournament.id);
+    return { error: `Couldn't save categories: ${divisionsError.message}` };
+  }
 
   revalidatePath("/organizer/tournaments");
   return { success: true, id: tournament.id, slug: tournament.slug };
@@ -121,48 +144,4 @@ export async function addDivisionAction(tournamentId: string, formData: FormData
   if (error) return { error: error.message };
   revalidatePath(`/organizer/tournaments/${tournamentId}/divisions`);
   return { success: true };
-}
-
-export async function linkChallongeTournamentAction(
-  tournamentId: string,
-  challongeTournamentId: string,
-  challongeUrl: string
-) {
-  await requireUser();
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("tournaments")
-    .update({
-      challonge_tournament_id: challongeTournamentId,
-      challonge_url: challongeUrl,
-    })
-    .eq("id", tournamentId);
-  if (error) return { error: error.message };
-  revalidatePath(`/organizer/tournaments/${tournamentId}`);
-  return { success: true };
-}
-
-export async function syncChallongeAction(tournamentId: string) {
-  const user = await requireUser();
-  const admin = createAdminClient();
-  const { data: tournament } = await admin
-    .from("tournaments")
-    .select("challonge_tournament_id")
-    .eq("id", tournamentId)
-    .single();
-  if (!tournament?.challonge_tournament_id) {
-    return { error: "Link a Challonge tournament first" };
-  }
-
-  const { ChallongeService } = await import("@/lib/services/challonge/challonge-service");
-  const service = await ChallongeService.forUser(user.id);
-  if (!service) return { error: "Connect Challonge in Settings" };
-
-  try {
-    await service.syncParticipants(tournamentId, tournament.challonge_tournament_id);
-    await service.syncMatches(tournamentId, tournament.challonge_tournament_id);
-    return { success: true };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Sync failed" };
-  }
 }

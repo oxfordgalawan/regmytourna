@@ -20,6 +20,9 @@
 # production
 /build
 
+# generated PSGC flatten (see scripts/build-ph-places.ts)
+/data/psgc/places.json
+
 # misc
 .DS_Store
 *.pem

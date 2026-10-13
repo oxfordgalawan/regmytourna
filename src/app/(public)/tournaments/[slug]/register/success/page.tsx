@@ -7,10 +7,11 @@ export default async function RegisterSuccessPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ registration?: string }>;
+  searchParams: Promise<{ registration?: string; venue?: string }>;
 }) {
   const { slug } = await params;
-  const { registration } = await searchParams;
+  const { registration, venue } = await searchParams;
+  const atVenue = venue === "1";
 
   return (
     <div className="mx-auto max-w-xl px-4 py-20 text-center sm:py-28">
@@ -19,7 +20,9 @@ export default async function RegisterSuccessPage({
           <Check className="size-6" strokeWidth={3} />
         </span>
       </span>
-      <h1 className="display mt-8 text-6xl text-bone animate-rise">You&apos;re in.</h1>
+      <h1 className="display mt-8 text-6xl text-bone animate-rise">
+        {atVenue ? "Slot reserved." : "You\u2019re in."}
+      </h1>
       <p className="mx-auto mt-5 max-w-md text-bone/70 animate-rise [animation-delay:100ms]">
         Your registration is recorded
         {registration && (
@@ -28,13 +31,16 @@ export default async function RegisterSuccessPage({
             — reference <span className="font-mono text-bone">{registration.slice(0, 8).toUpperCase()}</span>
           </>
         )}
-        . Paid entries stay saved even if the bracket sync is briefly unavailable.
+        .{" "}
+        {atVenue
+          ? "Pay at the registration desk on the day — cash or QR. You're confirmed once you've paid."
+          : "Your entry is saved."}
       </p>
 
       <ol className="mx-auto mt-10 max-w-sm space-y-3 text-left text-sm animate-rise [animation-delay:200ms]">
         {[
           "Your entry now appears on your dashboard.",
-          "Track payment and confirmation status from there.",
+          atVenue ? "Bring your entry fee — the desk takes cash or QR." : "Track payment and confirmation status from there.",
           "On the day, check in at the desk before your first match.",
         ].map((item, i) => (
           <li key={item} className="flex gap-3 rounded-xl border border-line bg-surface px-4 py-3">

@@ -60,7 +60,7 @@ export default async function SettingsPage() {
         <SettingsSection
           icon={Link2}
           title="Connected accounts"
-          description="Link Challonge to sync brackets automatically."
+          description="Optional: copy brackets to Challonge if you want them there too."
         >
           <Link
             href="/settings/connections"

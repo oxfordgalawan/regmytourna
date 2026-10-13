@@ -1,10 +1,22 @@
 import Link from "next/link";
-import { ArrowRight, Check, Circle } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Circle } from "lucide-react";
+import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { createClient } from "@/lib/supabase/server";
-import { ChallongeLinkPanel } from "@/components/organizer/challonge-link-panel";
+import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
+import { getUmpireAccess } from "@/lib/auth/umpire";
 import { StatTile } from "@/components/layout/page-header";
 import { formatDateRange, formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getAppUrl } from "@/lib/env/server";
+import { RegistrationQrCard } from "@/components/tournaments/registration-qr-card";
+
+const DRAW_STATE: Record<string, string> = {
+  not_started: "Seeding",
+  pools: "Pools in play",
+  pools_done: "Pools finished",
+  final: "In play",
+  complete: "Complete",
+};
 
 export default async function OrganizerTournamentOverviewPage({
   params,
@@ -17,23 +29,37 @@ export default async function OrganizerTournamentOverviewPage({
 
   if (!t) return null;
 
-  const [{ count: divisionCount }, { data: regs }, { count: courtCount }] = await Promise.all([
+  const [{ data: divisions }, { data: regs }, { count: courtCount }] = await Promise.all([
     supabase
       .from("tournament_divisions")
-      .select("id", { count: "exact", head: true })
-      .eq("tournament_id", id),
-    supabase.from("registrations").select("id, payment_status").eq("tournament_id", id),
+      .select("id, name, capacity, bracket_config, bracket_state")
+      .eq("tournament_id", id)
+      .order("sort_order"),
+    supabase.from("registrations").select("id, payment_status, status, division_id").eq("tournament_id", id),
     supabase.from("courts").select("id", { count: "exact", head: true }).eq("tournament_id", id),
   ]);
+  const divisionCount = divisions?.length ?? 0;
+  const umpireAccess = await getUmpireAccess(id);
+  const started = (divisions ?? []).filter((d) => d.bracket_state && d.bracket_state !== "not_started");
 
   const total = regs?.length ?? 0;
   const paid = (regs ?? []).filter((r) => r.payment_status === "paid").length;
 
   const checklist = [
-    { done: (divisionCount ?? 0) > 0, label: "Add divisions", href: `/organizer/tournaments/${id}/divisions` },
+    { done: divisionCount > 0, label: "Add categories", href: `/organizer/tournaments/${id}/divisions` },
+    {
+      done: divisionCount > 0 && (divisions ?? []).every((d) => d.bracket_config),
+      label: "Choose each category's format",
+      href: `/organizer/tournaments/${id}/divisions`,
+    },
     { done: t.status !== "draft", label: "Publish the event", href: null },
     { done: total > 0, label: "Take your first entry", href: `/tournaments/${t.slug}` },
-    { done: Boolean(t.challonge_tournament_id), label: "Link a Challonge bracket", href: "#challonge" },
+    {
+      done: divisionCount > 0 && started.length === divisionCount,
+      label: "Seed & start each category's draw",
+      href: `/organizer/tournaments/${id}/draw`,
+    },
+    { done: Boolean(umpireAccess?.pin_hash), label: "Set an umpire PIN", href: `/organizer/tournaments/${id}/umpires` },
     { done: (courtCount ?? 0) > 0, label: "Set up courts for scoring", href: `/organizer/tournaments/${id}/courts` },
   ];
   const doneCount = checklist.filter((c) => c.done).length;
@@ -42,7 +68,7 @@ export default async function OrganizerTournamentOverviewPage({
     <div className="space-y-10">
       <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Entries" value={total} hint={`${paid} paid · ${total - paid} not yet`} />
-        <StatTile label="Divisions" value={divisionCount ?? 0} />
+        <StatTile label="Categories" value={divisionCount} />
         <StatTile label="Courts" value={courtCount ?? 0} />
         <StatTile
           label="Entry fee"
@@ -120,14 +146,44 @@ export default async function OrganizerTournamentOverviewPage({
         </dl>
       </section>
 
-      <div id="challonge" className="scroll-mt-24">
-        <ChallongeLinkPanel
-          tournamentId={id}
-          linkedId={t.challonge_tournament_id}
-          linkedUrl={t.challonge_url}
-          syncStatus={t.challonge_sync_status}
+      <section>
+        <RegistrationQrCard
+          registrationUrl={`${getAppUrl()}/tournaments/${t.slug}#register`}
+          tournamentName={t.name}
+          slug={t.slug}
         />
-      </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
+          <h2 className="font-semibold text-bone">Draws</h2>
+          <span className="font-mono text-xs text-muted-foreground">
+            {started.length}/{divisionCount} started
+          </span>
+        </div>
+        <ul className="divide-y divide-line">
+          {(divisions ?? []).map((d) => (
+            <li key={d.id}>
+              <Link
+                href={`/organizer/tournaments/${id}/draw/${d.id}`}
+                transitionTypes={NAV_FORWARD}
+                className="group flex items-center gap-4 px-6 py-3.5 transition-colors hover:bg-espresso/60"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-bone">{d.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {describeFormat(parseBracketConfig(d.bracket_config, d.capacity ?? 16), d.capacity ?? 16).name}
+                  </span>
+                </span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {DRAW_STATE[d.bracket_state ?? "not_started"] ?? "Seeding"}
+                </span>
+                <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }

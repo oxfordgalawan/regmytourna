@@ -49,7 +49,8 @@ export function ChallongeConnectionCard({
           <div>
             <h2 className="font-semibold text-bone">Challonge</h2>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Manage brackets and sync participants and results through RegMyTourna.
+              Optional. RegMyTourna runs your draws, scoring and results on its own — connect
+              Challonge only if you also want to copy a category&apos;s bracket and players there.
             </p>
           </div>
         </div>

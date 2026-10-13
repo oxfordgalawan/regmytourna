@@ -2,7 +2,10 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
-import { getPlatformFeePercent } from "@/lib/env/server";
+import { getMinWithdrawalCents, getPlatformFeePercent } from "@/lib/env/server";
+import { PayoutMethodsPanel } from "@/components/wallet/payout-methods-panel";
+import { WithdrawalRequestPanel } from "@/components/wallet/withdrawal-request-panel";
+import type { PayoutMethodType } from "@/lib/payout-methods/config";
 import { PageHeader, SectionHeading, StatTile } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -71,21 +74,43 @@ export default async function OrganizerWalletPage() {
   }
 
   const balanceCents = wallet?.available_balance_cents ?? 0;
+  const pendingWithdrawalCents = wallet?.pending_withdrawal_cents ?? 0;
   const feePercent = getPlatformFeePercent();
+  const minWithdrawalCents = getMinWithdrawalCents();
+
+  const { data: payoutMethods } = await supabase
+    .from("organizer_payout_methods")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("is_default", { ascending: false });
+
+  const { data: withdrawalRequests } = await supabase
+    .from("withdrawal_requests")
+    .select("id, amount_cents, status, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const pendingRequests = (withdrawalRequests ?? []).filter((r) => r.status === "pending");
 
   return (
     <div className="space-y-12">
       <PageHeader
         eyebrow="Organizer"
         title="Wallet"
-        description={`Entry payments from your events (after ${feePercent}% platform fee). Withdrawals are handled separately.`}
+        description={`Entry payments from your events (after ${feePercent}% platform fee). Withdrawals require admin approval.`}
       />
 
-      <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-5">
         <StatTile
           label="Available balance"
           value={formatPhp(balanceCents)}
-          hint="Ledger balance from paid entries"
+          hint="Ready to withdraw"
+        />
+        <StatTile
+          label="Pending withdrawal"
+          value={formatPhp(pendingWithdrawalCents)}
+          hint="Awaiting admin approval"
         />
         <StatTile
           label="Lifetime gross"
@@ -103,6 +128,31 @@ export default async function OrganizerWalletPage() {
           hint="Registrations not paid yet"
         />
       </div>
+
+      <section className="space-y-4">
+        <SectionHeading title="Payout methods" />
+        <PayoutMethodsPanel
+          methods={(payoutMethods ?? []).map((m) => ({
+            ...m,
+            method_type: m.method_type as PayoutMethodType,
+          }))}
+        />
+      </section>
+
+      <section className="space-y-4">
+        <SectionHeading title="Request withdrawal" />
+        <WithdrawalRequestPanel
+          methods={(payoutMethods ?? []).map((m) => ({
+            id: m.id,
+            label: m.label,
+            method_type: m.method_type as PayoutMethodType,
+            is_default: m.is_default,
+          }))}
+          availableCents={balanceCents}
+          minWithdrawalCents={minWithdrawalCents}
+          pendingRequests={pendingRequests}
+        />
+      </section>
 
       <section className="space-y-4">
         <SectionHeading title="Transactions" />

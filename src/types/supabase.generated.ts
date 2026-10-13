@@ -473,11 +473,62 @@ export type Database = {
           },
         ]
       }
+      organizer_payout_methods: {
+        Row: {
+          account_name: string
+          account_number: string
+          bank_name: string | null
+          created_at: string
+          id: string
+          is_default: boolean
+          label: string
+          method_type: Database["public"]["Enums"]["payout_method_type"]
+          notes: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_name: string
+          account_number: string
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label: string
+          method_type: Database["public"]["Enums"]["payout_method_type"]
+          notes?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_name?: string
+          account_number?: string
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label?: string
+          method_type?: Database["public"]["Enums"]["payout_method_type"]
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizer_payout_methods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizer_wallets: {
         Row: {
           available_balance_cents: number
           created_at: string
           currency: string
+          pending_withdrawal_cents: number
           updated_at: string
           user_id: string
         }
@@ -485,6 +536,7 @@ export type Database = {
           available_balance_cents?: number
           created_at?: string
           currency?: string
+          pending_withdrawal_cents?: number
           updated_at?: string
           user_id: string
         }
@@ -492,6 +544,7 @@ export type Database = {
           available_balance_cents?: number
           created_at?: string
           currency?: string
+          pending_withdrawal_cents?: number
           updated_at?: string
           user_id?: string
         }
@@ -614,6 +667,54 @@ export type Database = {
           },
         ]
       }
+      ph_places: {
+        Row: {
+          barangay_code: string | null
+          barangay_name: string | null
+          city_municipality_code: string
+          city_municipality_name: string
+          display_label: string
+          level: Database["public"]["Enums"]["ph_place_level"]
+          name: string
+          province_code: string | null
+          province_name: string | null
+          psgc_code: string
+          region_code: string
+          region_name: string
+          search_text: string
+        }
+        Insert: {
+          barangay_code?: string | null
+          barangay_name?: string | null
+          city_municipality_code: string
+          city_municipality_name: string
+          display_label: string
+          level: Database["public"]["Enums"]["ph_place_level"]
+          name: string
+          province_code?: string | null
+          province_name?: string | null
+          psgc_code: string
+          region_code: string
+          region_name: string
+          search_text: string
+        }
+        Update: {
+          barangay_code?: string | null
+          barangay_name?: string | null
+          city_municipality_code?: string
+          city_municipality_name?: string
+          display_label?: string
+          level?: Database["public"]["Enums"]["ph_place_level"]
+          name?: string
+          province_code?: string | null
+          province_name?: string | null
+          psgc_code?: string
+          region_code?: string
+          region_name?: string
+          search_text?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -622,6 +723,8 @@ export type Database = {
           full_name: string
           id: string
           phone: string | null
+          place_label: string | null
+          place_psgc_code: string | null
           updated_at: string
         }
         Insert: {
@@ -631,6 +734,8 @@ export type Database = {
           full_name?: string
           id: string
           phone?: string | null
+          place_label?: string | null
+          place_psgc_code?: string | null
           updated_at?: string
         }
         Update: {
@@ -640,9 +745,19 @@ export type Database = {
           full_name?: string
           id?: string
           phone?: string | null
+          place_label?: string | null
+          place_psgc_code?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_place_psgc_code_fkey"
+            columns: ["place_psgc_code"]
+            isOneToOne: false
+            referencedRelation: "ph_places"
+            referencedColumns: ["psgc_code"]
+          },
+        ]
       }
       registration_players: {
         Row: {
@@ -1093,6 +1208,7 @@ export type Database = {
           tournament_id: string | null
           type: Database["public"]["Enums"]["wallet_transaction_type"]
           wallet_user_id: string
+          withdrawal_request_id: string | null
         }
         Insert: {
           amount_cents: number
@@ -1105,6 +1221,7 @@ export type Database = {
           tournament_id?: string | null
           type: Database["public"]["Enums"]["wallet_transaction_type"]
           wallet_user_id: string
+          withdrawal_request_id?: string | null
         }
         Update: {
           amount_cents?: number
@@ -1117,6 +1234,7 @@ export type Database = {
           tournament_id?: string | null
           type?: Database["public"]["Enums"]["wallet_transaction_type"]
           wallet_user_id?: string
+          withdrawal_request_id?: string | null
         }
         Relationships: [
           {
@@ -1150,6 +1268,80 @@ export type Database = {
           {
             foreignKeyName: "wallet_transactions_wallet_user_id_fkey"
             columns: ["wallet_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wallet_transactions_withdrawal_request_id_fkey"
+            columns: ["withdrawal_request_id"]
+            isOneToOne: false
+            referencedRelation: "withdrawal_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      withdrawal_requests: {
+        Row: {
+          admin_note: string | null
+          amount_cents: number
+          created_at: string
+          currency: string
+          id: string
+          payout_method_id: string | null
+          payout_snapshot: Json
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["withdrawal_request_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_note?: string | null
+          amount_cents: number
+          created_at?: string
+          currency?: string
+          id?: string
+          payout_method_id?: string | null
+          payout_snapshot: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["withdrawal_request_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_note?: string | null
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          payout_method_id?: string | null
+          payout_snapshot?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["withdrawal_request_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "withdrawal_requests_payout_method_id_fkey"
+            columns: ["payout_method_id"]
+            isOneToOne: false
+            referencedRelation: "organizer_payout_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "withdrawal_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "withdrawal_requests_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1200,6 +1392,26 @@ export type Database = {
         Args: { p_tournament_id: string; p_user_id: string }
         Returns: boolean
       }
+      request_wallet_withdrawal: {
+        Args: {
+          p_amount_cents: number
+          p_min_amount_cents?: number
+          p_payout_method_id: string
+          p_user_id: string
+        }
+        Returns: string
+      }
+      review_wallet_withdrawal: {
+        Args: {
+          p_action: string
+          p_admin_user_id: string
+          p_note?: string
+          p_request_id: string
+        }
+        Returns: boolean
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       account_type: "player" | "organizer"
@@ -1213,6 +1425,8 @@ export type Database = {
       organizer_role: "owner" | "admin"
       partner_invite_status: "pending" | "accepted" | "declined" | "expired"
       payment_status: "pending" | "paid" | "failed" | "cancelled" | "refunded"
+      payout_method_type: "gcash" | "maya" | "bank" | "other"
+      ph_place_level: "city_municipality" | "barangay"
       registration_status:
         | "pending"
         | "awaiting_partner"
@@ -1237,6 +1451,11 @@ export type Database = {
         | "refund"
         | "payout"
         | "adjustment"
+      withdrawal_request_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1376,6 +1595,8 @@ export const Constants = {
       organizer_role: ["owner", "admin"],
       partner_invite_status: ["pending", "accepted", "declined", "expired"],
       payment_status: ["pending", "paid", "failed", "cancelled", "refunded"],
+      payout_method_type: ["gcash", "maya", "bank", "other"],
+      ph_place_level: ["city_municipality", "barangay"],
       registration_status: [
         "pending",
         "awaiting_partner",
@@ -1402,6 +1623,12 @@ export const Constants = {
         "refund",
         "payout",
         "adjustment",
+      ],
+      withdrawal_request_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "cancelled",
       ],
     },
   },

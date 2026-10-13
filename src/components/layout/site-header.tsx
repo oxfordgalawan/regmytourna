@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { AuthNavButtons } from "@/components/layout/auth-nav-buttons";
+import { useSlidingIndicator } from "@/components/motion/use-sliding-indicator";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -18,6 +19,8 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const tournamentsActive = pathname.startsWith("/tournaments");
+  const { ref: navRef, style: pillStyle, ready: pillReady } = useSlidingIndicator<HTMLElement>(tournamentsActive);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -42,8 +45,10 @@ export function SiteHeader() {
 
   return (
     <header
+      // stays pinned while page content animates underneath (see globals.css)
+      style={{ viewTransitionName: "site-header" }}
       className={cn(
-        "sticky top-0 z-50 border-b transition-colors duration-300",
+        "sticky top-0 z-50 border-b pt-[env(safe-area-inset-top)] transition-colors duration-300",
         scrolled || open
           ? "border-line bg-ink/85 backdrop-blur-md"
           : "border-transparent bg-transparent"
@@ -52,17 +57,25 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Logo />
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
+        <nav ref={navRef} className="relative hidden items-center gap-1 md:flex" aria-label="Main">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-0 left-0 rounded-full bg-espresso"
+            style={pillStyle}
+          />
           {navLinks.map((link) => {
-            const active = link.href === "/tournaments" && pathname.startsWith("/tournaments");
+            const active = link.href === "/tournaments" && tournamentsActive;
             return (
               <Link
                 key={link.href}
                 href={link.href}
+                data-active={active}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative rounded-full px-4 py-2 text-sm transition-colors",
-                  active ? "bg-espresso text-bone" : "text-muted-foreground hover:text-bone"
+                  "relative rounded-full px-4 py-2 text-sm transition-colors duration-300",
+                  active
+                    ? cn("text-bone", !pillReady && "bg-espresso")
+                    : "text-muted-foreground hover:text-bone"
                 )}
               >
                 {link.label}
@@ -90,7 +103,7 @@ export function SiteHeader() {
       {open && (
         <div
           id="mobile-menu"
-          className="fixed inset-x-0 top-16 bottom-0 z-40 flex flex-col border-t border-line bg-ink px-4 pt-6 pb-8 animate-in fade-in-0 md:hidden"
+          className="fixed inset-x-0 top-[calc(4rem+env(safe-area-inset-top))] bottom-0 z-40 flex flex-col border-t border-line bg-ink px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-in fade-in-0 md:hidden"
         >
           <nav className="flex flex-col" aria-label="Mobile">
             {navLinks.map((link, i) => (

@@ -13,7 +13,9 @@ const serverEnvSchema = z.object({
   PAYMONGO_PUBLIC_KEY: z.string().optional(),
   PAYMONGO_WEBHOOK_SECRET: z.string().optional(),
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).optional(),
+  MIN_WITHDRAWAL_CENTS: z.coerce.number().int().min(0).optional(),
   RESEND_API_KEY: z.string().optional(),
+  UMPIRE_SESSION_SECRET: z.string().min(16).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -68,6 +70,13 @@ const DEFAULT_PLATFORM_FEE_PERCENT = 5;
 export function getPlatformFeePercent(): number {
   const value = getServerEnv().PLATFORM_FEE_PERCENT;
   return value ?? DEFAULT_PLATFORM_FEE_PERCENT;
+}
+
+const DEFAULT_MIN_WITHDRAWAL_CENTS = 10000;
+
+export function getMinWithdrawalCents(): number {
+  const value = getServerEnv().MIN_WITHDRAWAL_CENTS;
+  return value ?? DEFAULT_MIN_WITHDRAWAL_CENTS;
 }
 
 export function requireSupabaseEnv() {

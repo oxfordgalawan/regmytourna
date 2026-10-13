@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       attributes: {
         type: string;
         data?: {
+          id?: string;
           attributes?: {
             metadata?: Record<string, string>;
             status?: string;
@@ -55,9 +56,29 @@ export async function POST(request: NextRequest) {
       payload.data.attributes.data?.attributes?.metadata ?? {};
     const registrationId = metadata.registration_id;
     if (registrationId) {
+      // mark only the checkout that was paid (an entry can have several: an
+      // abandoned online checkout plus a QR shown at the desk)
+      const sessionId = payload.data.attributes.data?.id;
+      const paidAt = new Date().toISOString();
+      const { data: matched } = sessionId
+        ? await admin
+            .from("payments")
+            .update({ status: "paid", paid_at: paidAt })
+            .eq("registration_id", registrationId)
+            .eq("paymongo_checkout_session_id", sessionId)
+            .select("id")
+        : { data: null };
+      if (!matched?.length) {
+        await admin
+          .from("payments")
+          .update({ status: "paid", paid_at: paidAt })
+          .eq("registration_id", registrationId)
+          .eq("status", "pending");
+      }
+      // other open checkouts for this entry can no longer be used
       await admin
         .from("payments")
-        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .update({ status: "cancelled" })
         .eq("registration_id", registrationId)
         .eq("status", "pending");
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NAV_BACK } from "@/lib/nav-transitions";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
@@ -31,6 +32,7 @@ export default async function ConnectionsPage({
     <div className="space-y-10">
       <div>
         <Link
+          transitionTypes={NAV_BACK}
           href="/settings"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
         >

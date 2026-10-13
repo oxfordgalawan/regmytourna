@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { connection } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
@@ -174,7 +175,7 @@ export default async function DashboardPage() {
           <EmptyState
             icon={Ticket}
             title="You haven’t entered any tournaments"
-            description="Browse open events, pick a division and pay online. It takes about two minutes."
+            description="Browse open events, pick a category and pay online. It takes about two minutes."
             action={
               <Button asChild>
                 <Link href="/tournaments">Browse tournaments</Link>
@@ -195,6 +196,7 @@ export default async function DashboardPage() {
                 <li key={r.id}>
                   <Link
                     href={`/tournaments/${t.slug}`}
+                    transitionTypes={NAV_FORWARD}
                     className="group flex items-center gap-4 bg-surface px-5 py-4 transition-colors hover:bg-espresso/60"
                   >
                     <div className="flex w-12 shrink-0 flex-col items-center rounded-md border border-umber py-1 text-center">
@@ -241,6 +243,7 @@ export default async function DashboardPage() {
               <li key={t.id}>
                 <Link
                   href={`/organizer/tournaments/${t.id}`}
+                  transitionTypes={NAV_FORWARD}
                   className="group flex items-center gap-4 bg-surface px-5 py-4 transition-colors hover:bg-espresso/60"
                 >
                   <div className="min-w-0 flex-1">

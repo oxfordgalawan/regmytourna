@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Form from "next/form";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -23,7 +24,7 @@ import { isSupabaseConfigured } from "@/lib/env/server";
 
 const playerSteps = [
   {
-    title: "Pick your division",
+    title: "Pick your category",
     body: "Filter by city, date and skill bracket. Every fee and cutoff is on the page before you commit.",
   },
   {
@@ -40,7 +41,7 @@ const organizerTools = [
   {
     icon: ClipboardCheck,
     title: "Registration desk",
-    body: "Divisions, capacity caps, waitlists and partner invites — without a spreadsheet in sight.",
+    body: "Categories, team caps, waitlists and partner invites — without a spreadsheet in sight.",
     span: "lg:col-span-2",
   },
   {
@@ -109,9 +110,8 @@ export default async function HomePage() {
               get the whole desk: entries, payments, brackets and live scores.
             </p>
 
-            <form
+            <Form
               action="/tournaments"
-              method="get"
               role="search"
               className="mt-9 flex max-w-xl items-center gap-2 rounded-full border border-line bg-espresso/80 p-1.5 pl-5 backdrop-blur focus-within:border-brass animate-rise"
               style={{ animationDelay: "240ms" }}
@@ -129,7 +129,7 @@ export default async function HomePage() {
               <Button type="submit" className="rounded-full px-5">
                 Find events
               </Button>
-            </form>
+            </Form>
 
             <div
               className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm animate-rise"

@@ -14,13 +14,15 @@ export async function createRegistrationAction(params: {
   divisionId: string;
   partnerEmail?: string;
   guestName?: string;
+  /** player chose to pay in cash/QR at the venue (only if the tournament allows it) */
+  payAtVenue?: boolean;
 }) {
   const user = await requireUser();
   const supabase = await createClient();
 
   const { data: tournament } = await supabase
     .from("tournaments")
-    .select("id, slug, name, entry_fee_cents, status, registration_closes_at, max_capacity")
+    .select("id, slug, name, entry_fee_cents, status, registration_closes_at, max_capacity, allow_walk_in_payment")
     .eq("slug", params.tournamentSlug)
     .single();
   if (!tournament) return { error: "Tournament not found" };
@@ -77,6 +79,7 @@ export async function createRegistrationAction(params: {
   }
 
   const status = fee > 0 ? "awaiting_payment" : "confirmed";
+  const payAtVenue = Boolean(params.payAtVenue && tournament.allow_walk_in_payment && fee > 0);
   const { data: registration, error } = await supabase
     .from("registrations")
     .insert({
@@ -86,6 +89,7 @@ export async function createRegistrationAction(params: {
       team_id: teamId,
       status,
       payment_status: fee > 0 ? "pending" : "paid",
+      entry_source: payAtVenue ? "pay_at_venue" : "online",
     })
     .select("id")
     .single();
@@ -115,6 +119,12 @@ export async function createRegistrationAction(params: {
       .from("registrations")
       .update({ status: "awaiting_partner" })
       .eq("id", registration.id);
+  }
+
+  if (payAtVenue) {
+    // slot is held; the organizer collects cash or shows a QR on the day
+    revalidatePath(`/tournaments/${tournament.slug}`);
+    return { registrationId: registration.id, payAtVenue: true };
   }
 
   if (fee > 0) {

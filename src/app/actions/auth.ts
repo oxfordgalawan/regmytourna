@@ -31,6 +31,8 @@ export async function signUp(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("fullName") ?? "");
   const accountType = String(formData.get("accountType") ?? "player");
+  const placePsgcCode = String(formData.get("placePsgcCode") ?? "").trim();
+  const placeLabel = String(formData.get("placeLabel") ?? "").trim();
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
@@ -46,13 +48,30 @@ export async function signUp(formData: FormData) {
   if (error) return { error: error.message };
 
   if (data.user) {
-    await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName,
-        account_type: accountType === "organizer" ? "organizer" : "player",
-      })
-      .eq("id", data.user.id);
+    const profileUpdate: {
+      full_name: string;
+      account_type: "player" | "organizer";
+      place_psgc_code?: string | null;
+      place_label?: string | null;
+    } = {
+      full_name: fullName,
+      account_type: accountType === "organizer" ? "organizer" : "player",
+    };
+
+    if (placePsgcCode) {
+      const { data: placeRow } = await supabase
+        .from("ph_places")
+        .select("psgc_code, display_label")
+        .eq("psgc_code", placePsgcCode)
+        .maybeSingle();
+      if (!placeRow) {
+        return { error: "Selected location is invalid. Please pick from the suggestions." };
+      }
+      profileUpdate.place_psgc_code = placeRow.psgc_code;
+      profileUpdate.place_label = placeLabel || placeRow.display_label;
+    }
+
+    await supabase.from("profiles").update(profileUpdate).eq("id", data.user.id);
   }
 
   redirect("/dashboard?welcome=1");

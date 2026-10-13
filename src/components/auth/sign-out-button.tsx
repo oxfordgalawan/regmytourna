@@ -11,10 +11,13 @@ export function SignOutButton({
   size = "sm",
   variant = "outline",
   className,
+  iconOnly = false,
 }: {
   size?: ButtonProps["size"];
   variant?: ButtonProps["variant"];
   className?: string;
+  /** compact icon button (label kept for screen readers) */
+  iconOnly?: boolean;
 }) {
   const router = useRouter();
 
@@ -33,9 +36,11 @@ export function SignOutButton({
       type="button"
       onClick={handleSignOut}
       className={cn(className)}
+      aria-label={iconOnly ? "Sign out" : undefined}
+      title={iconOnly ? "Sign out" : undefined}
     >
       <LogOut />
-      Sign out
+      {!iconOnly && "Sign out"}
     </Button>
   );
 }

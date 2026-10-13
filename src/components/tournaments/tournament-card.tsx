@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { ArrowUpRight, MapPin, Users } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { dateTile, formatDateRange, formatPhp } from "@/lib/format";
@@ -6,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 export type TournamentCardData = {
   id: string;
+  cover_image_url?: string | null;
   slug: string;
   name: string;
   status: string;
@@ -33,11 +35,23 @@ export function TournamentCard({
   return (
     <Link
       href={`/tournaments/${t.slug}`}
+      transitionTypes={NAV_FORWARD}
       className={cn(
         "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-all duration-300 hover:-translate-y-1 hover:border-umber hover:bg-espresso/70",
         className
       )}
     >
+      {t.cover_image_url && (
+        <div className="relative aspect-[16/7] overflow-hidden border-b border-line">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={t.cover_image_url}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+        </div>
+      )}
       <div className="flex items-start gap-4 p-5">
         <div className="flex w-14 shrink-0 flex-col items-center overflow-hidden rounded-lg border border-umber text-center">
           <span className="w-full bg-umber py-0.5 font-mono text-[0.625rem] tracking-widest text-bone">
@@ -73,7 +87,7 @@ export function TournamentCard({
           <dd className="mt-1 font-mono text-bone">{formatPhp(t.entry_fee_cents, t.currency)}</dd>
         </div>
         <div className="px-5 py-3">
-          <dt className="eyebrow">{divisions ? "Divisions" : "When"}</dt>
+          <dt className="eyebrow">{divisions ? "Categories" : "When"}</dt>
           <dd className="mt-1 flex items-center gap-1.5 text-bone">
             {divisions ? (
               <>

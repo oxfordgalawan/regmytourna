@@ -1,22 +1,32 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth/require-user";
-import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
+import { requireScoringActor } from "@/lib/auth/umpire";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ChallongeService } from "@/lib/services/challonge/challonge-service";
+import { advanceAfterResult } from "@/lib/draw/progress";
 
-export async function incrementScoreAction(
-  matchId: string,
-  side: "a" | "b"
-) {
+type MatchRow = {
+  id: string;
+  tournament_id: string;
+  court_id: string | null;
+};
+
+function revalidateScoring(match: MatchRow) {
+  revalidatePath(`/court/${match.court_id ?? match.id}`);
+  revalidatePath(`/umpire/${match.tournament_id}`);
+  revalidatePath(`/umpire/${match.tournament_id}/match/${match.id}`);
+}
+
+export async function incrementScoreAction(matchId: string, side: "a" | "b") {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-
-  const user = await requireUser();
-  if (!(await isOrganizerForTournament(user.id, match.tournament_id))) {
-    throw new Error("Unauthorized");
+  const actor = await requireScoringActor(match.tournament_id);
+  if (["completed", "walkover", "cancelled"].includes(match.status)) {
+    throw new Error("This match is already finished");
+  }
+  if (match.stage && (!match.team_a_registration_id || !match.team_b_registration_id)) {
+    throw new Error("Waiting for both teams to be decided");
   }
 
   const field = side === "a" ? "score_a" : "score_b";
@@ -33,10 +43,11 @@ export async function incrementScoreAction(
     score_a: side === "a" ? newScore : match.score_a,
     score_b: side === "b" ? newScore : match.score_b,
     action_type: `increment_${side}`,
-    operator_id: user.id,
+    operator_id: actor.operatorId,
+    operator_label: actor.operatorLabel,
   });
 
-  revalidatePath(`/court/${match.court_id ?? matchId}`);
+  revalidateScoring(match);
   return { ok: true };
 }
 
@@ -44,15 +55,14 @@ export async function undoLastScoreAction(matchId: string) {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-  const user = await requireUser();
-  if (!(await isOrganizerForTournament(user.id, match.tournament_id))) {
-    throw new Error("Unauthorized");
-  }
+  await requireScoringActor(match.tournament_id);
 
+  // only points in the game being played can be undone; finished games are on record
   const { data: events } = await admin
     .from("match_scores")
     .select("*")
     .eq("match_id", matchId)
+    .eq("game_number", match.current_game)
     .order("created_at", { ascending: false })
     .limit(1);
   const last = events?.[0];
@@ -67,36 +77,49 @@ export async function undoLastScoreAction(matchId: string) {
     })
     .eq("id", matchId);
 
-  revalidatePath(`/court/${match.court_id ?? matchId}`);
+  revalidateScoring(match);
   return { ok: true };
+}
+
+/** Final score of every game, from the point log plus the game just ended. */
+async function gameScores(matchId: string, currentGame: number, current: { a: number; b: number }) {
+  const { data: events } = await createAdminClient()
+    .from("match_scores")
+    .select("game_number, score_a, score_b, created_at")
+    .eq("match_id", matchId)
+    .lt("game_number", currentGame)
+    .order("created_at", { ascending: true });
+  const byGame = new Map<number, { a: number; b: number }>();
+  for (const e of events ?? []) byGame.set(e.game_number, { a: e.score_a, b: e.score_b });
+  byGame.set(currentGame, current);
+  return [...byGame.entries()].sort(([x], [y]) => x - y).map(([, s]) => s);
 }
 
 export async function finalizeMatchAction(matchId: string) {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-  const user = await requireUser();
-  if (!(await isOrganizerForTournament(user.id, match.tournament_id))) {
-    throw new Error("Unauthorized");
+  await requireScoringActor(match.tournament_id);
+  if (match.status === "completed") {
+    return { ok: true, complete: true };
   }
-  if (match.challonge_result_submitted_at) {
-    return { ok: true, alreadySubmitted: true };
+  if (match.score_a === match.score_b) {
+    return { ok: false, error: "A game can't end on a tied score." };
   }
 
   const { data: tournament } = await admin
     .from("tournaments")
-    .select("challonge_tournament_id, owner_id, scoring_config")
+    .select("scoring_config")
     .eq("id", match.tournament_id)
     .single();
 
-  let gamesWonA = match.games_won_a;
-  let gamesWonB = match.games_won_b;
-  if (match.score_a > match.score_b) gamesWonA += 1;
-  else if (match.score_b > match.score_a) gamesWonB += 1;
+  const gamesWonA = match.games_won_a + (match.score_a > match.score_b ? 1 : 0);
+  const gamesWonB = match.games_won_b + (match.score_b > match.score_a ? 1 : 0);
 
   const config = (tournament?.scoring_config ?? {}) as { games_to_win?: number };
   const gamesToWin = config.games_to_win ?? 2;
   const isMatchComplete = gamesWonA >= gamesToWin || gamesWonB >= gamesToWin;
+  const games = await gameScores(matchId, match.current_game, { a: match.score_a, b: match.score_b });
 
   await admin
     .from("matches")
@@ -108,35 +131,19 @@ export async function finalizeMatchAction(matchId: string) {
       current_game: match.current_game + 1,
       status: isMatchComplete ? "completed" : "in_progress",
       completed_at: isMatchComplete ? new Date().toISOString() : null,
+      game_scores: games.map((g) => [g.a, g.b]),
     })
     .eq("id", matchId);
 
-  if (
-    isMatchComplete &&
-    tournament?.challonge_tournament_id &&
-    match.challonge_match_id &&
-    !match.challonge_result_submitted_at
-  ) {
-    const service = await ChallongeService.forUser(tournament.owner_id);
-    if (service) {
-      const scoresCsv = `${gamesWonA}-${gamesWonB}`;
-      try {
-        await service.reportScore(
-          tournament.challonge_tournament_id,
-          match.challonge_match_id,
-          scoresCsv,
-          true
-        );
-        await admin
-          .from("matches")
-          .update({ challonge_result_submitted_at: new Date().toISOString() })
-          .eq("id", matchId);
-      } catch {
-        // Local result kept; Challonge sync can retry
-      }
-    }
+  if (isMatchComplete) {
+    // moves the winner (and loser, in double knockout) into their next matches
+    await advanceAfterResult(
+      matchId,
+      gamesWonA > gamesWonB ? "a" : "b",
+      games.map((g) => [g.a, g.b] as [number, number])
+    );
   }
 
-  revalidatePath(`/court/${match.court_id ?? matchId}`);
+  revalidateScoring(match);
   return { ok: true, complete: isMatchComplete };
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NAV_BACK } from "@/lib/nav-transitions";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -17,6 +18,12 @@ import { Button } from "@/components/ui/button";
 import { getOptionalUser } from "@/lib/auth/require-user";
 import { RegisterSection } from "@/components/tournaments/register-section";
 import { relationOne } from "@/lib/supabase/relations";
+import { entrantNoun } from "@/lib/categories";
+import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
+import { loadDivisionContext } from "@/lib/draw/server";
+import { buildDrawView } from "@/lib/draw/view";
+import { PublicDraw } from "@/components/draw/public-draw";
+import { AutoRefresh } from "@/components/display/auto-refresh";
 import { daysUntil, formatDateRange, formatDateTime, formatPhp } from "@/lib/format";
 
 export async function generateMetadata({
@@ -46,7 +53,20 @@ export default async function TournamentDetailPage({
     format: string;
     entry_fee_cents: number | null;
     capacity: number | null;
+    bracket_config: unknown;
+    bracket_state?: string | null;
   }>;
+
+  // live draws for categories that have started
+  const startedIds = divisions.filter((d) => d.bracket_state && d.bracket_state !== "not_started").map((d) => d.id);
+  const draws = (
+    await Promise.all(
+      startedIds.map(async (divisionId) => {
+        const ctx = await loadDivisionContext(divisionId);
+        return ctx ? { id: divisionId, name: ctx.division.name, view: buildDrawView(ctx) } : null;
+      })
+    )
+  ).filter((d): d is NonNullable<typeof d> => d !== null);
 
   const isOpen = tournament.status === "registration_open";
   const fees = divisions.map((d) => d.entry_fee_cents ?? tournament.entry_fee_cents);
@@ -75,7 +95,7 @@ export default async function TournamentDetailPage({
     {
       icon: Clock,
       label: "Entries close",
-      value: formatDateTime(tournament.registration_closes_at) ?? "See division details",
+      value: formatDateTime(tournament.registration_closes_at) ?? "See category details",
       hint: null,
     },
     {
@@ -87,12 +107,26 @@ export default async function TournamentDetailPage({
   ];
 
   return (
-    <div className="pb-28 lg:pb-24">
+    <div className="pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-24">
       {/* Header band */}
       <section className="grain relative overflow-hidden border-b border-line">
+        {tournament.cover_image_url && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={tournament.cover_image_url}
+              alt=""
+              fetchPriority="high"
+              className="pointer-events-none absolute inset-0 size-full object-cover opacity-45"
+            />
+            {/* keep the title readable over any photo */}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/75 to-ink/30" />
+          </>
+        )}
         <div className="court-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
         <div className="relative mx-auto max-w-7xl px-4 pt-8 pb-12 sm:px-6 lg:pb-16">
           <Link
+            transitionTypes={NAV_BACK}
             href="/tournaments"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
           >
@@ -134,10 +168,10 @@ export default async function TournamentDetailPage({
           <section aria-labelledby="divisions-heading">
             <div className="flex items-end justify-between gap-4">
               <h2 id="divisions-heading" className="display text-4xl text-bone">
-                Divisions
+                Categories
               </h2>
               <span className="font-mono text-sm text-muted-foreground">
-                {divisions.length} {divisions.length === 1 ? "division" : "divisions"}
+                {divisions.length} {divisions.length === 1 ? "category" : "categories"}
               </span>
             </div>
             {divisions.length ? (
@@ -154,10 +188,21 @@ export default async function TournamentDetailPage({
                         {d.capacity && (
                           <span className="inline-flex items-center gap-1">
                             <Users className="size-3.5" aria-hidden />
-                            {d.capacity} slots
+                            {d.capacity} {entrantNoun(d.format, d.capacity)}
                           </span>
                         )}
                       </p>
+                      {(() => {
+                        const info = describeFormat(
+                          parseBracketConfig(d.bracket_config, d.capacity ?? 16),
+                          d.capacity ?? 16
+                        );
+                        return (
+                          <p className="mt-1 font-mono text-[0.7rem] text-brass">
+                            {info.name} · {info.guaranteed}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <span className="font-mono text-bone">
                       {formatPhp(d.entry_fee_cents ?? tournament.entry_fee_cents, tournament.currency)}
@@ -167,7 +212,7 @@ export default async function TournamentDetailPage({
               </ul>
             ) : (
               <p className="mt-5 rounded-2xl border border-dashed border-line px-5 py-8 text-center text-sm text-muted-foreground">
-                Divisions haven&apos;t been announced yet.
+                Categories haven&apos;t been announced yet.
               </p>
             )}
           </section>
@@ -226,12 +271,13 @@ export default async function TournamentDetailPage({
                   slug={slug}
                   currency={tournament.currency}
                   defaultFeeCents={tournament.entry_fee_cents}
+                  allowPayAtVenue={Boolean(tournament.allow_walk_in_payment)}
                   divisions={divisions}
                 />
               ) : (
                 <div>
                   <p className="text-sm leading-relaxed text-bone/75">
-                    Log in or create a free account to pick a division and pay. It takes about a
+                    Log in or create a free account to pick a category and pay. It takes about a
                     minute.
                   </p>
                   <div className="mt-5 grid gap-2">
@@ -252,9 +298,25 @@ export default async function TournamentDetailPage({
         </aside>
       </div>
 
+      {draws.length > 0 && (
+        <section id="draw" className="mx-auto mt-16 max-w-7xl scroll-mt-24 px-4 sm:px-6" aria-labelledby="draw-heading">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <h2 id="draw-heading" className="display text-4xl text-bone">
+              Draw & results
+            </h2>
+            <span className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+              <span className="size-1.5 animate-pulse-dot rounded-full bg-rust" />
+              Updates live
+            </span>
+          </div>
+          <AutoRefresh seconds={30} clock={false} />
+          <PublicDraw tournamentId={tournament.id} categories={draws} />
+        </section>
+      )}
+
       {/* Mobile action bar */}
       {isOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/95 px-4 py-3 backdrop-blur-md lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
             <div>
               <p className="eyebrow">Entry from</p>

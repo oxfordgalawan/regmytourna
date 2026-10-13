@@ -24,9 +24,12 @@ export function RegisterSection({
   divisions,
   currency = "PHP",
   defaultFeeCents = 0,
+  allowPayAtVenue = false,
 }: {
   slug: string;
   divisions: Division[];
+  /** tournament lets players pay in cash / QR on the day */
+  allowPayAtVenue?: boolean;
   currency?: string;
   defaultFeeCents?: number;
 }) {
@@ -39,6 +42,8 @@ export function RegisterSection({
 
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;
+  const [payment, setPayment] = useState<"online" | "venue">("online");
+  const venue = allowPayAtVenue && fee > 0 && payment === "venue";
 
   async function handleRegister() {
     if (!divisionId) return;
@@ -49,6 +54,7 @@ export function RegisterSection({
       tournamentSlug: slug,
       divisionId,
       partnerEmail: selected?.format === "doubles" ? partnerEmail : undefined,
+      payAtVenue: venue,
     });
     if (result.error) {
       setLoading(false);
@@ -57,6 +63,10 @@ export function RegisterSection({
     }
     if (result.checkoutUrl) {
       window.location.href = result.checkoutUrl;
+      return;
+    }
+    if (result.payAtVenue) {
+      router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&venue=1`);
       return;
     }
     setLoading(false);
@@ -69,7 +79,7 @@ export function RegisterSection({
   if (!divisions.length) {
     return (
       <p className="text-sm text-muted-foreground">
-        Divisions haven&apos;t been set up yet — registration will open once they are.
+        Categories haven&apos;t been set up yet — registration will open once they are.
       </p>
     );
   }
@@ -88,7 +98,7 @@ export function RegisterSection({
       )}
 
       <fieldset>
-        <legend className="eyebrow mb-3">1 · Choose a division</legend>
+        <legend className="eyebrow mb-3">1 · Choose a category</legend>
         <div className="grid gap-2" role="radiogroup">
           {divisions.map((d) => {
             const active = d.id === divisionId;
@@ -145,9 +155,38 @@ export function RegisterSection({
         </div>
       )}
 
+      {allowPayAtVenue && fee > 0 && (
+        <fieldset>
+          <legend className="eyebrow mb-3">How will you pay?</legend>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup">
+            {(
+              [
+                ["online", "Pay online now", "GCash, Maya or card"],
+                ["venue", "Pay at the venue", "Cash or QR on the day"],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={payment === value}
+                onClick={() => setPayment(value)}
+                className={cn(
+                  "rounded-xl border px-3 py-3 text-left transition-all",
+                  payment === value ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
+                )}
+              >
+                <span className="block text-sm font-medium text-bone">{label}</span>
+                <span className="block text-xs text-muted-foreground">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <div className="rounded-xl border border-line bg-ink/40 p-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Total due</span>
+          <span className="text-muted-foreground">{venue ? "Pay at the desk" : "Total due"}</span>
           <span className="display text-3xl text-bone">{formatPhp(fee, currency)}</span>
         </div>
         <Button
@@ -159,8 +198,10 @@ export function RegisterSection({
           {loading ? (
             <>
               <Loader2 className="animate-spin" />
-              Preparing checkout…
+              {venue ? "Reserving your slot…" : "Preparing checkout…"}
             </>
+          ) : venue ? (
+            "Reserve my slot"
           ) : fee > 0 ? (
             "Continue to payment"
           ) : (
@@ -168,8 +209,14 @@ export function RegisterSection({
           )}
         </Button>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="size-3" aria-hidden />
-          Secure checkout by PayMongo
+          {venue ? (
+            "Your slot is held. You're confirmed once you pay at the desk."
+          ) : (
+            <>
+              <Lock className="size-3" aria-hidden />
+              Secure checkout by PayMongo
+            </>
+          )}
         </p>
       </div>
     </div>

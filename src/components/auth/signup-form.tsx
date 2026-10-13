@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 
 function PaddleIcon({ className }: { className?: string }) {
   return (
@@ -39,6 +40,8 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [place, setPlace] = useState<PlaceSelection | null>(null);
+
   const form = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
@@ -47,6 +50,8 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
       password: "",
       confirmPassword: "",
       accountType: defaultAccountType === "organizer" ? "organizer" : "player",
+      placePsgcCode: "",
+      placeLabel: "",
       acceptTerms: false as unknown as true,
     },
   });
@@ -60,6 +65,10 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
     fd.set("email", values.email);
     fd.set("password", values.password);
     fd.set("accountType", values.accountType);
+    if (place) {
+      fd.set("placePsgcCode", place.psgcCode);
+      fd.set("placeLabel", place.label);
+    }
     const result = await signUp(fd);
     if (result?.error) {
       setServerError(result.error);
@@ -176,6 +185,16 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
           <FieldError message={errors.confirmPassword?.message} />
         </div>
       </div>
+
+      <PlaceSearchCombobox
+        value={place}
+        onChange={(next) => {
+          setPlace(next);
+          form.setValue("placePsgcCode", next?.psgcCode ?? "");
+          form.setValue("placeLabel", next?.label ?? "");
+        }}
+      />
+      <FieldError message={errors.placeLabel?.message} />
 
       <label className="flex cursor-pointer items-start gap-3 text-sm text-bone/80">
         <Checkbox

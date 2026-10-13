@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Profile } from "@/types/database";
+import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 
 export function ProfileForm({
   userId,
@@ -21,10 +22,19 @@ export function ProfileForm({
 }) {
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
   const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [place, setPlace] = useState<PlaceSelection | null>(
+    profile?.place_psgc_code && profile?.place_label
+      ? { psgcCode: profile.place_psgc_code, label: profile.place_label }
+      : null
+  );
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
-  const dirty = fullName !== (profile?.full_name ?? "") || phone !== (profile?.phone ?? "");
+  const dirty =
+    fullName !== (profile?.full_name ?? "") ||
+    phone !== (profile?.phone ?? "") ||
+    place?.psgcCode !== (profile?.place_psgc_code ?? null) ||
+    place?.label !== (profile?.place_label ?? null);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -36,6 +46,8 @@ export function ProfileForm({
     const result = await updateProfile({
       fullName,
       phone: phone || null,
+      placePsgcCode: place?.psgcCode ?? null,
+      placeLabel: place?.label ?? null,
     });
     setSaving(false);
     if (result.error) {
@@ -70,6 +82,13 @@ export function ProfileForm({
           placeholder="+63 9XX XXX XXXX"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <PlaceSearchCombobox
+          key={profile?.place_psgc_code ?? "none"}
+          value={place}
+          onChange={setPlace}
         />
       </div>
       <div className="sm:col-span-2">

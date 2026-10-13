@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NAV_BACK } from "@/lib/nav-transitions";
 import { ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 
@@ -31,6 +32,7 @@ export function AuthShell({
         <div className="flex items-center justify-between">
           <Logo />
           <Link
+            transitionTypes={NAV_BACK}
             href="/"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
           >

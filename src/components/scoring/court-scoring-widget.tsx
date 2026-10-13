@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, Loader2, Undo2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Check, Flag, Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   finalizeMatchAction,
@@ -19,16 +20,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Match } from "@/types/database";
+import { NAV_BACK } from "@/lib/nav-transitions";
 import { cn } from "@/lib/utils";
 
 export function CourtScoringWidget({
   courtName,
   match,
   divisionName,
+  backHref,
 }: {
   courtName: string;
   match: Match;
   divisionName?: string;
+  /** where "back" goes, e.g. the umpire match board */
+  backHref?: string;
 }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -40,7 +45,8 @@ export function CourtScoringWidget({
   async function run(action: () => Promise<unknown>, failMessage: string) {
     setBusy(true);
     try {
-      await action();
+      const result = (await action()) as { ok?: boolean; error?: string } | undefined;
+      if (result && result.ok === false && result.error) toast.error(result.error);
       startRefresh(() => router.refresh());
     } catch {
       toast.error(failMessage);
@@ -62,7 +68,17 @@ export function CourtScoringWidget({
   ];
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-4 pt-5 pb-6">
+    <div className="mx-auto flex min-h-dvh max-w-xl flex-col px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      {backHref && (
+        <Link
+          href={backHref}
+          transitionTypes={NAV_BACK}
+          className="mb-4 inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
+        >
+          <ArrowLeft className="size-4" />
+          All matches
+        </Link>
+      )}
       <header className="flex items-center justify-between gap-4">
         <div>
           <p className="eyebrow flex items-center gap-2 text-bone">
@@ -70,7 +86,7 @@ export function CourtScoringWidget({
             {courtName}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Match {match.match_number ?? "—"}
+            {match.round_label ?? `Match ${match.match_number ?? "—"}`}
             {divisionName ? ` · ${divisionName}` : ""}
           </p>
         </div>
@@ -80,6 +96,31 @@ export function CourtScoringWidget({
         </div>
       </header>
 
+      {match.status === "completed" ? (
+        <div className="mt-5 flex flex-1 flex-col items-center justify-center rounded-3xl border border-umber bg-espresso p-8 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-bone text-ink">
+            <Check className="size-6" strokeWidth={3} />
+          </span>
+          <p className="display mt-5 text-4xl text-bone">Match finished</p>
+          <p className="mt-2 text-sm text-muted-foreground">Games won</p>
+          <div className="mt-3 grid w-full max-w-xs grid-cols-2 gap-3">
+            {sides.map((s) => (
+              <div key={s.key} className="rounded-xl border border-line bg-surface p-3">
+                <p className="truncate text-sm text-bone/80">{s.label}</p>
+                <p className="display text-5xl text-bone">{s.games}</p>
+              </div>
+            ))}
+          </div>
+          {backHref && (
+            <Button asChild size="lg" className="mt-8">
+              <Link href={backHref} transitionTypes={NAV_BACK}>
+                Next match
+              </Link>
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="mt-5 grid flex-1 grid-rows-2 gap-3">
         {sides.map((s) => (
           <button
@@ -130,6 +171,9 @@ export function CourtScoringWidget({
           End game
         </Button>
       </div>
+
+        </>
+      )}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

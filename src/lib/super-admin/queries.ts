@@ -25,12 +25,17 @@ export async function getPlatformOverview(admin: AdminClient) {
     { count: profileCount },
     { data: tournaments },
     { count: registrationCount },
+    { count: pendingWithdrawalCount },
     { data: recentProfiles },
     { data: organizerProfiles },
   ] = await Promise.all([
     admin.from("profiles").select("*", { count: "exact", head: true }),
     admin.from("tournaments").select("id, status, owner_id"),
     admin.from("registrations").select("*", { count: "exact", head: true }),
+    admin
+      .from("withdrawal_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending"),
     admin
       .from("profiles")
       .select("id, full_name, account_type, created_at")

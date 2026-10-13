@@ -31,7 +31,8 @@ export async function creditOrganizerFromRegistration(
     .from("payments")
     .select("id, amount_cents, status, credited_to_user_id")
     .eq("registration_id", registrationId)
-    .order("created_at", { ascending: false })
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 

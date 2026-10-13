@@ -22,7 +22,7 @@ export default async function SuperAdminOverviewPage() {
         description="Read-only view across all organizers, tournaments, and players."
       />
 
-      <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-5">
         <StatTile label="Profiles" value={overview.profileCount} hint="All accounts" />
         <StatTile
           label="Organizers"
@@ -31,6 +31,19 @@ export default async function SuperAdminOverviewPage() {
         />
         <StatTile label="Tournaments" value={overview.tournamentCount} hint="All statuses" />
         <StatTile label="Registrations" value={overview.registrationCount} hint="All entries" />
+        <StatTile
+          label="Pending withdrawals"
+          value={overview.pendingWithdrawalCount}
+          hint={
+            overview.pendingWithdrawalCount > 0 ? (
+              <Link href="/super-admin/withdrawals" className="underline decoration-umber underline-offset-2 hover:decoration-brass">
+                Review queue
+              </Link>
+            ) : (
+              "Awaiting approval"
+            )
+          }
+        />
       </div>
 
       <section className="space-y-4">
@@ -79,11 +92,12 @@ export default async function SuperAdminOverviewPage() {
         )}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { href: "/super-admin/organizers", label: "Browse organizers" },
           { href: "/super-admin/tournaments", label: "Browse tournaments" },
           { href: "/super-admin/players", label: "Browse players" },
+          { href: "/super-admin/withdrawals", label: "Review withdrawals" },
         ].map((item) => (
           <Link
             key={item.href}

@@ -28,6 +28,15 @@ Tournament registration and management platform for pickleball (multi-sport read
      npx supabase db push
      ```
 
+   - **Philippine places (PSGC):** After migrations that create `ph_places`, build flattened rows and seed the reference table (see [`data/psgc/SOURCE.md`](data/psgc/SOURCE.md)):
+
+     ```bash
+     npx tsx scripts/build-ph-places.ts
+     npx tsx scripts/seed-ph-places.ts
+     ```
+
+     Signup and **Settings → Profile** use optional city/barangay autocomplete backed by this table (`place_psgc_code` on `profiles`). Future tournament filters can reuse the same codes instead of free-text cities.
+
    - **Auth URLs** (Dashboard → Authentication → URL configuration):
      - Site URL: `https://www.regmytourna.com` (and `http://localhost:3000` for local dev)
      - Redirect URLs: `https://www.regmytourna.com/auth/callback`, `http://localhost:3000/auth/callback`
@@ -48,7 +57,15 @@ Tournament registration and management platform for pickleball (multi-sport read
    - Webhook URL: `{NEXT_PUBLIC_APP_URL}/api/webhooks/paymongo` → `PAYMONGO_WEBHOOK_SECRET`.
    - Event: `checkout.session.payment.paid`.
    - **`PLATFORM_FEE_PERCENT`** (default `5`): platform fee on entry payments; the rest credits the tournament owner’s **organizer wallet** at `/organizer/wallet`. Funds still settle to your PayMongo account (ledger only in v1).
+   - **`MIN_WITHDRAWAL_CENTS`** (optional, default `10000` = ₱100): minimum amount for a wallet withdrawal request.
    - Backfill wallet credits for older paid rows: `npx tsx scripts/backfill-organizer-wallets.ts`.
+
+## Organizer wallet & withdrawals
+
+- **Balance:** Available balance is spendable; pending withdrawal amounts are held until a super admin approves or rejects the request.
+- **Payout methods:** Organizers save up to three GCash, Maya, bank, or other methods on `/organizer/wallet` and can copy all details for their records.
+- **Withdrawals:** Submit a request from the wallet page. Funds move from available to pending; a super admin reviews at `/super-admin/withdrawals`, copies payout details for manual transfer outside the app, then approves or rejects. Rejection restores available balance.
+- **Registration QR:** On each event overview (`/organizer/tournaments/[id]`), **Share registration** generates a QR and link to `{NEXT_PUBLIC_APP_URL}/tournaments/{slug}#register` (copy link or download PNG).
 
 5. **Resend** (optional)
 

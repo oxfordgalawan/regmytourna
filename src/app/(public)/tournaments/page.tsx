@@ -1,4 +1,7 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import Form from "next/form";
+import { FilterChips } from "@/components/ui/filter-chips";
 import { ArrowLeft, ArrowRight, MapPin, Search, SearchX, X } from "lucide-react";
 import { listPublicTournaments } from "@/lib/tournaments/queries";
 import { isSupabaseConfigured } from "@/lib/env/server";
@@ -6,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TournamentCard } from "@/components/tournaments/tournament-card";
-import { cn } from "@/lib/utils";
+import { SkeletonCards } from "@/components/ui/skeleton";
 
 export const metadata = { title: "Tournaments" };
 
@@ -57,17 +60,6 @@ export default async function TournamentsPage({
     );
   }
 
-  const { data, count } = await listPublicTournaments({
-    search: params.q,
-    sport: params.sport,
-    city: params.city,
-    status: params.status,
-    page,
-  });
-
-  const total = count ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / 12));
-
   return (
     <div className="mx-auto max-w-7xl px-4 pt-12 pb-24 sm:px-6">
       <header className="flex flex-wrap items-end justify-between gap-6">
@@ -75,14 +67,10 @@ export default async function TournamentsPage({
           <p className="eyebrow">Find your next event</p>
           <h1 className="display mt-3 text-6xl text-bone sm:text-7xl">Tournaments</h1>
         </div>
-        <p className="font-mono text-sm text-muted-foreground" aria-live="polite">
-          {total} {total === 1 ? "event" : "events"}
-          {hasFilters ? " match your filters" : " listed"}
-        </p>
       </header>
 
       <div className="sticky top-16 z-30 -mx-4 mt-10 border-y border-line bg-ink/90 px-4 py-4 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
-        <form method="get" className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]" role="search">
+        <Form action="/tournaments" scroll={false} className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]" role="search">
           {params.status && <input type="hidden" name="status" value={params.status} />}
           <label className="relative">
             <span className="sr-only">Search tournaments</span>
@@ -107,31 +95,24 @@ export default async function TournamentsPage({
           <Button type="submit" className="h-11">
             Search
           </Button>
-        </form>
+        </Form>
 
-        <div className="mt-3 flex items-center gap-2 overflow-x-auto scrollbar-none">
-          {statusFilters.map((f) => {
-            const active = (params.status ?? "") === f.value;
-            return (
-              <Link
-                key={f.value || "all"}
-                href={hrefWith(params, { status: f.value, page: undefined })}
-                aria-current={active ? "true" : undefined}
-                className={cn(
-                  "shrink-0 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
-                  active
-                    ? "border-bone bg-bone text-ink"
-                    : "border-line text-muted-foreground hover:border-bone/40 hover:text-bone"
-                )}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
+        <div className="mt-3 flex items-center gap-2">
+          <FilterChips
+            label="Filter by status"
+            className="flex-1"
+            chips={statusFilters.map((f) => ({
+              key: f.value || "all",
+              label: f.label,
+              active: (params.status ?? "") === f.value,
+              href: hrefWith(params, { status: f.value, page: undefined }),
+            }))}
+          />
           {hasFilters && (
             <Link
               href="/tournaments"
-              className="ml-auto inline-flex shrink-0 items-center gap-1 px-2 text-sm text-muted-foreground hover:text-bone"
+              scroll={false}
+              className="inline-flex shrink-0 items-center gap-1 px-2 text-sm text-muted-foreground transition-colors hover:text-bone animate-in fade-in-0"
             >
               <X className="size-3.5" />
               Clear
@@ -140,15 +121,49 @@ export default async function TournamentsPage({
         </div>
       </div>
 
+      {/* keyed so each new search shows the skeleton while the header and filters stay put */}
+      <Suspense key={hrefWith(params, {})} fallback={<SkeletonCards className="mt-8" />}>
+        <Results params={params} page={page} hasFilters={hasFilters} />
+      </Suspense>
+    </div>
+  );
+}
+
+
+async function Results({
+  params,
+  page,
+  hasFilters,
+}: {
+  params: Params;
+  page: number;
+  hasFilters: boolean;
+}) {
+  const { data, count } = await listPublicTournaments({
+    search: params.q,
+    sport: params.sport,
+    city: params.city,
+    status: params.status,
+    page,
+  });
+
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / 12));
+
+  return (
+    <div className="mt-8 animate-in fade-in-0 duration-500">
+      <p className="mb-5 font-mono text-sm text-muted-foreground" aria-live="polite">
+        {total} {total === 1 ? "event" : "events"}
+        {hasFilters ? " match your filters" : " listed"}
+      </p>
       {data.length ? (
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {data.map((t) => (
             <TournamentCard key={t.id} tournament={t} />
           ))}
         </div>
       ) : (
         <EmptyState
-          className="mt-10"
           icon={SearchX}
           title={hasFilters ? "No tournaments match those filters" : "No tournaments yet"}
           description={
