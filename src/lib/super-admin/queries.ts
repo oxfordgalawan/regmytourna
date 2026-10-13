@@ -57,6 +57,7 @@ export async function getPlatformOverview(admin: AdminClient) {
     organizerCount: ownerIds.size,
     tournamentCount: tournaments?.length ?? 0,
     registrationCount: registrationCount ?? 0,
+    pendingWithdrawalCount: pendingWithdrawalCount ?? 0,
     statusCounts,
     recentProfiles: recentProfiles ?? [],
   };

@@ -62,8 +62,8 @@ export async function createTournamentAction(formData: FormData) {
   if (v.coverImageUrl && !v.coverImageUrl.startsWith(coverPrefix)) {
     return { error: "Please upload the cover photo again." };
   }
-  const supabase = await createClient();
-  const { data: tournament, error } = await supabase
+  const admin = createAdminClient();
+  const { data: tournament, error } = await admin
     .from("tournaments")
     .insert({
       owner_id: user.id,
