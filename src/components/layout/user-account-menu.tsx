@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, UserRound } from "lucide-react";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { Loader2, LogOut, UserRound } from "lucide-react";
+import { signOutAction } from "@/app/actions/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -26,6 +28,7 @@ type AccountState = {
 export function UserAccountMenu({ size = "md" }: { size?: "sm" | "md" }) {
   const router = useRouter();
   const [account, setAccount] = useState<AccountState | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured()) return;
@@ -58,11 +61,21 @@ export function UserAccountMenu({ size = "md" }: { size?: "sm" | "md" }) {
   }, [load]);
 
   async function signOut() {
-    if (!isSupabaseConfigured()) return;
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+    if (signingOut || !isSupabaseConfigured()) return;
+    setSigningOut(true);
+    try {
+      const result = await signOutAction();
+      if (result?.error) {
+        console.error("[sign-out]", result.error);
+        window.location.assign("/");
+      }
+    } catch (err) {
+      if (isRedirectError(err)) throw err;
+      console.error("[sign-out]", err);
+      window.location.assign("/");
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   const initials = profileInitials(account?.name ?? "", account?.email) || "U";
@@ -94,9 +107,17 @@ export function UserAccountMenu({ size = "md" }: { size?: "sm" | "md" }) {
           Edit profile
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" className="gap-2 px-3 py-2" onClick={() => void signOut()}>
-          <LogOut className="size-4" />
-          Sign out
+        <DropdownMenuItem
+          variant="destructive"
+          className="gap-2 px-3 py-2"
+          disabled={signingOut}
+          onClick={(e) => {
+            e.preventDefault();
+            void signOut();
+          }}
+        >
+          {signingOut ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
+          {signingOut ? "Signing out…" : "Sign out"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

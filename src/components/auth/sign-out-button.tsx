@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { useState } from "react";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { LogOut, Loader2 } from "lucide-react";
+import { signOutAction } from "@/app/actions/auth";
 import { Button, type ButtonProps } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/env/client";
 import { cn } from "@/lib/utils";
 
 export function SignOutButton({
@@ -19,14 +19,24 @@ export function SignOutButton({
   /** compact icon button (label kept for screen readers) */
   iconOnly?: boolean;
 }) {
-  const router = useRouter();
+  const [busy, setBusy] = useState(false);
 
   async function handleSignOut() {
-    if (!isSupabaseConfigured()) return;
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await signOutAction();
+      if (result?.error) {
+        setBusy(false);
+        console.error("[sign-out]", result.error);
+        window.location.assign("/");
+      }
+    } catch (err) {
+      if (isRedirectError(err)) throw err;
+      setBusy(false);
+      console.error("[sign-out]", err);
+      window.location.assign("/");
+    }
   }
 
   return (
@@ -34,13 +44,14 @@ export function SignOutButton({
       variant={variant}
       size={size}
       type="button"
-      onClick={handleSignOut}
+      disabled={busy}
+      onClick={() => void handleSignOut()}
       className={cn(className)}
       aria-label={iconOnly ? "Sign out" : undefined}
       title={iconOnly ? "Sign out" : undefined}
     >
-      <LogOut />
-      {!iconOnly && "Sign out"}
+      {busy ? <Loader2 className="animate-spin" /> : <LogOut />}
+      {!iconOnly && (busy ? "Signing out…" : "Sign out")}
     </Button>
   );
 }

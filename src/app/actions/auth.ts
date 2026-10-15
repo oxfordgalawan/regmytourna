@@ -188,3 +188,14 @@ export async function updatePassword(formData: FormData) {
   if (error) return { error: error.message };
   redirect("/login?message=password_updated");
 }
+
+/** Clears Supabase auth cookies on the server (client-only signOut often leaves session cookies). */
+export async function signOutAction() {
+  if (!isSupabaseConfigured()) {
+    return { error: "Supabase is not configured." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signOut();
+  if (error) return { error: error.message };
+  redirect("/");
+}
