@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireScoringActor } from "@/lib/auth/umpire";
+import { requireMatchScoringAccess } from "@/lib/auth/umpire";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { advanceAfterResult } from "@/lib/draw/progress";
 
@@ -21,7 +21,7 @@ export async function incrementScoreAction(matchId: string, side: "a" | "b") {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-  const actor = await requireScoringActor(match.tournament_id);
+  const actor = await requireMatchScoringAccess(match.tournament_id, matchId);
   if (["completed", "walkover", "cancelled"].includes(match.status)) {
     throw new Error("This match is already finished");
   }
@@ -55,7 +55,7 @@ export async function undoLastScoreAction(matchId: string) {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-  await requireScoringActor(match.tournament_id);
+  await requireMatchScoringAccess(match.tournament_id, matchId);
 
   // only points in the game being played can be undone; finished games are on record
   const { data: events } = await admin
@@ -99,7 +99,7 @@ export async function finalizeMatchAction(matchId: string) {
   const admin = createAdminClient();
   const { data: match } = await admin.from("matches").select("*").eq("id", matchId).single();
   if (!match) throw new Error("Match not found");
-  await requireScoringActor(match.tournament_id);
+  await requireMatchScoringAccess(match.tournament_id, matchId);
   if (match.status === "completed") {
     return { ok: true, complete: true };
   }

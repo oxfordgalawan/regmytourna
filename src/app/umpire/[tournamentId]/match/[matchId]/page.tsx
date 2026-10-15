@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getScoringActor } from "@/lib/auth/umpire";
+import { getOptionalUser } from "@/lib/auth/require-user";
+import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
+import { getUmpireSession } from "@/lib/auth/umpire";
 import { CourtScoringWidget } from "@/components/scoring/court-scoring-widget";
 import type { Match } from "@/types/database";
 
@@ -15,9 +17,6 @@ export default async function UmpireMatchPage({
   const uuid = /^[0-9a-f-]{36}$/i;
   if (!uuid.test(tournamentId) || !uuid.test(matchId)) notFound();
 
-  // no valid PIN session (or organizer login) → back to the PIN pad
-  if (!(await getScoringActor(tournamentId))) redirect(`/umpire/${tournamentId}`);
-
   const admin = createAdminClient();
   const { data: match } = await admin
     .from("matches")
@@ -26,6 +25,16 @@ export default async function UmpireMatchPage({
     .eq("tournament_id", tournamentId)
     .maybeSingle();
   if (!match) notFound();
+
+  const user = await getOptionalUser();
+  const organizer = user ? await isOrganizerForTournament(user.id, tournamentId) : false;
+  const session = await getUmpireSession(tournamentId);
+
+  if (!organizer) {
+    if (!session || match.assigned_umpire_id !== session.id) {
+      redirect(`/umpire/${tournamentId}`);
+    }
+  }
 
   const [{ data: division }, { data: court }] = await Promise.all([
     match.division_id

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env/server";
 import { getPostLoginPath } from "@/lib/auth/get-post-login-path";
+import { sanitizeNext } from "@/lib/auth/safe-next";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -13,14 +14,14 @@ export async function signInWithPassword(formData: FormData) {
   }
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = sanitizeNext(String(formData.get("next") ?? ""));
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
   const user = data.user;
   if (!user) return { error: "Sign in failed" };
-  redirect(getPostLoginPath(user, next === "/dashboard" ? null : next));
+  redirect(getPostLoginPath(user, next));
 }
 
 export async function signUp(formData: FormData) {
@@ -74,7 +75,11 @@ export async function signUp(formData: FormData) {
     await supabase.from("profiles").update(profileUpdate).eq("id", data.user.id);
   }
 
-  redirect("/dashboard?welcome=1");
+  const next = sanitizeNext(String(formData.get("next") ?? ""));
+  const user = data.user;
+  if (!user) redirect("/dashboard?welcome=1");
+  const dest = getPostLoginPath(user, next);
+  redirect(dest === "/dashboard" ? "/dashboard?welcome=1" : dest);
 }
 
 export async function requestPasswordReset(formData: FormData) {

@@ -107,6 +107,15 @@ export type Payment = {
   created_at: string;
 };
 
+export type TournamentUmpire = {
+  id: string;
+  tournament_id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Match = {
   id: string;
   tournament_id: string;
@@ -127,4 +136,10 @@ export type Match = {
   team_b_registration_id?: string | null;
   challonge_player1_id?: string | null;
   challonge_player2_id?: string | null;
+  assigned_umpire_id?: string | null;
+  umpire_queue_order?: number | null;
+  pool?: string | null;
+  stage?: string | null;
+  is_bye?: boolean;
+  is_conditional?: boolean;
 };

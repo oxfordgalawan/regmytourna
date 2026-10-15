@@ -7,6 +7,7 @@
  */
 
 export const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+export const MAX_PETITION_SOURCE_BYTES = 5 * 1024 * 1024;
 
 export type OptimizedImage = {
   blob: Blob;
@@ -85,6 +86,51 @@ export async function optimizeImage(
     blob = await toBlob(canvas, "image/jpeg", q);
   }
   // very detailed photos: step quality down until it fits
+  while (blob && blob.size > maxBytes && q > 0.5) {
+    q -= 0.08;
+    blob = await toBlob(canvas, type, q);
+  }
+  if (!blob) throw new Error("Your browser couldn't process this image.");
+  if (blob.size > maxBytes) throw new Error("This image is too detailed to compress. Try another photo.");
+
+  return { blob, type, width, height, originalBytes: file.size };
+}
+
+/** Proof uploads: no crop, longest edge ≤ 2048px, target ≤ ~1.5 MB. Rejects sources > 5 MB. */
+export async function optimizePetitionProof(file: File): Promise<OptimizedImage> {
+  if (!file.type.startsWith("image/")) throw new Error("That file isn't an image.");
+  if (file.size > MAX_PETITION_SOURCE_BYTES) {
+    throw new Error("Each proof image must be 5 MB or smaller.");
+  }
+
+  const source = await decode(file).catch(() => {
+    throw new Error("This image format can't be opened here. Try a JPG or PNG.");
+  });
+  const sw = "naturalWidth" in source ? source.naturalWidth : source.width;
+  const sh = "naturalHeight" in source ? source.naturalHeight : source.height;
+  const maxEdge = 2048;
+  const scale = Math.min(1, maxEdge / Math.max(sw, sh));
+  const width = Math.max(1, Math.round(sw * scale));
+  const height = Math.max(1, Math.round(sh * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Your browser couldn't process this image.");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, width, height);
+  if ("close" in source) source.close();
+
+  let q = 0.85;
+  const maxBytes = 1_500_000;
+  let blob = await toBlob(canvas, "image/webp", q);
+  let type: OptimizedImage["type"] = "image/webp";
+  if (!blob || blob.type !== "image/webp") {
+    type = "image/jpeg";
+    blob = await toBlob(canvas, "image/jpeg", q);
+  }
   while (blob && blob.size > maxBytes && q > 0.5) {
     q -= 0.08;
     blob = await toBlob(canvas, type, q);

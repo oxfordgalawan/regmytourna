@@ -294,7 +294,7 @@ export function BracketView({
   const champion = championOf(matches);
 
   return (
-    <ViewTransition default="vt-fade">
+    <ViewTransition default="vt-fade" update="none">
       <div className="space-y-10">
         {champion && (
           <div className="flex items-center gap-4 rounded-2xl border border-brass/40 bg-brass/10 p-5">

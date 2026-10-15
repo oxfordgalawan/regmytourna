@@ -8,6 +8,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { signInWithPassword } from "@/app/actions/auth";
+import { authHref } from "@/lib/auth/safe-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ export function LoginForm({ next }: { next?: string }) {
       const fd = new FormData();
       fd.set("email", values.email);
       fd.set("password", values.password);
-      fd.set("next", next ?? "/dashboard");
+      if (next) fd.set("next", next);
       const result = await signInWithPassword(fd);
       if (result?.error) {
         setServerError(result.error);
@@ -115,10 +116,7 @@ export function LoginForm({ next }: { next?: string }) {
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         New to RegMyTourna?{" "}
-        <Link
-          href="/signup"
-          className="font-medium text-bone underline underline-offset-4"
-        >
+        <Link href={authHref("/signup", next)} className="font-medium text-bone underline underline-offset-4">
           Create an account
         </Link>
       </p>

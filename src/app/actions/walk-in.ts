@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppUrl, isPayMongoConfigured } from "@/lib/env/server";
 import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
+import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
+import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -108,6 +110,8 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
     }
 
     revalidateEvent(reg.tournament_id, tournament.slug);
+    await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
+    await notifyPartnerAfterRegistration(registrationId);
     return { ok: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't record payment" };

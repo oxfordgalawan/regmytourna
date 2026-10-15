@@ -17,6 +17,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { getOptionalUser } from "@/lib/auth/require-user";
 import { RegisterSection } from "@/components/tournaments/register-section";
+import { DivisionRosterButton } from "@/components/tournaments/division-roster-button";
 import { relationOne } from "@/lib/supabase/relations";
 import { entrantNoun } from "@/lib/categories";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
@@ -77,7 +78,12 @@ export default async function TournamentDetailPage({
       ? formatPhp(minFee, tournament.currency)
       : `${formatPhp(minFee, tournament.currency)} – ${formatPhp(maxFee, tournament.currency)}`;
   const countdown = daysUntil(tournament.start_date);
-  const loginHref = `/login?next=${encodeURIComponent(`/tournaments/${slug}#register`)}`;
+  const returnTo = `/tournaments/${slug}#register`;
+  const loginHref = `/login?next=${encodeURIComponent(returnTo)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(returnTo)}`;
+  const showBracketSoon =
+    draws.length === 0 &&
+    (tournament.status === "in_progress" || tournament.status === "registration_closed");
 
   const facts = [
     {
@@ -109,7 +115,7 @@ export default async function TournamentDetailPage({
   return (
     <div className="pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-24">
       {/* Header band */}
-      <section className="grain relative overflow-hidden border-b border-line">
+      <section className="grain relative flex min-h-[min(72vh,44rem)] flex-col overflow-hidden border-b border-line sm:min-h-[min(68vh,48rem)]">
         {tournament.cover_image_url && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -117,14 +123,14 @@ export default async function TournamentDetailPage({
               src={tournament.cover_image_url}
               alt=""
               fetchPriority="high"
-              className="pointer-events-none absolute inset-0 size-full object-cover opacity-45"
+              className="pointer-events-none absolute inset-0 size-full object-cover object-[center_35%] opacity-55 sm:opacity-50"
             />
             {/* keep the title readable over any photo */}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/75 to-ink/30" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/80 to-ink/25" />
           </>
         )}
-        <div className="court-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-        <div className="relative mx-auto max-w-7xl px-4 pt-8 pb-12 sm:px-6 lg:pb-16">
+        <div className="court-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
+        <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pt-10 pb-16 sm:px-6 sm:pb-20 lg:pb-24 lg:pt-14">
           <Link
             transitionTypes={NAV_BACK}
             href="/tournaments"
@@ -133,19 +139,29 @@ export default async function TournamentDetailPage({
             <ArrowLeft className="size-4" />
             All tournaments
           </Link>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="mt-auto pt-10 sm:pt-14">
+          <div className="flex flex-wrap items-center gap-3">
             <StatusBadge status={tournament.status} />
             <span className="eyebrow">{tournament.sport}</span>
             {tournament.is_demo && <span className="eyebrow text-brass">Demo data</span>}
           </div>
-          <h1 className="display mt-5 max-w-5xl text-[clamp(2.75rem,7vw,6rem)] text-bone text-balance">
+          <h1 className="display mt-6 max-w-5xl text-[clamp(3rem,8vw,6.75rem)] leading-[0.95] text-bone text-balance sm:mt-7">
             {tournament.name}
           </h1>
           {tournament.description && (
-            <p className="mt-5 max-w-2xl text-lg leading-relaxed text-bone/70">
+            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-bone/75 sm:text-xl sm:leading-relaxed">
               {tournament.description}
             </p>
           )}
+          {draws.length > 0 && (
+            <Link
+              href="#draw"
+              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-bone underline decoration-umber underline-offset-4 hover:decoration-brass"
+            >
+              View brackets
+            </Link>
+          )}
+          </div>
         </div>
       </section>
 
@@ -204,15 +220,28 @@ export default async function TournamentDetailPage({
                         );
                       })()}
                     </div>
-                    <span className="font-mono text-bone">
-                      {formatPhp(d.entry_fee_cents ?? tournament.entry_fee_cents, tournament.currency)}
-                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <DivisionRosterButton
+                        tournamentSlug={slug}
+                        tournamentId={tournament.id}
+                        divisionId={d.id}
+                        format={d.format}
+                      />
+                      <span className="font-mono text-bone">
+                        {formatPhp(d.entry_fee_cents ?? tournament.entry_fee_cents, tournament.currency)}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="mt-5 rounded-2xl border border-dashed border-line px-5 py-8 text-center text-sm text-muted-foreground">
                 Categories haven&apos;t been announced yet.
+              </p>
+            )}
+            {showBracketSoon && (
+              <p className="mt-4 text-sm text-muted-foreground">
+                Brackets will appear on this page once the organizer starts each category.
               </p>
             )}
           </section>
@@ -288,7 +317,7 @@ export default async function TournamentDetailPage({
                       </Link>
                     </Button>
                     <Button size="lg" variant="outline" asChild>
-                      <Link href="/signup">Create an account</Link>
+                      <Link href={signupHref}>Create an account</Link>
                     </Button>
                   </div>
                 </div>

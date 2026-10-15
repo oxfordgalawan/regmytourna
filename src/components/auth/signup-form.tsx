@@ -6,7 +6,9 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ClipboardList, Eye, EyeOff, Loader2 } from "lucide-react";
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { signUp } from "@/app/actions/auth";
+import { authHref } from "@/lib/auth/safe-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +37,7 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-sm text-[#e58a72]">{message}</p>;
 }
 
-export function SignupForm({ defaultAccountType }: { defaultAccountType?: string }) {
+export function SignupForm({ defaultAccountType, next }: { defaultAccountType?: string; next?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,15 +71,27 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
       fd.set("placePsgcCode", place.psgcCode);
       fd.set("placeLabel", place.label);
     }
-    const result = await signUp(fd);
-    if (result?.error) {
-      setServerError(result.error);
+    if (next) fd.set("next", next);
+    try {
+      const result = await signUp(fd);
+      if (result?.error) {
+        setServerError(result.error);
+        setLoading(false);
+      }
+    } catch (err) {
+      if (isRedirectError(err)) throw err;
       setLoading(false);
+      throw err;
     }
   }
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+      {next?.includes("#register") && !serverError && (
+        <Alert>
+          <AlertDescription>After you sign up, we&apos;ll bring you back to finish registration.</AlertDescription>
+        </Alert>
+      )}
       {serverError && (
         <Alert variant="destructive">
           <AlertDescription>{serverError}</AlertDescription>
@@ -225,7 +239,7 @@ export function SignupForm({ defaultAccountType }: { defaultAccountType?: string
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-bone underline underline-offset-4">
+        <Link href={authHref("/login", next)} className="font-medium text-bone underline underline-offset-4">
           Log in
         </Link>
       </p>

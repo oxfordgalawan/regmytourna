@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyPayMongoWebhookSignature } from "@/lib/services/paymongo/paymongo-service";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
+import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
+import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 
 export async function POST(request: NextRequest) {
   if (!isPayMongoConfigured()) {
@@ -88,6 +90,8 @@ export async function POST(request: NextRequest) {
         .eq("id", registrationId);
 
       await creditOrganizerFromRegistration(admin, registrationId);
+      await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
+      await notifyPartnerAfterRegistration(registrationId);
     }
   }
 

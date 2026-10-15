@@ -1,13 +1,15 @@
 import type { User } from "@supabase/supabase-js";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
+import { sanitizeNext } from "@/lib/auth/safe-next";
 
 export function getPostLoginPath(user: User, next?: string | null): string {
-  if (next && next.startsWith("/") && !next.startsWith("//")) {
-    if (isSuperAdmin(user) && next.startsWith("/super-admin")) {
-      return next;
+  const safe = sanitizeNext(next);
+  if (safe) {
+    if (isSuperAdmin(user) && safe.startsWith("/super-admin")) {
+      return safe;
     }
     if (!isSuperAdmin(user)) {
-      return next;
+      return safe;
     }
   }
   if (isSuperAdmin(user)) {

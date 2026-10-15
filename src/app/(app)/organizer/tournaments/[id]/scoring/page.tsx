@@ -10,6 +10,7 @@ export default async function ScoringPage({ params }: { params: Promise<{ id: st
     .from("courts")
     .select("id, name")
     .eq("tournament_id", id)
+    .eq("active", true)
     .order("sort_order");
 
   const { data: activeMatches } = await supabase

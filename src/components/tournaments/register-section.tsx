@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Lock } from "lucide-react";
-import { createRegistrationAction } from "@/app/actions/registrations";
+import {
+  createRegistrationAction,
+  previewPartnerConflictAction,
+} from "@/app/actions/registrations";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -35,43 +38,79 @@ export function RegisterSection({
 }) {
   const router = useRouter();
   const [divisionId, setDivisionId] = useState(divisions[0]?.id ?? "");
+  const [partnerName, setPartnerName] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [partnerWarnings, setPartnerWarnings] = useState<string[]>([]);
 
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;
   const [payment, setPayment] = useState<"online" | "venue">("online");
   const venue = allowPayAtVenue && fee > 0 && payment === "venue";
+  const isDoubles = selected?.format === "doubles";
+
+  const runPartnerPreview = useCallback(async () => {
+    if (!isDoubles || !partnerEmail.trim() || !divisionId) {
+      setPartnerWarnings([]);
+      return;
+    }
+    const res = await previewPartnerConflictAction({
+      tournamentSlug: slug,
+      divisionId,
+      partnerEmail: partnerEmail.trim(),
+    });
+    if ("error" in res && res.error) return;
+    if ("blocked" in res && res.blocked) {
+      setError(res.blocked);
+      setPartnerWarnings([]);
+      return;
+    }
+    setError(null);
+    setPartnerWarnings("warnings" in res ? (res.warnings ?? []) : []);
+  }, [slug, divisionId, partnerEmail, isDoubles]);
+
+  useEffect(() => {
+    const t = setTimeout(runPartnerPreview, 400);
+    return () => clearTimeout(t);
+  }, [runPartnerPreview]);
 
   async function handleRegister() {
     if (!divisionId) return;
+    if (isDoubles && !partnerName.trim()) {
+      setError("Partner's full name is required for doubles.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setMessage(null);
     const result = await createRegistrationAction({
       tournamentSlug: slug,
       divisionId,
-      partnerEmail: selected?.format === "doubles" ? partnerEmail : undefined,
+      partnerName: isDoubles ? partnerName.trim() : undefined,
+      partnerEmail: isDoubles && partnerEmail.trim() ? partnerEmail.trim() : undefined,
       payAtVenue: venue,
     });
-    if (result.error) {
+    if ("error" in result && result.error) {
       setLoading(false);
       setError(typeof result.error === "string" ? result.error : "Registration failed");
       return;
     }
-    if (result.checkoutUrl) {
+    if ("warnings" in result && Array.isArray(result.warnings) && result.warnings.length) {
+      setPartnerWarnings(result.warnings);
+    }
+    if ("checkoutUrl" in result && result.checkoutUrl) {
       window.location.href = result.checkoutUrl;
       return;
     }
-    if (result.payAtVenue) {
+    if ("payAtVenue" in result && result.payAtVenue && "registrationId" in result) {
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&venue=1`);
       return;
     }
     setLoading(false);
-    if (result.message) setMessage(result.message);
-    if (result.confirmed) {
+    if ("message" in result && result.message) setMessage(result.message);
+    if ("confirmed" in result && result.confirmed && "registrationId" in result) {
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}`);
     }
   }
@@ -89,6 +128,18 @@ export function RegisterSection({
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {partnerWarnings.length > 0 && !error && (
+        <Alert>
+          <AlertDescription>
+            <ul className="list-inside list-disc space-y-1">
+              {partnerWarnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">You can still register in this category.</p>
+          </AlertDescription>
         </Alert>
       )}
       {message && (
@@ -137,22 +188,40 @@ export function RegisterSection({
         </div>
       </fieldset>
 
-      {selected?.format === "doubles" && (
-        <div className="space-y-2 animate-in fade-in-0 slide-in-from-top-1">
-          <Label htmlFor="partner" className="eyebrow">
-            2 · Partner&apos;s email <span className="normal-case tracking-normal">(optional)</span>
-          </Label>
-          <Input
-            id="partner"
-            type="email"
-            value={partnerEmail}
-            onChange={(e) => setPartnerEmail(e.target.value)}
-            placeholder="partner@email.com"
-          />
-          <p className="text-xs text-muted-foreground">
-            We&apos;ll email them an invite to join your team. You can add them later too.
-          </p>
-        </div>
+      {isDoubles && (
+        <fieldset className="space-y-4 animate-in fade-in-0 slide-in-from-top-1">
+          <legend className="eyebrow mb-1">2 · Partner details</legend>
+          <div className="space-y-2">
+            <Label htmlFor="partner-name" className="text-sm font-medium text-bone">
+              Partner&apos;s full name
+            </Label>
+            <Input
+              id="partner-name"
+              value={partnerName}
+              onChange={(e) => setPartnerName(e.target.value)}
+              placeholder="Partner's full name"
+              autoComplete="name"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="partner-email" className="eyebrow">
+              Partner&apos;s email <span className="normal-case tracking-normal">(optional)</span>
+            </Label>
+            <Input
+              id="partner-email"
+              type="email"
+              value={partnerEmail}
+              onChange={(e) => setPartnerEmail(e.target.value)}
+              onBlur={() => runPartnerPreview()}
+              placeholder="partner@email.com"
+            />
+            <p className="text-xs text-muted-foreground">
+              We use their name on the draw. If you add an email, we&apos;ll notify them after your
+              registration is complete.
+            </p>
+          </div>
+        </fieldset>
       )}
 
       {allowPayAtVenue && fee > 0 && (
@@ -193,7 +262,7 @@ export function RegisterSection({
           size="lg"
           className="mt-4 w-full"
           onClick={handleRegister}
-          disabled={loading || !divisionId}
+          disabled={loading || !divisionId || (isDoubles && !partnerName.trim())}
         >
           {loading ? (
             <>

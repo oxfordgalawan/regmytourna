@@ -10,6 +10,7 @@ import {
   Swords,
   GitBranch,
   UserCheck,
+  FileText,
 } from "lucide-react";
 import { useSlidingIndicator } from "@/components/motion/use-sliding-indicator";
 import { TAB_BACK, TAB_FORWARD } from "@/lib/nav-transitions";
@@ -19,7 +20,8 @@ const items = [
   { suffix: "", label: "Overview", icon: Gauge },
   { suffix: "/divisions", label: "Categories", icon: Layers },
   { suffix: "/registrations", label: "Registrations", icon: ClipboardList },
-  { suffix: "/draw", label: "Draw", icon: GitBranch },
+  { suffix: "/petitions", label: "Petitions", icon: FileText },
+  { suffix: "/draw", label: "Brackets", icon: GitBranch },
   { suffix: "/matches", label: "Matches", icon: Swords },
   { suffix: "/courts", label: "Courts", icon: LayoutGrid },
   { suffix: "/umpires", label: "Umpires", icon: UserCheck },
@@ -52,6 +54,7 @@ export function TournamentNav({ tournamentId }: { tournamentId: string }) {
             transitionTypes={i > activeIndex ? TAB_FORWARD : TAB_BACK}
             data-active={active}
             aria-current={active ? "page" : undefined}
+            aria-label={item.suffix === "/draw" ? "Brackets and seeding" : undefined}
             className={cn(
               "relative flex shrink-0 items-center gap-2 rounded-t-md px-3 pt-2 pb-3.5 text-sm font-medium transition-colors duration-300",
               active ? "text-bone" : "text-muted-foreground hover:bg-espresso/40 hover:text-bone"

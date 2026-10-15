@@ -17,6 +17,19 @@ export default async function CourtScoringPage({
   let match: Match | null = null;
   let divisionName: string | undefined;
 
+  if (court && court.active === false) {
+    return (
+      <main id="main" className="flex min-h-dvh items-center justify-center bg-background p-6">
+        <EmptyState
+          icon={Timer}
+          className="w-full max-w-md"
+          title="Court not in use"
+          description="This court is disabled for the event. Ask the organizer to enable it on the Courts tab."
+        />
+      </main>
+    );
+  }
+
   if (court) {
     const { data: m } = await supabase
       .from("matches")

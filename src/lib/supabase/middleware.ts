@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getPostLoginPath } from "@/lib/auth/get-post-login-path";
+import { sanitizeNext } from "@/lib/auth/safe-next";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 
 export async function updateSession(request: NextRequest) {
@@ -67,7 +68,8 @@ export async function updateSession(request: NextRequest) {
 
   if (user && isAuthRoute && !pathname.startsWith("/auth/callback")) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = getPostLoginPath(user);
+    const next = sanitizeNext(request.nextUrl.searchParams.get("next"));
+    redirectUrl.pathname = getPostLoginPath(user, next);
     redirectUrl.search = "";
     return NextResponse.redirect(redirectUrl);
   }

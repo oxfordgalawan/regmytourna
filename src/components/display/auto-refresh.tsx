@@ -1,24 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { safeRouterRefresh } from "@/lib/navigation/safe-refresh";
 
 /** Re-fetches server data on an interval and shows a live clock — for unattended TV screens. */
 export function AutoRefresh({ seconds = 15, clock = true }: { seconds?: number; clock?: boolean }) {
   const router = useRouter();
   const [now, setNow] = useState<Date | null>(null);
+  const [, startRefresh] = useTransition();
 
   useEffect(() => {
     const first = window.setTimeout(() => setNow(new Date()), 0);
     const tick = window.setInterval(() => setNow(new Date()), 1000);
-    // A refresh is a transition, and browsers abort view transitions in hidden
-    // tabs ("InvalidStateError: Document hidden"). Only refresh while visible,
-    // and catch up straight away when the tab comes back.
-    const refresh = window.setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
-    }, seconds * 1000);
+    const runRefresh = () => startRefresh(() => safeRouterRefresh(router));
+
+    const refresh = window.setInterval(runRefresh, seconds * 1000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState === "visible") {
+        window.setTimeout(runRefresh, 300);
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {

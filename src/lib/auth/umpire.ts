@@ -5,12 +5,8 @@ import { getOptionalUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 
 /**
- * Umpire access: one shared PIN per tournament, no accounts.
- *
- * - The PIN is stored as `salt:scrypt-hash`.
- * - A correct PIN sets an httpOnly cookie `<tournamentId>.<accessVersion>.<expiry>.<hmac>`.
- * - Bumping `tournament_umpire_access.access_version` invalidates every issued cookie.
- * - That table is service-role only (RLS, no policies): hashes never reach clients.
+ * Named umpires: individual PINs, session cookie binds to one roster row.
+ * `tournament_umpire_access.access_version` revokes all sessions when bumped.
  */
 
 const SESSION_HOURS = 12;
@@ -22,14 +18,14 @@ const cookieName = (tournamentId: string) => `rmt_umpire_${tournamentId}`;
 function secret() {
   const explicit = process.env.UMPIRE_SESSION_SECRET;
   if (explicit) return explicit;
-  // fall back to a key derived from another server-only secret so local setups work
   const base = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base) throw new Error("Set UMPIRE_SESSION_SECRET to enable umpire access");
   return createHash("sha256").update(`umpire:${base}`).digest("hex");
 }
 
+/** Roster PINs are exactly 4 digits. */
 export function isValidPin(pin: string) {
-  return /^\d{4,6}$/.test(pin);
+  return /^\d{4}$/.test(pin);
 }
 
 export function hashPin(pin: string) {
@@ -47,13 +43,21 @@ export function verifyPin(pin: string, stored: string | null | undefined) {
   return expected.length === candidate.length && timingSafeEqual(candidate, expected);
 }
 
+export function generateUmpirePin() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("hex");
 }
 
-export async function issueUmpireSession(tournamentId: string, accessVersion: number) {
+export async function issueUmpireSession(
+  tournamentId: string,
+  umpireId: string,
+  accessVersion: number
+) {
   const expires = Date.now() + SESSION_HOURS * 3_600_000;
-  const payload = `${tournamentId}.${accessVersion}.${expires}`;
+  const payload = `${tournamentId}.${umpireId}.${accessVersion}.${expires}`;
   (await cookies()).set(cookieName(tournamentId), `${payload}.${sign(payload)}`, {
     httpOnly: true,
     sameSite: "lax",
@@ -67,42 +71,80 @@ export async function clearUmpireSession(tournamentId: string) {
   (await cookies()).delete(cookieName(tournamentId));
 }
 
-/** True when this browser holds a valid, unrevoked umpire session for the tournament. */
-export async function hasUmpireSession(tournamentId: string) {
-  const raw = (await cookies()).get(cookieName(tournamentId))?.value;
-  if (!raw) return false;
+type SessionPayload = { tournamentId: string; umpireId: string; accessVersion: number };
+
+function parseSessionCookie(raw: string | undefined): SessionPayload | null {
+  if (!raw) return null;
   const parts = raw.split(".");
-  if (parts.length !== 4) return false;
-  const [tid, version, expires, mac] = parts;
-  const payload = `${tid}.${version}.${expires}`;
+  if (parts.length !== 5) return null;
+  const [tournamentId, umpireId, version, expires, mac] = parts;
+  const payload = `${tournamentId}.${umpireId}.${version}.${expires}`;
   const expected = Buffer.from(sign(payload), "hex");
   const given = Buffer.from(mac, "hex");
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return false;
-  if (tid !== tournamentId || Number(expires) < Date.now()) return false;
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  if (Number(expires) < Date.now()) return null;
+  return { tournamentId, umpireId, accessVersion: Number(version) };
+}
+
+export async function getUmpireSession(tournamentId: string) {
+  const raw = (await cookies()).get(cookieName(tournamentId))?.value;
+  const parsed = parseSessionCookie(raw);
+  if (!parsed || parsed.tournamentId !== tournamentId) return null;
 
   const access = await getUmpireAccess(tournamentId);
-  return Boolean(access?.pin_hash) && access?.access_version === Number(version);
+  if (!access || access.access_version !== parsed.accessVersion) return null;
+
+  const { data: umpire } = await createAdminClient()
+    .from("tournament_umpires")
+    .select("id, name, active, tournament_id")
+    .eq("id", parsed.umpireId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!umpire?.active) return null;
+  return { id: umpire.id as string, name: umpire.name as string };
+}
+
+export async function hasUmpireSession(tournamentId: string) {
+  return Boolean(await getUmpireSession(tournamentId));
 }
 
 export async function getUmpireAccess(tournamentId: string) {
   const { data } = await createAdminClient()
     .from("tournament_umpire_access")
-    .select("pin_hash, access_version")
+    .select("access_version")
     .eq("tournament_id", tournamentId)
     .maybeSingle();
-  return data as { pin_hash: string | null; access_version: number } | null;
+  if (!data) {
+    await createAdminClient()
+      .from("tournament_umpire_access")
+      .upsert({ tournament_id: tournamentId, access_version: 0 }, { onConflict: "tournament_id" });
+    return { access_version: 0 };
+  }
+  return data as { access_version: number };
 }
 
-export type ScoringActor = { operatorId: string | null; operatorLabel: string };
+export async function bumpUmpireAccessVersion(tournamentId: string) {
+  const current = await getUmpireAccess(tournamentId);
+  const next = (current?.access_version ?? 0) + 1;
+  await createAdminClient()
+    .from("tournament_umpire_access")
+    .upsert(
+      { tournament_id: tournamentId, access_version: next, updated_at: new Date().toISOString() },
+      { onConflict: "tournament_id" }
+    );
+  return next;
+}
 
-/** Organizers (logged in) or umpires (PIN session) may score. Returns who, or null. */
+export type ScoringActor = { operatorId: string | null; operatorLabel: string; umpireId?: string };
+
 export async function getScoringActor(tournamentId: string): Promise<ScoringActor | null> {
   const user = await getOptionalUser();
   if (user && (await isOrganizerForTournament(user.id, tournamentId))) {
     return { operatorId: user.id, operatorLabel: "Organizer" };
   }
-  if (await hasUmpireSession(tournamentId)) {
-    return { operatorId: null, operatorLabel: "Umpire" };
+  const session = await getUmpireSession(tournamentId);
+  if (session) {
+    return { operatorId: null, operatorLabel: session.name, umpireId: session.id };
   }
   return null;
 }
@@ -111,6 +153,26 @@ export async function requireScoringActor(tournamentId: string) {
   const actor = await getScoringActor(tournamentId);
   if (!actor) throw new Error("Unauthorized");
   return actor;
+}
+
+export async function requireMatchScoringAccess(tournamentId: string, matchId: string) {
+  const user = await getOptionalUser();
+  if (user && (await isOrganizerForTournament(user.id, tournamentId))) {
+    return { operatorId: user.id, operatorLabel: "Organizer" } satisfies ScoringActor;
+  }
+  const session = await getUmpireSession(tournamentId);
+  if (!session) throw new Error("Unauthorized");
+
+  const { data: match } = await createAdminClient()
+    .from("matches")
+    .select("assigned_umpire_id")
+    .eq("id", matchId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!match || match.assigned_umpire_id !== session.id) {
+    throw new Error("This match is not assigned to you");
+  }
+  return { operatorId: null, operatorLabel: session.name, umpireId: session.id } satisfies ScoringActor;
 }
 
 export async function clientIp() {

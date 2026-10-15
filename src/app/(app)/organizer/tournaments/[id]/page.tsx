@@ -3,7 +3,7 @@ import { ArrowRight, Check, ChevronRight, Circle } from "lucide-react";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { createClient } from "@/lib/supabase/server";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
-import { getUmpireAccess } from "@/lib/auth/umpire";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { StatTile } from "@/components/layout/page-header";
 import { formatDateRange, formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,11 @@ export default async function OrganizerTournamentOverviewPage({
     supabase.from("courts").select("id", { count: "exact", head: true }).eq("tournament_id", id),
   ]);
   const divisionCount = divisions?.length ?? 0;
-  const umpireAccess = await getUmpireAccess(id);
+  const { count: umpireCount } = await createAdminClient()
+    .from("tournament_umpires")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", id)
+    .eq("active", true);
   const started = (divisions ?? []).filter((d) => d.bracket_state && d.bracket_state !== "not_started");
 
   const total = regs?.length ?? 0;
@@ -56,10 +60,14 @@ export default async function OrganizerTournamentOverviewPage({
     { done: total > 0, label: "Take your first entry", href: `/tournaments/${t.slug}` },
     {
       done: divisionCount > 0 && started.length === divisionCount,
-      label: "Seed & start each category's draw",
+      label: "Seed & start brackets",
       href: `/organizer/tournaments/${id}/draw`,
     },
-    { done: Boolean(umpireAccess?.pin_hash), label: "Set an umpire PIN", href: `/organizer/tournaments/${id}/umpires` },
+    {
+      done: (umpireCount ?? 0) > 0,
+      label: "Add umpires to the roster",
+      href: `/organizer/tournaments/${id}/umpires`,
+    },
     { done: (courtCount ?? 0) > 0, label: "Set up courts for scoring", href: `/organizer/tournaments/${id}/courts` },
   ];
   const doneCount = checklist.filter((c) => c.done).length;
@@ -155,11 +163,20 @@ export default async function OrganizerTournamentOverviewPage({
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
-          <h2 className="font-semibold text-bone">Draws</h2>
-          <span className="font-mono text-xs text-muted-foreground">
-            {started.length}/{divisionCount} started
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-6 py-4">
+          <h2 className="font-semibold text-bone">Brackets</h2>
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-xs text-muted-foreground">
+              {started.length}/{divisionCount} started
+            </span>
+            <Link
+              href={`/organizer/tournaments/${id}/draw`}
+              transitionTypes={NAV_FORWARD}
+              className="text-sm text-bone underline decoration-umber underline-offset-4 hover:decoration-brass"
+            >
+              View all categories
+            </Link>
+          </div>
         </div>
         <ul className="divide-y divide-line">
           {(divisions ?? []).map((d) => (

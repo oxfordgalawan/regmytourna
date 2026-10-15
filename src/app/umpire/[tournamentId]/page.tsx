@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getScoringActor } from "@/lib/auth/umpire";
-import { PinPad } from "@/components/umpire/pin-pad";
-import { MatchBoard, type BoardMatch } from "@/components/umpire/match-board";
+import { getUmpireSession } from "@/lib/auth/umpire";
+import { UmpireHub } from "@/components/umpire/umpire-hub";
+import type { QueueMatch } from "@/components/umpire/umpire-queue";
 import { AutoRefresh } from "@/components/display/auto-refresh";
+import { isPlayableMatch, sortQueueMatches } from "@/lib/umpire/playable";
+import { loadDivisionContext } from "@/lib/draw/server";
+import { buildDrawView } from "@/lib/draw/view";
 
-export const metadata = { title: "Umpire scoring", robots: { index: false } };
+export const metadata = { title: "Umpire hub", robots: { index: false } };
 
 export default async function UmpireBoardPage({
   params,
@@ -15,7 +18,6 @@ export default async function UmpireBoardPage({
   const { tournamentId } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(tournamentId)) notFound();
 
-  // umpires have no Supabase session, so reads go through the server after the check below
   const admin = createAdminClient();
   const { data: tournament } = await admin
     .from("tournaments")
@@ -24,62 +26,81 @@ export default async function UmpireBoardPage({
     .maybeSingle();
   if (!tournament) notFound();
 
-  const actor = await getScoringActor(tournamentId);
-  if (!actor) {
-    return (
-      <main id="main" className="min-h-dvh bg-background">
-        <PinPad tournamentId={tournamentId} tournamentName={tournament.name} />
-      </main>
-    );
-  }
+  const session = await getUmpireSession(tournamentId);
 
-  const [{ data: divisions }, { data: courts }, { data: matches }] = await Promise.all([
-    admin.from("tournament_divisions").select("id, name").eq("tournament_id", tournamentId).order("sort_order"),
-    admin.from("courts").select("id, name").eq("tournament_id", tournamentId),
-    admin
-      .from("matches")
-      .select(
-        "id, status, stage, is_bye, is_conditional, team_a_registration_id, team_b_registration_id, team_a_label, team_b_label, score_a, score_b, games_won_a, games_won_b, division_id, court_id, round_label, match_number"
-      )
-      .eq("tournament_id", tournamentId)
-      .in("status", ["scheduled", "in_progress", "completed", "walkover"])
-      .order("match_number", { ascending: true, nullsFirst: false }),
-  ]);
+  const [{ data: divisions }, { data: courts }, { data: umpires }, { data: matches }] =
+    await Promise.all([
+      admin
+        .from("tournament_divisions")
+        .select("id, name, bracket_state")
+        .eq("tournament_id", tournamentId)
+        .order("sort_order"),
+      admin.from("courts").select("id, name").eq("tournament_id", tournamentId).eq("active", true),
+      admin.from("tournament_umpires").select("id, name").eq("tournament_id", tournamentId),
+      admin
+        .from("matches")
+        .select(
+          "id, status, is_bye, is_conditional, team_a_registration_id, team_b_registration_id, team_a_label, team_b_label, division_id, court_id, round_label, match_number, stage, assigned_umpire_id, umpire_queue_order"
+        )
+        .eq("tournament_id", tournamentId)
+        .in("status", ["scheduled", "in_progress"])
+        .order("match_number", { ascending: true, nullsFirst: false }),
+    ]);
 
   const divisionName = new Map((divisions ?? []).map((d) => [d.id, d.name as string]));
   const courtName = new Map((courts ?? []).map((c) => [c.id, c.name as string]));
+  const umpireName = new Map((umpires ?? []).map((u) => [u.id, u.name as string]));
 
-  // hide byes and anything still waiting on a previous result
-  const playable = (matches ?? []).filter(
-    (m) =>
-      !m.is_bye &&
-      !(m.is_conditional && !m.team_a_registration_id) &&
-      (!m.stage || m.status !== "scheduled" || (m.team_a_registration_id && m.team_b_registration_id))
-  );
-  const board: BoardMatch[] = playable.map((m) => ({
-    id: m.id,
-    status: m.status === "walkover" ? "completed" : m.status,
-    teamA: m.team_a_label,
-    teamB: m.team_b_label,
-    scoreA: m.score_a,
-    scoreB: m.score_b,
-    gamesA: m.games_won_a,
-    gamesB: m.games_won_b,
-    divisionId: m.division_id,
-    divisionName: m.division_id ? (divisionName.get(m.division_id) ?? null) : null,
-    courtName: m.court_id ? (courtName.get(m.court_id) ?? null) : null,
-    label: m.round_label ?? (m.match_number ? `Match ${m.match_number}` : "Match"),
-  }));
+  const playable = sortQueueMatches((matches ?? []).filter(isPlayableMatch));
+
+  function toQueueMatch(m: (typeof playable)[0]): QueueMatch {
+    const assigneeId = m.assigned_umpire_id as string | null;
+    const assigneeName = assigneeId ? (umpireName.get(assigneeId) ?? "Umpire") : null;
+    const isMine = Boolean(session && assigneeId === session.id);
+    const canClaim = m.status === "scheduled" && !assigneeId;
+    return {
+      id: m.id,
+      status: m.status,
+      teamA: m.team_a_label,
+      teamB: m.team_b_label,
+      divisionName: m.division_id ? (divisionName.get(m.division_id) ?? null) : null,
+      courtName: m.court_id ? (courtName.get(m.court_id) ?? null) : null,
+      label: m.round_label ?? (m.match_number ? `Match ${m.match_number}` : "Match"),
+      assigneeName,
+      assigneeId,
+      canClaim,
+      isMine,
+    };
+  }
+
+  const queueMatches = playable.map(toQueueMatch);
+  const myMatches = queueMatches.filter((m) => m.isMine);
+
+  const startedIds = (divisions ?? [])
+    .filter((d) => d.bracket_state && d.bracket_state !== "not_started")
+    .map((d) => d.id);
+  const bracketCategories = (
+    await Promise.all(
+      startedIds.map(async (divisionId) => {
+        const ctx = await loadDivisionContext(divisionId);
+        const div = divisions?.find((d) => d.id === divisionId);
+        return ctx && div
+          ? { id: divisionId, name: div.name as string, view: buildDrawView(ctx) }
+          : null;
+      })
+    )
+  ).filter((d): d is NonNullable<typeof d> => d !== null);
 
   return (
     <main id="main" className="min-h-dvh bg-background">
       <AutoRefresh seconds={20} clock={false} />
-      <MatchBoard
+      <UmpireHub
         tournamentId={tournamentId}
         tournamentName={tournament.name}
-        divisions={(divisions ?? []).map((d) => ({ id: d.id, name: d.name }))}
-        matches={board}
-        isUmpire={actor.operatorLabel === "Umpire"}
+        sessionUmpire={session}
+        queueMatches={queueMatches}
+        myMatches={myMatches}
+        bracketCategories={bracketCategories}
       />
     </main>
   );

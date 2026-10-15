@@ -7,11 +7,39 @@ import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
-import { sendPartnerInviteEmail } from "@/lib/email/send";
+import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
+import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
+
+export async function previewPartnerConflictAction(params: {
+  tournamentSlug: string;
+  divisionId: string;
+  partnerEmail: string;
+}) {
+  const user = await requireUser();
+  const supabase = await createClient();
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("id")
+    .eq("slug", params.tournamentSlug)
+    .maybeSingle();
+  if (!tournament) return { error: "Tournament not found" };
+
+  const email = params.partnerEmail.trim();
+  if (!email) return { blocked: undefined, warnings: [] as string[] };
+
+  return checkPartnerEmailConflict({
+    tournamentId: tournament.id,
+    divisionId: params.divisionId,
+    partnerEmail: email,
+    excludeUserId: user.id,
+  });
+}
 
 export async function createRegistrationAction(params: {
   tournamentSlug: string;
   divisionId: string;
+  partnerName?: string;
   partnerEmail?: string;
   guestName?: string;
   /** player chose to pay in cash/QR at the venue (only if the tournament allows it) */
@@ -38,17 +66,40 @@ export async function createRegistrationAction(params: {
 
   const { data: division } = await supabase
     .from("tournament_divisions")
-    .select("id, format, capacity, entry_fee_cents")
+    .select("id, format, capacity, entry_fee_cents, name")
     .eq("id", params.divisionId)
     .eq("tournament_id", tournament.id)
     .single();
   if (!division) return { error: "Division not found" };
 
+  const partnerName = params.partnerName?.trim();
+  const partnerEmailRaw = params.partnerEmail?.trim();
+  const partnerEmail = partnerEmailRaw ? normalizePartnerEmail(partnerEmailRaw) : "";
+
+  if (division.format === "doubles" && !partnerName) {
+    return { error: "Partner's full name is required for doubles." };
+  }
+  if (partnerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(partnerEmailRaw)) {
+    return { error: "Enter a valid partner email or leave it blank." };
+  }
+
+  let warnings: string[] = [];
+  if (division.format === "doubles" && partnerEmail) {
+    const conflict = await checkPartnerEmailConflict({
+      tournamentId: tournament.id,
+      divisionId: division.id,
+      partnerEmail,
+      excludeUserId: user.id,
+    });
+    if (conflict.blocked) return { error: conflict.blocked };
+    warnings = conflict.warnings;
+  }
+
   const { count: existingCount } = await supabase
     .from("registrations")
     .select("id", { count: "exact", head: true })
     .eq("division_id", division.id)
-    .in("status", ["confirmed", "awaiting_payment", "pending"]);
+    .in("status", ["confirmed", "awaiting_payment", "pending", "awaiting_partner"]);
 
   if (division.capacity && (existingCount ?? 0) >= division.capacity) {
     return { error: "Division is full" };
@@ -101,40 +152,46 @@ export async function createRegistrationAction(params: {
     is_primary: true,
   });
 
-  if (division.format === "doubles" && params.partnerEmail) {
-    const token = randomBytes(24).toString("hex");
+  if (division.format === "doubles" && partnerName) {
+    const token = partnerEmail ? randomBytes(24).toString("hex") : null;
     await supabase.from("registration_players").insert({
       registration_id: registration.id,
-      guest_email: params.partnerEmail,
-      partner_invite_status: "pending",
-      partner_invite_token: token,
+      guest_name: partnerName,
+      ...(partnerEmail
+        ? {
+            guest_email: partnerEmail,
+            partner_invite_status: "pending" as const,
+            partner_invite_token: token,
+          }
+        : {}),
     });
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    await sendPartnerInviteEmail({
-      to: params.partnerEmail,
-      tournamentName: tournament.name,
-      inviteUrl: `${appUrl}/tournaments/${tournament.slug}?partner=${token}`,
-    });
-    await supabase
-      .from("registrations")
-      .update({ status: "awaiting_partner" })
-      .eq("id", registration.id);
+    if (partnerEmail) {
+      await supabase
+        .from("registrations")
+        .update({ status: "awaiting_partner" })
+        .eq("id", registration.id);
+    }
   }
 
+  const withWarnings = <T extends Record<string, unknown>>(payload: T) =>
+    warnings.length ? { ...payload, warnings } : payload;
+
   if (payAtVenue) {
-    // slot is held; the organizer collects cash or shows a QR on the day
     revalidatePath(`/tournaments/${tournament.slug}`);
-    return { registrationId: registration.id, payAtVenue: true };
+    await notifyRegistrantAfterRegistration(registration.id);
+    await notifyPartnerAfterRegistration(registration.id);
+    return withWarnings({ registrationId: registration.id, payAtVenue: true });
   }
 
   if (fee > 0) {
     if (!isPayMongoConfigured()) {
-      return {
+      await notifyRegistrantAfterRegistration(registration.id);
+      return withWarnings({
         registrationId: registration.id,
         paymentRequired: true,
         checkoutUrl: null,
         message: "Payment integration requires PayMongo configuration.",
-      };
+      });
     }
     const admin = createAdminClient();
     const idempotencyKey = `reg-${registration.id}-${Date.now()}`;
@@ -159,9 +216,14 @@ export async function createRegistrationAction(params: {
       paymongo_checkout_session_id: checkout.sessionId,
       idempotency_key: idempotencyKey,
     });
-    return { registrationId: registration.id, checkoutUrl: checkout.checkoutUrl };
+    await notifyRegistrantAfterRegistration(registration.id, {
+      checkoutUrl: checkout.checkoutUrl,
+    });
+    return withWarnings({ registrationId: registration.id, checkoutUrl: checkout.checkoutUrl });
   }
 
   revalidatePath(`/tournaments/${tournament.slug}`);
-  return { registrationId: registration.id, confirmed: true };
+  await notifyRegistrantAfterRegistration(registration.id);
+  await notifyPartnerAfterRegistration(registration.id);
+  return withWarnings({ registrationId: registration.id, confirmed: true });
 }

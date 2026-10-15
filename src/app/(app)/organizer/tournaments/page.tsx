@@ -131,11 +131,11 @@ async function EventList({ userId, q, status }: { userId: string; q?: string; st
         {tournaments.map((t) => {
           const tile = dateTile(t.start_date);
           return (
-            <li key={t.id}>
+            <li key={t.id} className="flex items-center gap-2 bg-surface pr-3 sm:pr-5">
               <Link
                 href={`/organizer/tournaments/${t.id}`}
                 transitionTypes={NAV_FORWARD}
-                className="group flex items-center gap-4 bg-surface px-5 py-4 transition-colors hover:bg-espresso/60"
+                className="group flex min-w-0 flex-1 items-center gap-4 px-5 py-4 transition-colors hover:bg-espresso/60"
               >
                 <div className="flex w-12 shrink-0 flex-col items-center rounded-md border border-umber py-1 text-center">
                   <span className="font-mono text-[0.6rem] tracking-widest text-brass">
@@ -155,6 +155,11 @@ async function EventList({ userId, q, status }: { userId: string; q?: string; st
                   <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                 </span>
               </Link>
+              <Button variant="outline" size="sm" className="shrink-0" asChild>
+                <Link href={`/organizer/tournaments/${t.id}/draw`} transitionTypes={NAV_FORWARD}>
+                  Brackets
+                </Link>
+              </Button>
             </li>
           );
         })}

@@ -53,8 +53,7 @@ export function UmpireAccessCard({
     setBusy("reset");
     const res = await resetUmpireAccessAction(tournamentId);
     setBusy(null);
-    if (res.error) toast.error(res.error);
-    else toast.success("All umpires signed out");
+    toast.success("All umpires signed out");
     router.refresh();
   }
 

@@ -39,7 +39,14 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
   }
 
   return (
-    <ul className="grid gap-3 md:grid-cols-2">
+    <div className="space-y-6">
+      <div>
+        <h2 className="display text-3xl text-bone">Brackets</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pick a category to seed, start, or manage the draw.
+        </p>
+      </div>
+      <ul className="grid gap-3 md:grid-cols-2">
       {divisions.map((d) => {
         const entries = (regs ?? []).filter((r) => r.division_id === d.id && !r.withdrawn_at).length;
         const own = (matches ?? []).filter((m) => m.division_id === d.id && !m.is_bye && m.status !== "cancelled");
@@ -76,6 +83,7 @@ export default async function DrawPage({ params }: { params: Promise<{ id: strin
           </li>
         );
       })}
-    </ul>
+      </ul>
+    </div>
   );
 }

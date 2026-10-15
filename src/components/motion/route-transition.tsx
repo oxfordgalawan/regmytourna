@@ -45,10 +45,13 @@ type Scope = "area" | "section" | "tab";
 export function RouteTransition({
   scope,
   className = "min-w-0",
+  animateUpdates = true,
   children,
 }: {
   scope: Scope;
   className?: string;
+  /** Set false on pages that poll with router.refresh() — avoids view-transition errors when the tab is hidden. */
+  animateUpdates?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "/";
@@ -63,7 +66,7 @@ export function RouteTransition({
       exit={classes}
       // only the innermost content regions crossfade on in-place updates
       // (filters, skeleton → data); the outer shell never does
-      update={scope === "area" ? "none" : "vt-fade"}
+      update={scope === "area" || !animateUpdates ? "none" : "vt-fade"}
       default="none"
     >
       {/* display:contents would drop the box React snapshots */}

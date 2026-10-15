@@ -19,6 +19,8 @@ const statusMeta: Record<string, { label: string; tone: Tone }> = {
   failed: { label: "Failed", tone: "bad" },
   refunded: { label: "Refunded", tone: "quiet" },
   scheduled: { label: "Scheduled", tone: "neutral" },
+  approved: { label: "Approved", tone: "good" },
+  rejected: { label: "Rejected", tone: "bad" },
 };
 
 const toneStyles: Record<Tone, string> = {

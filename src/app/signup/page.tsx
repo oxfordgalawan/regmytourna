@@ -6,15 +6,15 @@ export const metadata = { title: "Sign up" };
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string }>;
+  searchParams: Promise<{ type?: string; next?: string }>;
 }) {
-  const { type } = await searchParams;
+  const { type, next } = await searchParams;
   return (
     <AuthShell
       title="Create your account"
       subtitle="Join as a player or organizer — you can do both on RegMyTourna."
     >
-      <SignupForm defaultAccountType={type} />
+      <SignupForm defaultAccountType={type} next={next} />
     </AuthShell>
   );
 }
