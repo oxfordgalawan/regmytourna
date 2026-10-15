@@ -37,7 +37,20 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-sm text-[#e58a72]">{message}</p>;
 }
 
-export function SignupForm({ defaultAccountType, next }: { defaultAccountType?: string; next?: string }) {
+export function SignupForm({
+  defaultAccountType,
+  next,
+  defaultEmail,
+  defaultName,
+  inviteToken,
+}: {
+  defaultAccountType?: string;
+  next?: string;
+  defaultEmail?: string;
+  defaultName?: string;
+  /** partner invite — the entry is linked to the new account right after signup */
+  inviteToken?: string;
+}) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,8 +60,8 @@ export function SignupForm({ defaultAccountType, next }: { defaultAccountType?: 
   const form = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      fullName: "",
-      email: "",
+      fullName: defaultName ?? "",
+      email: defaultEmail ?? "",
       password: "",
       confirmPassword: "",
       accountType: defaultAccountType === "organizer" ? "organizer" : "player",
@@ -72,6 +85,7 @@ export function SignupForm({ defaultAccountType, next }: { defaultAccountType?: 
       fd.set("placeLabel", place.label);
     }
     if (next) fd.set("next", next);
+    if (inviteToken) fd.set("invite", inviteToken);
     try {
       const result = await signUp(fd);
       if (result?.error) {
@@ -87,6 +101,13 @@ export function SignupForm({ defaultAccountType, next }: { defaultAccountType?: 
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+      {inviteToken && !serverError && (
+        <Alert>
+          <AlertDescription>
+            Use the email your partner entered and your entry is added to your account automatically.
+          </AlertDescription>
+        </Alert>
+      )}
       {next?.includes("#register") && !serverError && (
         <Alert>
           <AlertDescription>After you sign up, we&apos;ll bring you back to finish registration.</AlertDescription>

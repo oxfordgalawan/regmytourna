@@ -44,8 +44,8 @@ export default async function TournamentDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { data: tournament, error } = await getTournamentBySlug(slug);
-  if (error || !tournament) notFound();
+  const { data: tournament } = await getTournamentBySlug(slug);
+  if (!tournament) notFound();
 
   const user = await getOptionalUser();
   const organizer = relationOne(tournament.profiles) as { full_name: string } | null;
@@ -167,7 +167,7 @@ export default async function TournamentDetailPage({
             ))}
           </dl>
 
-          <section aria-labelledby="divisions-heading">
+          <section id="entries" className="scroll-mt-24" aria-labelledby="divisions-heading">
             <div className="flex items-end justify-between gap-4">
               <h2 id="divisions-heading" className="display text-4xl text-bone">
                 Categories

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AppRole } from "@/lib/auth/role";
+import { getRoles, type AppRole } from "@/lib/auth/role";
+import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 
 /** Switches on a second role. The user keeps the one they had. */
 export async function enableRoleAction(role: AppRole): Promise<{ ok?: boolean; error?: string }> {
@@ -22,6 +23,13 @@ export async function enableRoleAction(role: AppRole): Promise<{ ok?: boolean; e
   }
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/** True when an organizer account has not enabled player access yet (e.g. before entering a event). */
+export async function needsPlayerRoleForRegistrationAction() {
+  const user = await requireUser();
+  const roles = await getRoles(user.id, { superAdmin: isSuperAdmin(user) });
+  return { needsPlayerRole: roles.organizer && !roles.player };
 }
 
 /** "Start organizing" from the profile page: turn organizer on and create a first event. */

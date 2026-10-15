@@ -16,6 +16,7 @@ import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 import { loadPlayerEntries } from "@/lib/player/entries";
 import { listPublicTournaments } from "@/lib/tournaments/queries";
 import { PlayerHome } from "@/components/player/player-home";
+import { pendingInvitesForEmail } from "@/lib/registrations/partner-invites";
 
 export const metadata = { title: "Dashboard" };
 
@@ -41,15 +42,17 @@ export default async function DashboardPage() {
 
   // players get their own home: entries, countdown, events to join — no organizer tools
   if ((await getViewRole(user.id, { superAdmin: isSuperAdmin(user) })).view === "player") {
-    const [entries, open] = await Promise.all([
+    const [entries, open, invites] = await Promise.all([
       loadPlayerEntries(user.id),
       listPublicTournaments({ status: "registration_open", pageSize: 9 }).catch(() => ({ data: [] })),
+      pendingInvitesForEmail(user.email).catch(() => []),
     ]);
     return (
       <PlayerHome
         firstName={(profile?.full_name || user.email || "Player").split(/[\s@]/)[0]}
         entries={entries}
         openTournaments={open.data}
+        invites={invites}
       />
     );
   }

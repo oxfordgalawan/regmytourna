@@ -36,6 +36,14 @@ export async function checkPartnerEmailConflict(params: {
   const admin = createAdminClient();
   const { data: partnerUserId } = await admin.rpc("auth_user_id_for_email", { p_email: email });
 
+  if (partnerUserId && partnerUserId === params.excludeUserId) {
+    return {
+      blocked:
+        "That\u2019s your own email. Leave partner email blank, or enter your partner\u2019s address.",
+      warnings: [] as string[],
+    };
+  }
+
   const sameDivisionRegs = await activeRegistrationIds(admin, {
     tournamentId: params.tournamentId,
     divisionId: params.divisionId,

@@ -11,7 +11,9 @@ export const PETITION_ELIGIBLE_STATUSES = [
 
 export type PetitionEligibility = {
   eligible: boolean;
-  reason?: "not_signed_in" | "not_registered" | "pending_exists";
+  reason?: "not_signed_in" | "not_registered" | "pending_exists" | "invite_pending";
+  /** set with "invite_pending": the partner invite to accept first */
+  inviteToken?: string | null;
   registrationId?: string;
   tournamentId?: string;
   entryName?: string;

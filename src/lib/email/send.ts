@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { isResendConfigured } from "@/lib/env/server";
+import { partnerAddedEmail, partnerDeclinedEmail } from "@/lib/email/partner-email";
 
 export async function sendPartnerInviteEmail(params: {
   to: string;
@@ -21,34 +22,18 @@ export async function sendPartnerInviteEmail(params: {
   return { data };
 }
 
-export async function sendPartnerAddedEmail(params: {
-  to: string;
-  tournamentName: string;
-  divisionName: string;
-  primaryName: string;
-  partnerName?: string;
-  eventUrl: string;
-  inviteUrl?: string;
-}) {
-  if (!isResendConfigured()) {
-    console.warn("[email] Resend not configured; skipping partner added email");
-    return { skipped: true as const };
-  }
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  const inviteBlock = params.inviteUrl
-    ? `<p><a href="${params.inviteUrl}">View your partner invite</a></p>`
-    : "";
-  const { data, error } = await resend.emails.send({
-    from: "RegMyTourna <onboarding@resend.dev>",
-    to: params.to,
-    subject: `You were added as a partner — ${params.tournamentName}`,
-    html: `<p>Hi${params.partnerName ? ` ${params.partnerName}` : ""},</p>
-<p><strong>${params.primaryName}</strong> added you as their partner in <strong>${params.divisionName}</strong> at <strong>${params.tournamentName}</strong>.</p>
-<p><a href="${params.eventUrl}">View the tournament</a></p>
-${inviteBlock}`,
-  });
-  if (error) return { error: error.message };
-  return { data };
+/** "You were added as a partner" — two variants depending on whether they already have an account. */
+export async function sendPartnerAddedEmail(params: Parameters<typeof partnerAddedEmail>[0] & { to: string }) {
+  const { to, ...content } = params;
+  const { subject, html } = partnerAddedEmail(content);
+  return sendRegistrationEmail({ to, subject, html });
+}
+
+/** Tells the registrant their partner said "not me". */
+export async function sendPartnerDeclinedEmail(params: Parameters<typeof partnerDeclinedEmail>[0] & { to: string }) {
+  const { to, ...content } = params;
+  const { subject, html } = partnerDeclinedEmail(content);
+  return sendRegistrationEmail({ to, subject, html });
 }
 
 export async function sendPetitionDecisionEmail(params: {

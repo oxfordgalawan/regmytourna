@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/motion/reveal";
+import { PartnerInvitesCard } from "@/components/player/partner-invites-card";
+import { pendingInvitesForEmail } from "@/lib/registrations/partner-invites";
 
 export const metadata = { title: "My entries" };
 
@@ -20,7 +22,10 @@ export default async function EntriesPage({
   const { view } = await searchParams;
   const tab = view === "past" ? "past" : "upcoming";
 
-  const entries = await loadPlayerEntries(user.id);
+  const [entries, invites] = await Promise.all([
+    loadPlayerEntries(user.id),
+    pendingInvitesForEmail(user.email).catch(() => []),
+  ]);
   const upcoming = entries.filter(isUpcoming);
   const past = entries.filter((e) => !isUpcoming(e)).reverse();
   const list = tab === "past" ? past : upcoming;
@@ -32,6 +37,8 @@ export default async function EntriesPage({
         title="My entries"
         description="Every event you've entered — payment, partner, and your next match."
       />
+
+      <PartnerInvitesCard invites={invites} />
 
       <FilterChips
         label="Show"

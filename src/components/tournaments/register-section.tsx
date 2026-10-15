@@ -1,13 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Lock } from "lucide-react";
+import { Check, CreditCard, Loader2, Lock, Swords, Ticket, UserRound } from "lucide-react";
+import { toast } from "sonner";
 import {
+  cancelMyRegistrationAction,
   createRegistrationAction,
+  listMyRegistrationsForTournamentAction,
   previewPartnerConflictAction,
 } from "@/app/actions/registrations";
+import Link from "next/link";
+import { enableRoleAction, needsPlayerRoleForRegistrationAction } from "@/app/actions/role";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -44,6 +57,23 @@ export function RegisterSection({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [partnerWarnings, setPartnerWarnings] = useState<string[]>([]);
+  const [myEntries, setMyEntries] = useState<
+    Awaited<ReturnType<typeof listMyRegistrationsForTournamentAction>>["entries"]
+  >([]);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [needsPlayerRole, setNeedsPlayerRole] = useState(false);
+  const [playerRoleReady, setPlayerRoleReady] = useState(false);
+  const [playerGateOpen, setPlayerGateOpen] = useState(false);
+  const [enablingPlayer, startEnablePlayer] = useTransition();
+
+  useEffect(() => {
+    void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
+    void needsPlayerRoleForRegistrationAction().then((res) => {
+      const needs = res.needsPlayerRole ?? false;
+      setNeedsPlayerRole(needs);
+      if (!needs) setPlayerRoleReady(true);
+    });
+  }, [slug]);
 
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;
@@ -76,12 +106,7 @@ export function RegisterSection({
     return () => clearTimeout(t);
   }, [runPartnerPreview]);
 
-  async function handleRegister() {
-    if (!divisionId) return;
-    if (isDoubles && !partnerName.trim()) {
-      setError("Partner's full name is required for doubles.");
-      return;
-    }
+  async function submitRegistration() {
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -113,7 +138,51 @@ export function RegisterSection({
     if ("confirmed" in result && result.confirmed && "registrationId" in result) {
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}`);
     }
+    void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
   }
+
+  async function handleRegister() {
+    if (!divisionId) return;
+    if (isDoubles && !partnerName.trim()) {
+      setError("Partner's full name is required for doubles.");
+      return;
+    }
+    if (needsPlayerRole && !playerRoleReady) {
+      setPlayerGateOpen(true);
+      return;
+    }
+    await submitRegistration();
+  }
+
+  function confirmBecomePlayer() {
+    startEnablePlayer(async () => {
+      const res = await enableRoleAction("player");
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      setNeedsPlayerRole(false);
+      setPlayerRoleReady(true);
+      setPlayerGateOpen(false);
+      toast.success("Player access enabled — finishing your registration…");
+      await submitRegistration();
+    });
+  }
+
+  async function cancelEntry(registrationId: string) {
+    setCancellingId(registrationId);
+    const res = await cancelMyRegistrationAction(registrationId);
+    setCancellingId(null);
+    if ("error" in res && res.error) {
+      setError(res.error);
+      return;
+    }
+    setError(null);
+    const next = await listMyRegistrationsForTournamentAction(slug);
+    setMyEntries(next.entries ?? []);
+  }
+
+  const entryForDivision = myEntries.find((e) => e.divisionId === divisionId);
 
   if (!divisions.length) {
     return (
@@ -145,6 +214,52 @@ export function RegisterSection({
       {message && (
         <Alert>
           <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      )}
+
+      {myEntries.length > 0 && (
+        <Alert>
+          <AlertDescription className="space-y-2">
+            <p className="font-medium text-bone">Your entries for this event</p>
+            <ul className="space-y-2 text-sm">
+              {myEntries.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+                  <span>
+                    <span className="text-bone">{e.divisionName}</span>
+                    <span className="ml-2 text-xs capitalize text-muted-foreground">
+                      {e.status.replace(/_/g, " ")}
+                      {e.paymentStatus === "pending" ? " · unpaid" : ""}
+                    </span>
+                  </span>
+                  <span className="flex gap-2">
+                    <Button type="button" size="xs" variant="outline" asChild>
+                      <Link href="/entries">My entries</Link>
+                    </Button>
+                    {e.paymentStatus !== "paid" && (
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        disabled={cancellingId === e.id}
+                        onClick={() => cancelEntry(e.id)}
+                      >
+                        {cancellingId === e.id ? "Cancelling…" : "Cancel"}
+                      </Button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {entryForDivision && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            You already have an entry in this category. Use <Link href="/entries" className="underline">My entries</Link> to
+            pay or cancel it before registering again.
+          </AlertDescription>
         </Alert>
       )}
 
@@ -262,7 +377,13 @@ export function RegisterSection({
           size="lg"
           className="mt-4 w-full"
           onClick={handleRegister}
-          disabled={loading || !divisionId || (isDoubles && !partnerName.trim())}
+          disabled={
+            loading ||
+            enablingPlayer ||
+            !divisionId ||
+            Boolean(entryForDivision) ||
+            (isDoubles && !partnerName.trim())
+          }
         >
           {loading ? (
             <>
@@ -288,6 +409,63 @@ export function RegisterSection({
           )}
         </p>
       </div>
+
+      <Dialog open={playerGateOpen} onOpenChange={setPlayerGateOpen}>
+        <DialogContent className="border-line bg-ink sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="display text-2xl text-bone">Become a player too?</DialogTitle>
+            <DialogDescription className="text-left text-sm leading-relaxed text-muted-foreground">
+              You&apos;re signed in as an organizer. To enter this tournament you also need player
+              access — your organizer tools stay exactly as they are.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-3 text-sm text-bone/90">
+            {(
+              [
+                [Ticket, "Join tournaments in a couple of taps"],
+                [Swords, "Track your entries, matches and results"],
+                [CreditCard, "Pay online or at the venue"],
+              ] as const
+            ).map(([Icon, text]) => (
+              <li key={text} className="flex items-start gap-3">
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-bone/10">
+                  <Icon className="size-4 text-bone" aria-hidden />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter className="gap-2 sm:flex-col sm:space-x-0">
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={confirmBecomePlayer}
+              disabled={enablingPlayer}
+            >
+              {enablingPlayer ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Enabling player access…
+                </>
+              ) : (
+                <>
+                  <UserRound className="size-4" aria-hidden />
+                  Yes, become a player
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => setPlayerGateOpen(false)}
+              disabled={enablingPlayer}
+            >
+              Not now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

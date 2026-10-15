@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, MapPin, Swords } from "lucide-react";
 import { PayNowButton } from "@/components/player/pay-now-button";
+import { PartnerLine } from "@/components/player/partner-line";
 import { dateTile, formatDateRange, formatPhp } from "@/lib/format";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import type { PlayerEntry } from "@/lib/player/entries";
@@ -13,7 +14,6 @@ export function paymentState(e: PlayerEntry) {
   if (e.entrySource === "pay_at_venue" || e.entrySource === "desk") {
     return { label: `Pay ${formatPhp(e.feeCents)} at the desk`, tone: "warn" as const };
   }
-  if (e.status === "awaiting_partner") return { label: "Waiting for your partner", tone: "warn" as const };
   return { label: `${formatPhp(e.feeCents)} to pay`, tone: "warn" as const };
 }
 
@@ -66,7 +66,11 @@ export function EntryTicket({ entry: e, className }: { entry: PlayerEntry; class
           </span>
           <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </Link>
-        <p className="mt-3 truncate text-sm text-muted-foreground">{e.teamName}</p>
+        {e.partner ? (
+          <PartnerLine entry={e} />
+        ) : (
+          <p className="mt-3 truncate text-sm text-muted-foreground">{e.teamName}</p>
+        )}
         {(e.tournament.venueName || e.tournament.city) && (
           <p className="mt-1 flex items-center gap-1.5 truncate text-sm text-muted-foreground">
             <MapPin className="size-3.5 shrink-0" />

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env/server";
 import { getPostLoginPath } from "@/lib/auth/get-post-login-path";
 import { sanitizeNext } from "@/lib/auth/safe-next";
+import { findInviteByToken, linkPartner } from "@/lib/registrations/partner-invites";
+import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -73,6 +75,21 @@ export async function signUp(formData: FormData) {
     }
 
     await supabase.from("profiles").update(profileUpdate).eq("id", data.user.id);
+
+    // signed up from a partner invite: the link token plus the matching email is the proof
+    const token = String(formData.get("invite") ?? "");
+    // (an empty identities list means the email already had an account — not a new signup)
+    if (token && data.user.identities?.length !== 0) {
+      const invite = await findInviteByToken(token);
+      if (
+        invite?.partnerEmail &&
+        normalizePartnerEmail(invite.partnerEmail) === normalizePartnerEmail(email) &&
+        invite.status === "pending" &&
+        !invite.linkedUserId
+      ) {
+        await linkPartner(invite, data.user.id).catch(() => undefined);
+      }
+    }
   }
 
   const next = sanitizeNext(String(formData.get("next") ?? ""));

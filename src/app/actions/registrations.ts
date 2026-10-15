@@ -10,6 +10,61 @@ import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service"
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
+import { relationOne } from "@/lib/supabase/relations";
+
+export async function listMyRegistrationsForTournamentAction(tournamentSlug: string) {
+  const user = await requireUser();
+  const admin = createAdminClient();
+  const { data: tournament } = await admin
+    .from("tournaments")
+    .select("id")
+    .eq("slug", tournamentSlug)
+    .maybeSingle();
+  if (!tournament) return { entries: [] as const };
+
+  const { data: regs } = await admin
+    .from("registrations")
+    .select("id, status, payment_status, division_id, tournament_divisions(name)")
+    .eq("tournament_id", tournament.id)
+    .eq("registered_by", user.id)
+    .neq("status", "cancelled");
+
+  return {
+    entries: (regs ?? []).map((r) => ({
+      id: r.id,
+      status: r.status,
+      paymentStatus: r.payment_status,
+      divisionId: r.division_id,
+      divisionName: (relationOne(r.tournament_divisions) as { name: string } | null)?.name ?? "Category",
+    })),
+  };
+}
+
+/** Cancel an unpaid entry you registered yourself (e.g. to pick another category). */
+export async function cancelMyRegistrationAction(registrationId: string) {
+  const user = await requireUser();
+  const admin = createAdminClient();
+  const { data: reg } = await admin
+    .from("registrations")
+    .select("id, registered_by, payment_status, status, tournament_id, tournaments(slug)")
+    .eq("id", registrationId)
+    .maybeSingle();
+  if (!reg || reg.registered_by !== user.id) return { error: "Entry not found." };
+  if (reg.payment_status === "paid") {
+    return { error: "This entry is already paid. Ask the organizer if you need to change categories." };
+  }
+  if (reg.status === "cancelled") return { ok: true as const };
+
+  await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
+  await admin.from("registrations").update({ status: "cancelled" }).eq("id", registrationId);
+
+  const slug = (relationOne(reg.tournaments) as { slug: string } | null)?.slug;
+  if (slug) revalidatePath(`/tournaments/${slug}`);
+  revalidatePath(`/organizer/tournaments/${reg.tournament_id}/registrations`);
+  revalidatePath("/entries");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
 
 export async function previewPartnerConflictAction(params: {
   tournamentSlug: string;
@@ -82,6 +137,9 @@ export async function createRegistrationAction(params: {
   if (partnerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(partnerEmailRaw)) {
     return { error: "Enter a valid partner email or leave it blank." };
   }
+  if (partnerEmail && user.email && normalizePartnerEmail(user.email) === partnerEmail) {
+    return { error: "Partner email can\u2019t be your own address. Leave it blank if your partner doesn\u2019t use email." };
+  }
 
   let warnings: string[] = [];
   if (division.format === "doubles" && partnerEmail) {
@@ -95,7 +153,9 @@ export async function createRegistrationAction(params: {
     warnings = conflict.warnings;
   }
 
-  const { count: existingCount } = await supabase
+  const admin = createAdminClient();
+
+  const { count: existingCount } = await admin
     .from("registrations")
     .select("id", { count: "exact", head: true })
     .eq("division_id", division.id)
@@ -105,33 +165,53 @@ export async function createRegistrationAction(params: {
     return { error: "Division is full" };
   }
 
-  const { data: dup } = await supabase
+  const { data: dup } = await admin
     .from("registrations")
     .select("id")
     .eq("division_id", division.id)
     .eq("registered_by", user.id)
     .not("status", "eq", "cancelled")
     .maybeSingle();
-  if (dup) return { error: "You are already registered in this division" };
+  if (dup) {
+    const { data: existing } = await admin
+      .from("registrations")
+      .select("id, status, payment_status, entry_source")
+      .eq("id", dup.id)
+      .single();
+    const hint =
+      existing?.payment_status === "pending" && existing.status === "awaiting_payment"
+        ? " You can complete payment from My entries, or cancel that entry to register again."
+        : " See My entries for details.";
+    return {
+      error: `You are already registered in this category.${hint}`,
+      existingRegistrationId: dup.id,
+      existingStatus: existing?.status,
+    };
+  }
 
   const fee = division.entry_fee_cents ?? tournament.entry_fee_cents;
   let teamId: string | null = null;
 
   if (division.format === "doubles") {
-    const { data: team } = await supabase
+    const { data: team, error: teamError } = await admin
       .from("teams")
       .insert({ division_id: division.id })
       .select("id")
       .single();
-    teamId = team?.id ?? null;
-    if (teamId) {
-      await supabase.from("team_members").insert({ team_id: teamId, user_id: user.id });
+    if (teamError || !team) {
+      return { error: teamError?.message ?? "Could not create team for this entry." };
+    }
+    teamId = team.id;
+    const { error: memberError } = await admin.from("team_members").insert({ team_id: teamId, user_id: user.id });
+    if (memberError) {
+      await admin.from("teams").delete().eq("id", teamId);
+      return { error: memberError.message };
     }
   }
 
   const status = fee > 0 ? "awaiting_payment" : "confirmed";
   const payAtVenue = Boolean(params.payAtVenue && tournament.allow_walk_in_payment && fee > 0);
-  const { data: registration, error } = await supabase
+  const { data: registration, error } = await admin
     .from("registrations")
     .insert({
       tournament_id: tournament.id,
@@ -146,15 +226,19 @@ export async function createRegistrationAction(params: {
     .single();
   if (error || !registration) return { error: error?.message ?? "Registration failed" };
 
-  await supabase.from("registration_players").insert({
+  const { error: primaryPlayerError } = await admin.from("registration_players").insert({
     registration_id: registration.id,
     user_id: user.id,
     is_primary: true,
   });
+  if (primaryPlayerError) {
+    await admin.from("registrations").delete().eq("id", registration.id);
+    return { error: primaryPlayerError.message };
+  }
 
   if (division.format === "doubles" && partnerName) {
     const token = partnerEmail ? randomBytes(24).toString("hex") : null;
-    await supabase.from("registration_players").insert({
+    const { error: partnerPlayerError } = await admin.from("registration_players").insert({
       registration_id: registration.id,
       guest_name: partnerName,
       ...(partnerEmail
@@ -165,19 +249,27 @@ export async function createRegistrationAction(params: {
           }
         : {}),
     });
-    if (partnerEmail) {
-      await supabase
-        .from("registrations")
-        .update({ status: "awaiting_partner" })
-        .eq("id", registration.id);
+    if (partnerPlayerError) {
+      await admin.from("registrations").delete().eq("id", registration.id);
+      return { error: partnerPlayerError.message };
     }
+    // the entry follows its payment state; the partner's invite is tracked on their own row
   }
 
   const withWarnings = <T extends Record<string, unknown>>(payload: T) =>
     warnings.length ? { ...payload, warnings } : payload;
 
-  if (payAtVenue) {
+  await admin.from("profiles").update({ player_enabled: true }).eq("id", user.id);
+
+  const revalidate = () => {
     revalidatePath(`/tournaments/${tournament.slug}`);
+    revalidatePath(`/organizer/tournaments/${tournament.id}/registrations`);
+    revalidatePath("/entries");
+    revalidatePath("/dashboard");
+  };
+
+  if (payAtVenue) {
+    revalidate();
     await notifyRegistrantAfterRegistration(registration.id);
     await notifyPartnerAfterRegistration(registration.id);
     return withWarnings({ registrationId: registration.id, payAtVenue: true });
@@ -193,7 +285,6 @@ export async function createRegistrationAction(params: {
         message: "Payment integration requires PayMongo configuration.",
       });
     }
-    const admin = createAdminClient();
     const idempotencyKey = `reg-${registration.id}-${Date.now()}`;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const checkout = await createCheckoutSession({
@@ -219,10 +310,11 @@ export async function createRegistrationAction(params: {
     await notifyRegistrantAfterRegistration(registration.id, {
       checkoutUrl: checkout.checkoutUrl,
     });
+    revalidate();
     return withWarnings({ registrationId: registration.id, checkoutUrl: checkout.checkoutUrl });
   }
 
-  revalidatePath(`/tournaments/${tournament.slug}`);
+  revalidate();
   await notifyRegistrantAfterRegistration(registration.id);
   await notifyPartnerAfterRegistration(registration.id);
   return withWarnings({ registrationId: registration.id, confirmed: true });

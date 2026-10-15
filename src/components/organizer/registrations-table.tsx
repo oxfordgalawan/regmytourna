@@ -4,6 +4,7 @@ import { startTransition, useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banknote, Search, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { cancelEntryAction, setWalkInPaymentAction } from "@/app/actions/walk-in";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export type RegistrationRow = {
   paidVia: "online" | "cash" | "qr" | null;
   feeCents: number;
   checkedIn: boolean;
+  partner?: "on_platform" | "invited" | "declined" | "guest" | null;
 };
 
 const views = [
@@ -43,6 +45,13 @@ const views = [
   { value: "unpaid", label: "To collect" },
   { value: "to_check_in", label: "Not checked in" },
 ] as const;
+
+const PARTNER_LABEL = {
+  on_platform: "Partner on RegMyTourna",
+  invited: "Partner invited",
+  declined: "Partner said not me",
+  guest: "Partner not on platform",
+} as const;
 
 const SOURCE_LABEL: Record<RegistrationRow["source"], string> = {
   online: "Online",
@@ -183,9 +192,25 @@ export function RegistrationsTable({
                 <TableRow key={r.id}>
                   <TableCell className="pl-5">
                     <span className="block font-medium text-bone">{r.player}</span>
-                    {r.source !== "online" && (
-                      <span className="font-mono text-[0.65rem] text-muted-foreground">{SOURCE_LABEL[r.source]}</span>
-                    )}
+                    <span className="flex flex-wrap gap-x-3">
+                      {r.source !== "online" && (
+                        <span className="font-mono text-[0.65rem] text-muted-foreground">{SOURCE_LABEL[r.source]}</span>
+                      )}
+                      {r.partner && (
+                        <span
+                          className={cn(
+                            "font-mono text-[0.65rem]",
+                            r.partner === "on_platform"
+                              ? "text-brass"
+                              : r.partner === "declined"
+                                ? "text-[#e58a72]"
+                                : "text-muted-foreground"
+                          )}
+                        >
+                          {PARTNER_LABEL[r.partner]}
+                        </span>
+                      )}
+                    </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{r.division}</TableCell>
                   <TableCell>

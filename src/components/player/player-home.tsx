@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/player/countdown";
 import { EntryTicket, paymentState } from "@/components/player/entry-ticket";
 import { PayNowButton } from "@/components/player/pay-now-button";
+import { PartnerInvitesCard } from "@/components/player/partner-invites-card";
+import type { PartnerInvite } from "@/lib/registrations/partner-invites";
 import { TournamentCard, type TournamentCardData } from "@/components/tournaments/tournament-card";
 import { Reveal } from "@/components/motion/reveal";
 import { formatDateRange, formatPhp } from "@/lib/format";
@@ -112,10 +114,12 @@ export function PlayerHome({
   firstName,
   entries,
   openTournaments,
+  invites = [],
 }: {
   firstName: string;
   entries: PlayerEntry[];
   openTournaments: TournamentCardData[];
+  invites?: PartnerInvite[];
 }) {
   const upcoming = entries.filter(isUpcoming);
   const next = upcoming.find((e) => e.liveMatch) ?? upcoming[0];
@@ -131,6 +135,8 @@ export function PlayerHome({
         <p className="eyebrow">{greeting()}</p>
         <h1 className="display mt-2 text-5xl text-bone sm:text-6xl">{firstName}</h1>
       </header>
+
+      <PartnerInvitesCard invites={invites} />
 
       {next ? (
         <Reveal>

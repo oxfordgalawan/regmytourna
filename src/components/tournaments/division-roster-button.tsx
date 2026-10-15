@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { FileText, List, Loader2 } from "lucide-react";
 import { getMyPetitionEligibilityAction } from "@/app/actions/petitions";
@@ -106,6 +107,16 @@ export function DivisionRosterButton({
               {elig.reason === "not_signed_in" && (
                 <p className="mt-2 text-sm text-muted-foreground">
                   Sign in to submit a petition about your entry in this category.
+                </p>
+              )}
+              {elig.reason === "invite_pending" && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  You were added as a partner here. Accept your invite first to file a petition.{" "}
+                  {elig.inviteToken && (
+                    <Link href={`/invite/${elig.inviteToken}`} className="font-medium text-bone underline underline-offset-4">
+                      Open invite
+                    </Link>
+                  )}
                 </p>
               )}
               {elig.reason === "not_registered" && (

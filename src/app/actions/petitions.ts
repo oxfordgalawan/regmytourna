@@ -10,6 +10,7 @@ import { signPetitionProofPaths } from "@/lib/petitions/signed-urls";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import { relationOne } from "@/lib/supabase/relations";
 import { sendPetitionDecisionEmail } from "@/lib/email/send";
+import { pendingInvitesForEmail } from "@/lib/registrations/partner-invites";
 
 function expectedPathPrefix(tournamentId: string, registrationId: string) {
   return `${tournamentId}/${registrationId}/`;
@@ -49,7 +50,15 @@ export async function getMyPetitionEligibilityAction(tournamentSlug: string, div
     .maybeSingle();
   if (!tournament?.is_public) return { error: "Tournament not found." };
 
-  return getPetitionEligibilityForUser(user.id, tournament.id, divisionId);
+  const eligibility = await getPetitionEligibilityForUser(user.id, tournament.id, divisionId);
+  if (eligibility.reason === "not_registered") {
+    // added as a partner but hasn't accepted yet — point them to the invite
+    const invite = (await pendingInvitesForEmail(user.email)).find(
+      (i) => i.tournament.id === tournament.id && i.divisionId === divisionId
+    );
+    if (invite) return { ...eligibility, reason: "invite_pending" as const, inviteToken: invite.token };
+  }
+  return eligibility;
 }
 
 export type SubmitPetitionInput = {

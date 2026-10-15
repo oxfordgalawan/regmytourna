@@ -38,6 +38,16 @@ export type PlayerEntry = {
     coverImageUrl: string | null;
     status: string;
   };
+  /** true when this user registered the entry (they manage the partner) */
+  isRegistrant: boolean;
+  /** the other player on a doubles entry, from the viewer's point of view */
+  partner: {
+    name: string | null;
+    email: string | null;
+    state: "joined" | "invited" | "declined" | "no_email";
+  } | null;
+  /** partner can still be changed by the registrant (draw not started) */
+  canChangePartner: boolean;
   liveMatch: PlayerMatch | null;
   nextMatch: PlayerMatch | null;
   played: PlayerMatch[];
@@ -65,11 +75,11 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
   const ids = [...new Set([...(mine ?? []).map((r) => r.id), ...(asPlayer ?? []).map((r) => r.registration_id)])];
   if (!ids.length) return [];
 
-  const [{ data: regs }, { data: matches }] = await Promise.all([
+  const [{ data: regs }, { data: matches }, { data: players }] = await Promise.all([
     admin
       .from("registrations")
       .select(
-        `id, status, payment_status, entry_source, created_at, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, entry_fee_cents), tournaments(id, name, slug, start_date, end_date, city, venue_name, cover_image_url, status, entry_fee_cents)`
+        `id, status, payment_status, entry_source, created_at, registered_by, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, entry_fee_cents, bracket_state), tournaments(id, name, slug, start_date, end_date, city, venue_name, cover_image_url, status, entry_fee_cents)`
       )
       .in("id", ids),
     admin
@@ -78,6 +88,10 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
         "id, status, round_label, match_number, team_a_registration_id, team_b_registration_id, team_a_label, team_b_label, winner_registration_id, games_won_a, games_won_b, is_bye, scheduled_at, courts(name)"
       )
       .or(`team_a_registration_id.in.(${ids.join(",")}),team_b_registration_id.in.(${ids.join(",")})`),
+    admin
+      .from("registration_players")
+      .select("registration_id, user_id, is_primary, guest_name, guest_email, partner_invite_status, profiles(full_name)")
+      .in("registration_id", ids),
   ]);
 
   const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
@@ -96,7 +110,11 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
         status: string;
         entry_fee_cents: number;
       } | null;
-      const d = one(r.tournament_divisions) as { name: string; entry_fee_cents: number | null } | null;
+      const d = one(r.tournament_divisions) as {
+        name: string;
+        entry_fee_cents: number | null;
+        bracket_state: string | null;
+      } | null;
       if (!t) return null;
 
       const own = (matches ?? []).filter(
@@ -122,9 +140,36 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
         .filter((m) => m.status === "scheduled" && m.team_a_registration_id && m.team_b_registration_id)
         .sort((x, y) => (x.match_number ?? 0) - (y.match_number ?? 0))[0];
 
+      const isRegistrant = r.registered_by === userId;
+      // the teammate: for the registrant it's the non-primary row, for a partner it's the primary
+      const mate = (players ?? []).find(
+        (p) => p.registration_id === r.id && (isRegistrant ? !p.is_primary : p.user_id !== userId)
+      );
+      const mateName = (one(mate?.profiles) as { full_name: string | null } | null)?.full_name || mate?.guest_name || null;
+      const partner: PlayerEntry["partner"] = mate
+        ? {
+            name: mateName,
+            email: isRegistrant ? mate.guest_email : null,
+            state: mate.user_id
+              ? "joined"
+              : mate.partner_invite_status === "declined"
+                ? "declined"
+                : mate.guest_email
+                  ? "invited"
+                  : "no_email",
+          }
+        : null;
+
       return {
         id: r.id,
         status: r.status,
+        isRegistrant,
+        partner,
+        canChangePartner:
+          isRegistrant &&
+          Boolean(mate) &&
+          !["cancelled", "refunded"].includes(r.status) &&
+          (!d?.bracket_state || d.bracket_state === "not_started"),
         paymentStatus: r.payment_status,
         entrySource: r.entry_source ?? "online",
         feeCents: d?.entry_fee_cents ?? t.entry_fee_cents,
