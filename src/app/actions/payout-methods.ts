@@ -97,3 +97,17 @@ export async function deletePayoutMethod(id: string) {
   revalidatePath("/organizer/wallet");
   return { success: true as const };
 }
+
+export async function setDefaultPayoutMethod(id: string) {
+  const user = await requireUser();
+  const supabase = await createClient();
+  await supabase.from("organizer_payout_methods").update({ is_default: false }).eq("user_id", user.id);
+  const { error } = await supabase
+    .from("organizer_payout_methods")
+    .update({ is_default: true })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+  revalidatePath("/organizer/wallet");
+  return { success: true as const };
+}

@@ -6,6 +6,8 @@ import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMinWithdrawalCents } from "@/lib/env/server";
+import { sendRegistrationEmail } from "@/lib/email/send";
+import { withdrawalReviewedEmail } from "@/lib/email/wallet-email";
 
 export async function requestWalletWithdrawal(input: {
   amountCents: number;
@@ -56,7 +58,29 @@ export async function reviewWithdrawalRequest(input: {
     return { error: error.message.includes("already reviewed") ? "This request was already reviewed." : "Review failed." };
   }
 
+  // let the organizer know (best effort)
+  const { data: req } = await admin
+    .from("withdrawal_requests")
+    .select("user_id, amount_cents, payout_snapshot, admin_note")
+    .eq("id", input.requestId)
+    .maybeSingle();
+  if (req) {
+    const { data: u } = await admin.auth.admin.getUserById(req.user_id);
+    if (u?.user?.email) {
+      const snap = (req.payout_snapshot ?? {}) as { label?: string };
+      const mail = withdrawalReviewedEmail({
+        approved: input.action === "approve",
+        amountCents: req.amount_cents,
+        methodLabel: snap.label ?? "your payout method",
+        note: req.admin_note,
+        walletUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/organizer/wallet`,
+      });
+      await sendRegistrationEmail({ to: u.user.email, ...mail }).catch(() => undefined);
+    }
+  }
+
   revalidatePath("/super-admin/withdrawals");
   revalidatePath("/super-admin");
+  revalidatePath("/organizer/wallet");
   return { success: true as const };
 }

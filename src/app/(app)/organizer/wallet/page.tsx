@@ -1,233 +1,63 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
-import { createClient } from "@/lib/supabase/server";
 import { getMinWithdrawalCents, getPlatformFeePercent } from "@/lib/env/server";
-import { PayoutMethodsPanel } from "@/components/wallet/payout-methods-panel";
-import { WithdrawalRequestPanel } from "@/components/wallet/withdrawal-request-panel";
-import type { PayoutMethodType } from "@/lib/payout-methods/config";
-import { PageHeader, SectionHeading, StatTile } from "@/components/layout/page-header";
-import { EmptyState } from "@/components/ui/empty-state";
-import { formatDateTime, formatPhp } from "@/lib/format";
+import { PageHeader, SectionHeading } from "@/components/layout/page-header";
+import { loadWalletOverview } from "@/lib/wallet/overview";
+import { reconcileOrganizerWallet } from "@/lib/payments/settle";
+import { IncomeSources } from "@/components/wallet/income-sources";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Wallet } from "lucide-react";
-import { relationOne } from "@/lib/supabase/relations";
+  ActivityList,
+  BalanceCard,
+  PayoutMethodsList,
+  WithdrawalsList,
+} from "@/components/wallet/wallet-client";
 
 export const metadata = { title: "Wallet" };
-
-type TxMetadata = {
-  gross_cents?: number;
-  platform_fee_cents?: number;
-  organizer_net_cents?: number;
-};
 
 export default async function OrganizerWalletPage() {
   await connection();
   const user = await requireUser();
-  const supabase = await createClient();
-
-  const { data: wallet } = await supabase
-    .from("organizer_wallets")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const { data: transactions } = await supabase
-    .from("wallet_transactions")
-    .select(
-      "id, type, amount_cents, description, metadata, created_at, tournament_id, tournaments(name, slug)"
-    )
-    .eq("wallet_user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  const { data: ownedTournaments } = await supabase
-    .from("tournaments")
-    .select("id")
-    .eq("owner_id", user.id);
-
-  const tournamentIds = (ownedTournaments ?? []).map((t) => t.id);
-  let pendingRegistrations = 0;
-  if (tournamentIds.length) {
-    const { count } = await supabase
-      .from("registrations")
-      .select("*", { count: "exact", head: true })
-      .in("tournament_id", tournamentIds)
-      .eq("payment_status", "pending");
-    pendingRegistrations = count ?? 0;
-  }
-
-  let lifetimeGross = 0;
-  let lifetimeFees = 0;
-  for (const tx of transactions ?? []) {
-    if (tx.type !== "entry_payment") continue;
-    const meta = (tx.metadata ?? {}) as TxMetadata;
-    lifetimeGross += meta.gross_cents ?? tx.amount_cents;
-    lifetimeFees += meta.platform_fee_cents ?? 0;
-  }
-
-  const balanceCents = wallet?.available_balance_cents ?? 0;
-  const pendingWithdrawalCents = wallet?.pending_withdrawal_cents ?? 0;
+  // make sure every paid entry has reached the wallet before showing it
+  await reconcileOrganizerWallet(user.id).catch(() => undefined);
+  const o = await loadWalletOverview(user.id);
   const feePercent = getPlatformFeePercent();
-  const minWithdrawalCents = getMinWithdrawalCents();
-
-  const { data: payoutMethods } = await supabase
-    .from("organizer_payout_methods")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("is_default", { ascending: false });
-
-  const { data: withdrawalRequests } = await supabase
-    .from("withdrawal_requests")
-    .select("id, amount_cents, status, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const pendingRequests = (withdrawalRequests ?? []).filter((r) => r.status === "pending");
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <PageHeader
         eyebrow="Organizer"
         title="Wallet"
-        description={`Entry payments from your events (after ${feePercent}% platform fee). Withdrawals require admin approval.`}
+        description={`Online and QR entry payments land here after a ${feePercent}% platform fee. Withdraw any time — an admin approves each payout.`}
       />
 
-      <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-5">
-        <StatTile
-          label="Available balance"
-          value={formatPhp(balanceCents)}
-          hint="Ready to withdraw"
-        />
-        <StatTile
-          label="Pending withdrawal"
-          value={formatPhp(pendingWithdrawalCents)}
-          hint="Awaiting admin approval"
-        />
-        <StatTile
-          label="Lifetime gross"
-          value={formatPhp(lifetimeGross)}
-          hint="Total player payments received"
-        />
-        <StatTile
-          label="Platform fees"
-          value={formatPhp(lifetimeFees)}
-          hint={`${feePercent}% on entry payments`}
-        />
-        <StatTile
-          label="Awaiting payment"
-          value={pendingRegistrations}
-          hint="Registrations not paid yet"
-        />
-      </div>
+      <BalanceCard
+        balanceCents={o.balanceCents}
+        pendingWithdrawalCents={o.pendingWithdrawalCents}
+        monthNetCents={o.monthNetCents}
+        minWithdrawalCents={getMinWithdrawalCents()}
+        methods={o.methods}
+      />
+
+      <section className="space-y-4">
+        <SectionHeading title="Where your money comes from" />
+        <IncomeSources overview={o} feePercent={feePercent} />
+      </section>
 
       <section className="space-y-4">
         <SectionHeading title="Payout methods" />
-        <PayoutMethodsPanel
-          methods={(payoutMethods ?? []).map((m) => ({
-            ...m,
-            method_type: m.method_type as PayoutMethodType,
-          }))}
-        />
+        <PayoutMethodsList methods={o.methods} />
       </section>
 
-      <section className="space-y-4">
-        <SectionHeading title="Request withdrawal" />
-        <WithdrawalRequestPanel
-          methods={(payoutMethods ?? []).map((m) => ({
-            id: m.id,
-            label: m.label,
-            method_type: m.method_type as PayoutMethodType,
-            is_default: m.is_default,
-          }))}
-          availableCents={balanceCents}
-          minWithdrawalCents={minWithdrawalCents}
-          pendingRequests={pendingRequests}
-        />
-      </section>
-
-      <section className="space-y-4">
-        <SectionHeading title="Transactions" />
-        {!transactions?.length ? (
-          <EmptyState
-            icon={Wallet}
-            title="No payments yet"
-            description="When players pay entry fees for your tournaments, credits will show up here."
-            action={
-              <Link
-                href="/organizer/tournaments"
-                className="text-sm font-medium text-bone underline decoration-umber underline-offset-4 hover:decoration-brass"
-              >
-                View my events
-              </Link>
-            }
-          />
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-line">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Gross</TableHead>
-                  <TableHead className="text-right">Fee</TableHead>
-                  <TableHead className="text-right">Net</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((tx) => {
-                  const meta = (tx.metadata ?? {}) as TxMetadata;
-                  const tournament = relationOne(tx.tournaments) as {
-                    name: string;
-                    slug: string;
-                  } | null;
-                  const gross = meta.gross_cents ?? tx.amount_cents;
-                  const fee = meta.platform_fee_cents ?? 0;
-                  const net = meta.organizer_net_cents ?? tx.amount_cents;
-                  return (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-muted-foreground">
-                        {formatDateTime(tx.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        {tournament ? (
-                          <Link
-                            href={`/tournaments/${tournament.slug}`}
-                            className="text-bone hover:text-brass"
-                          >
-                            {tournament.name}
-                          </Link>
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell className="max-w-[12rem] truncate text-muted-foreground">
-                        {tx.description ?? tx.type}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">{formatPhp(gross)}</TableCell>
-                      <TableCell className="text-right font-mono text-muted-foreground">
-                        {formatPhp(fee)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-bone">
-                        {formatPhp(net)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </section>
+      <div className="grid gap-10 xl:grid-cols-[1.5fr_1fr]">
+        <section className="space-y-4">
+          <SectionHeading title="Activity" />
+          <ActivityList activity={o.activity} />
+        </section>
+        <section className="space-y-4">
+          <SectionHeading title="Withdrawals" />
+          <WithdrawalsList withdrawals={o.withdrawals} />
+        </section>
+      </div>
     </div>
   );
 }

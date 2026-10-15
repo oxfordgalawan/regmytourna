@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyPayMongoWebhookSignature } from "@/lib/services/paymongo/paymongo-service";
 import { isPayMongoConfigured } from "@/lib/env/server";
-import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
-import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
-import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
+import { settlePaidCheckout } from "@/lib/payments/settle";
 
 export async function POST(request: NextRequest) {
   if (!isPayMongoConfigured()) {
@@ -58,40 +56,8 @@ export async function POST(request: NextRequest) {
       payload.data.attributes.data?.attributes?.metadata ?? {};
     const registrationId = metadata.registration_id;
     if (registrationId) {
-      // mark only the checkout that was paid (an entry can have several: an
-      // abandoned online checkout plus a QR shown at the desk)
-      const sessionId = payload.data.attributes.data?.id;
-      const paidAt = new Date().toISOString();
-      const { data: matched } = sessionId
-        ? await admin
-            .from("payments")
-            .update({ status: "paid", paid_at: paidAt })
-            .eq("registration_id", registrationId)
-            .eq("paymongo_checkout_session_id", sessionId)
-            .select("id")
-        : { data: null };
-      if (!matched?.length) {
-        await admin
-          .from("payments")
-          .update({ status: "paid", paid_at: paidAt })
-          .eq("registration_id", registrationId)
-          .eq("status", "pending");
-      }
-      // other open checkouts for this entry can no longer be used
-      await admin
-        .from("payments")
-        .update({ status: "cancelled" })
-        .eq("registration_id", registrationId)
-        .eq("status", "pending");
-
-      await admin
-        .from("registrations")
-        .update({ status: "confirmed", payment_status: "paid" })
-        .eq("id", registrationId);
-
-      await creditOrganizerFromRegistration(admin, registrationId);
-      await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
-      await notifyPartnerAfterRegistration(registrationId);
+      // marks paid, confirms the entry, credits the organizer's wallet, sends emails
+      await settlePaidCheckout(registrationId, payload.data.attributes.data?.id ?? null);
     }
   }
 

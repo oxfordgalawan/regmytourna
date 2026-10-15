@@ -16,6 +16,7 @@ import { CoverImageUpload } from "@/components/images/cover-image-upload";
 import { registrationDeadline, validateSchedule } from "@/lib/validations/schedule";
 import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 import { cn } from "@/lib/utils";
+import { RegistrationDateTimeInput } from "@/components/organizer/registration-datetime-input";
 
 const publishOptions = [
   { value: "draft", label: "Save as draft", hint: "Only you can see it" },
@@ -118,6 +119,9 @@ export function TournamentForm() {
   const scheduleErrors = validateSchedule(schedule);
   const setDate = (key: keyof typeof schedule) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setSchedule((s) => ({ ...s, [key]: e.target.value }));
+  const setRegistrationDateTime =
+    (key: "registrationOpensAt" | "registrationClosesAt") => (value: string) =>
+      setSchedule((s) => ({ ...s, [key]: value }));
   const deadline = schedule.startDate ? registrationDeadline(schedule.startDate) : undefined;
   const [place, setPlace] = useState<PlaceSelection | null>(null);
 
@@ -261,33 +265,39 @@ export function TournamentForm() {
         <Field
           id="registrationOpensAt"
           label="Registration period opens"
-          hint={schedule.startDate ? undefined : "Pick the first day above to limit these dates."}
+          hint={
+            schedule.startDate
+              ? "Time defaults to 12:00 AM unless you change hr and min."
+              : "Pick the first day above to limit these dates. Time defaults to 12:00 AM."
+          }
           error={scheduleErrors.registrationOpensAt}
         >
-          <Input
+          <RegistrationDateTimeInput
             id="registrationOpensAt"
             name="registrationOpensAt"
-            type="datetime-local"
             max={deadline}
             value={schedule.registrationOpensAt}
-            onChange={setDate("registrationOpensAt")}
+            onChange={setRegistrationDateTime("registrationOpensAt")}
             aria-invalid={Boolean(scheduleErrors.registrationOpensAt)}
           />
         </Field>
         <Field
           id="registrationClosesAt"
           label="Registration period closes"
-          hint={schedule.startDate ? "On or before the first day." : undefined}
+          hint={
+            schedule.startDate
+              ? "On or before the first day. Time defaults to 12:00 AM."
+              : "Time defaults to 12:00 AM unless you change hr and min."
+          }
           error={scheduleErrors.registrationClosesAt}
         >
-          <Input
+          <RegistrationDateTimeInput
             id="registrationClosesAt"
             name="registrationClosesAt"
-            type="datetime-local"
             min={schedule.registrationOpensAt || undefined}
             max={deadline}
             value={schedule.registrationClosesAt}
-            onChange={setDate("registrationClosesAt")}
+            onChange={setRegistrationDateTime("registrationClosesAt")}
             aria-invalid={Boolean(scheduleErrors.registrationClosesAt)}
           />
         </Field>

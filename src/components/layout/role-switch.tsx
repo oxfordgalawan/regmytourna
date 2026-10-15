@@ -275,3 +275,49 @@ export function RoleSwitch({ to, enabled, compact = false }: { to: AppRole; enab
     </>
   );
 }
+
+/**
+ * Super-admin view switcher: one pill with both apps side by side
+ * (⇄ Player | Organizer) instead of two separate buttons.
+ */
+export function ViewSwitcher({ compact = false }: { compact?: boolean }) {
+  const { go, overlay } = useSwitchTransition();
+  const options: Array<{ kind: AppRole; label: string }> = [
+    { kind: "player", label: "Player" },
+    { kind: "organizer", label: "Organizer" },
+  ];
+  return (
+    <>
+      <div
+        className={cn(
+          "flex items-center rounded-full border border-umber/60 bg-umber/10 p-1",
+          compact ? "w-fit text-xs" : "w-full text-sm"
+        )}
+        role="group"
+        aria-label="Switch view"
+      >
+        <span className={cn("flex shrink-0 items-center text-brass", compact ? "px-2" : "px-2.5")} aria-hidden>
+          <Repeat className={compact ? "size-3.5" : "size-4"} />
+        </span>
+        {options.map((o) => {
+          const Icon = KIND[o.kind].icon;
+          return (
+            <button
+              key={o.kind}
+              type="button"
+              onClick={(e) => go(o.kind, `/view/${o.kind}`, { x: e.clientX, y: e.clientY })}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-full font-medium text-bone/85 transition-colors hover:bg-umber/40 hover:text-bone active:scale-95",
+                compact ? "px-3 py-1" : "px-3 py-1.5"
+              )}
+            >
+              <Icon className={cn("text-brass", compact ? "size-3.5" : "size-4")} aria-hidden />
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {overlay}
+    </>
+  );
+}

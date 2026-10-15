@@ -93,3 +93,32 @@ export function verifyPayMongoWebhookSignature(
   if (sigBuf.length !== expBuf.length) return false;
   return timingSafeEqual(sigBuf, expBuf);
 }
+
+/**
+ * Asks PayMongo whether a checkout session has been paid. Used as a backup to
+ * the webhook (e.g. when the player lands on the success page first).
+ */
+export async function isCheckoutSessionPaid(sessionId: string): Promise<boolean> {
+  if (!isPayMongoConfigured() || !sessionId) return false;
+  try {
+    const res = await fetch(`${PAYMONGO_API}/checkout_sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: authHeader() },
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const json = (await res.json()) as {
+      data?: {
+        attributes?: {
+          payments?: Array<{ attributes?: { status?: string } }>;
+          payment_intent?: { attributes?: { status?: string } } | null;
+        };
+      };
+    };
+    const a = json.data?.attributes;
+    return Boolean(
+      a?.payments?.some((p) => p.attributes?.status === "paid") || a?.payment_intent?.attributes?.status === "succeeded"
+    );
+  } catch {
+    return false;
+  }
+}

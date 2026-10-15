@@ -75,7 +75,7 @@ export function AppShell({
       >
         <div className="flex h-14 items-center justify-between gap-3">
         <Logo />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-3">
           {primaryAction && (
             <Link
               href={primaryAction.href}
@@ -88,8 +88,9 @@ export function AppShell({
           <UserAccountMenu size="sm" />
         </div>
         </div>
+        {/* view switches ride in the sticky bar so they're always reachable */}
+        {mobileExtra && <div className="pb-2.5">{mobileExtra}</div>}
       </header>
-      {mobileExtra && <div className="border-b border-line px-4 py-2 sm:px-6 lg:hidden">{mobileExtra}</div>}
 
       <main
         id="main"

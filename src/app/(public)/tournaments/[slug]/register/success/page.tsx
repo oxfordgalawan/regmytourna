@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { verifyAndSettle } from "@/lib/payments/settle";
 
 export default async function RegisterSuccessPage({
   params,
@@ -14,6 +15,10 @@ export default async function RegisterSuccessPage({
   const atVenue = venue === "1";
   const position = waitlist ? Number(waitlist) || null : null;
   const onWaitlist = waitlist !== undefined;
+  // back from PayMongo: confirm the payment right away instead of waiting on the webhook
+  if (registration && !atVenue && !onWaitlist && /^[0-9a-f-]{36}$/i.test(registration)) {
+    await verifyAndSettle(registration).catch(() => undefined);
+  }
 
   return (
     <div className="mx-auto max-w-xl px-4 py-20 text-center sm:py-28">
