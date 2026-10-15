@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight, Plus, Search } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { SideNav, type SideNavLink } from "@/components/layout/side-nav";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -24,7 +24,7 @@ export function AppShell({
 }: {
   links: SideNavLink[];
   label: string;
-  primaryAction?: { href: string; label: string };
+  primaryAction?: { href: string; label: string; icon?: "plus" | "search" };
   sidebarExtra?: React.ReactNode;
   mobileExtra?: React.ReactNode;
   children: React.ReactNode;
@@ -46,7 +46,7 @@ export function AppShell({
               className="group flex items-center gap-3 rounded-xl bg-bone px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-[#f0ebdc]"
             >
               <span className="flex size-6 items-center justify-center rounded-md bg-ink/10 transition-transform group-hover:rotate-90">
-                <Plus className="size-4" />
+                {primaryAction.icon === "search" ? <Search className="size-4" /> : <Plus className="size-4" />}
               </span>
               {primaryAction.label}
             </Link>
@@ -80,7 +80,7 @@ export function AppShell({
               aria-label={primaryAction.label}
               className="flex size-9 items-center justify-center rounded-full bg-bone text-ink active:scale-95"
             >
-              <Plus className="size-4" />
+              {primaryAction.icon === "search" ? <Search className="size-4" /> : <Plus className="size-4" />}
             </Link>
           )}
           <SignOutButton variant="ghost" size="icon" iconOnly />

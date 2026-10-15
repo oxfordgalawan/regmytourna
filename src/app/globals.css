@@ -210,8 +210,10 @@
     background-size: 64px 64px;
   }
   /* Subtle film grain to keep large dark fields from looking flat */
+  /* no `position` here: it would override `fixed`/`absolute` on the same
+     element (this rule is emitted after Tailwind's utilities). Pair with
+     `relative`, `fixed` or `absolute`. */
   .grain {
-    position: relative;
     isolation: isolate;
   }
   .grain::after {
@@ -438,5 +440,38 @@
   }
   75% {
     transform: translateX(8px);
+  }
+}
+
+/* Role switch (player ⇄ organizer): a wipe from the button, then a reveal on arrival */
+@keyframes role-wipe-in {
+  from {
+    clip-path: circle(0 at var(--wipe-x, 50%) var(--wipe-y, 50%));
+  }
+  to {
+    clip-path: circle(150vmax at var(--wipe-x, 50%) var(--wipe-y, 50%));
+  }
+}
+@keyframes role-reveal-out {
+  0%,
+  35% {
+    opacity: 1;
+    clip-path: circle(150vmax at 50% 50%);
+  }
+  100% {
+    opacity: 0.6;
+    clip-path: circle(0 at 50% 50%);
+  }
+}
+@keyframes role-word-up {
+  from {
+    opacity: 0;
+    transform: translateY(40%);
+    letter-spacing: 0.2em;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    letter-spacing: -0.01em;
   }
 }

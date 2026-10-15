@@ -45,6 +45,8 @@ export async function updateSession(request: NextRequest) {
 
   const protectedPrefixes = [
     "/dashboard",
+    "/explore",
+    "/entries",
     "/settings",
     "/organizer",
     "/super-admin",

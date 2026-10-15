@@ -11,6 +11,11 @@ import { dateTile, daysUntil, formatDateRange, formatDateTime, formatPhp } from 
 import { PageHeader, SectionHeading, StatTile } from "@/components/layout/page-header";
 import { ArrowUpRight, ChevronRight, Compass, Database, Plus, Receipt, Ticket } from "lucide-react";
 import { relationOne } from "@/lib/supabase/relations";
+import { getViewRole } from "@/lib/auth/role";
+import { isSuperAdmin } from "@/lib/auth/is-super-admin";
+import { loadPlayerEntries } from "@/lib/player/entries";
+import { listPublicTournaments } from "@/lib/tournaments/queries";
+import { PlayerHome } from "@/components/player/player-home";
 
 export const metadata = { title: "Dashboard" };
 
@@ -33,6 +38,21 @@ export default async function DashboardPage() {
     .select("*")
     .eq("id", user.id)
     .single();
+
+  // players get their own home: entries, countdown, events to join — no organizer tools
+  if ((await getViewRole(user.id, { superAdmin: isSuperAdmin(user) })).view === "player") {
+    const [entries, open] = await Promise.all([
+      loadPlayerEntries(user.id),
+      listPublicTournaments({ status: "registration_open", pageSize: 9 }).catch(() => ({ data: [] })),
+    ]);
+    return (
+      <PlayerHome
+        firstName={(profile?.full_name || user.email || "Player").split(/[\s@]/)[0]}
+        entries={entries}
+        openTournaments={open.data}
+      />
+    );
+  }
 
   const { data: registrations } = await supabase
     .from("registrations")

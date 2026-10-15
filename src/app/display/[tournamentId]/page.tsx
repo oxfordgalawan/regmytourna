@@ -30,7 +30,7 @@ export default async function DisplayPage({
     .sort((a, b) => Number(b.status === "in_progress") - Number(a.status === "in_progress"));
 
   return (
-    <div className="grain min-h-screen bg-ink text-bone">
+    <div className="grain relative min-h-screen bg-ink text-bone">
       <header className="flex items-end justify-between gap-8 border-b border-umber px-10 py-8">
         <div>
           <p className="eyebrow flex items-center gap-2 text-bone/80">

@@ -4,9 +4,11 @@ import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ProfileForm } from "@/components/settings/profile-form";
-import { PageHeader } from "@/components/layout/page-header";
+import { getViewRole } from "@/lib/auth/role";
+import { isSuperAdmin } from "@/lib/auth/is-super-admin";
+import { BecomeOrganizerCard } from "@/components/player/become-organizer-card";
 
-export const metadata = { title: "Settings" };
+export const metadata = { title: "Profile" };
 
 function SettingsSection({
   icon: Icon,
@@ -33,14 +35,43 @@ function SettingsSection({
   );
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ organize?: string }>;
+}) {
   const user = await requireUser();
+  const { organize } = await searchParams;
   const supabase = await createClient();
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  const [{ data: profile }, { view: role, role: realRole, roles }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+    getViewRole(user.id, { superAdmin: isSuperAdmin(user) }),
+  ]);
+  const name = profile?.full_name || user.email || "Player";
+  const initials = name
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w: string) => w[0]?.toUpperCase())
+    .join("");
 
   return (
     <div className="space-y-10">
-      <PageHeader eyebrow="Account" title="Settings" />
+      {/* identity header */}
+      <header className="flex items-center gap-4 animate-rise sm:gap-6">
+        <span className="display flex size-16 shrink-0 items-center justify-center rounded-2xl border border-umber bg-espresso text-3xl text-brass sm:size-20 sm:text-4xl">
+          {initials || "P"}
+        </span>
+        <div className="min-w-0">
+          <p className="eyebrow">
+            {[roles.player && "Player", roles.organizer && "Organizer"].filter(Boolean).join(" · ")}
+          </p>
+          <h1 className="display mt-1 truncate text-4xl text-bone sm:text-5xl">{name}</h1>
+          <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+        </div>
+      </header>
+
+      {realRole === "player" && <BecomeOrganizerCard highlight={organize === "1"} />}
 
       <div>
         <SettingsSection
@@ -57,6 +88,7 @@ export default async function SettingsPage() {
           </Button>
         </SettingsSection>
 
+        {role === "organizer" && (
         <SettingsSection
           icon={Link2}
           title="Connected accounts"
@@ -73,6 +105,7 @@ export default async function SettingsPage() {
             <ArrowUpRight className="size-5 text-muted-foreground transition-colors group-hover:text-bone" />
           </Link>
         </SettingsSection>
+        )}
 
         <SettingsSection
           icon={Bell}
