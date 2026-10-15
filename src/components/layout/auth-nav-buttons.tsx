@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SignOutButton } from "@/components/auth/sign-out-button";
+import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/env/client";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
@@ -45,7 +45,7 @@ export function AuthNavButtons({ stacked = false }: { stacked?: boolean }) {
             <ArrowUpRight />
           </Link>
         </Button>
-        <SignOutButton size={size} />
+        <UserAccountMenu />
       </>
     );
   }

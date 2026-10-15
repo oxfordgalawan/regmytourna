@@ -22,8 +22,8 @@ export async function notifyRegistrantAfterRegistration(registrationId: string, 
   const { data: registration } = await admin
     .from("registrations")
     .select(
-      `id, status, payment_status, entry_source, registered_by,
-      tournaments(name, slug, start_date, end_date, venue_name, city, currency, entry_fee_cents),
+      `id, status, payment_status, entry_source, registered_by, waitlist_position,
+      tournaments(name, slug, start_date, end_date, venue_name, city, currency, entry_fee_cents, allow_walk_in_payment),
       tournament_divisions(name, format, entry_fee_cents),
       ${REGISTRATION_PLAYERS_SELECT}`
     )
@@ -41,6 +41,7 @@ export async function notifyRegistrantAfterRegistration(registrationId: string, 
     city: string | null;
     currency: string;
     entry_fee_cents: number;
+    allow_walk_in_payment: boolean | null;
   } | null;
   const division = relationOne(registration.tournament_divisions) as {
     name: string;
@@ -78,6 +79,35 @@ export async function notifyRegistrantAfterRegistration(registrationId: string, 
     feeCents,
     checkoutUrl: options.checkoutUrl,
   });
+
+  if (kind === "waitlisted") {
+    status.statusTitle = registration.waitlist_position
+      ? `On the waitlist — #${registration.waitlist_position}`
+      : "On the waitlist";
+    status.statusDetail =
+      "No payment is needed now. If a slot opens, we'll move you in automatically and email you to choose how to pay.";
+    status.statusTone = "neutral";
+    status.actionUrl = undefined;
+    status.actionLabel = undefined;
+  }
+
+  if (kind === "promoted") {
+    if (feeCents > 0) {
+      status.statusTitle = "Slot reserved — choose how to pay";
+      status.statusDetail = tournament.allow_walk_in_payment
+        ? "Your team is now in the draw list. Pay online now, or choose to pay at the venue on event day (cash or QR)."
+        : "Your team is now in the draw list. Pay online to confirm your slot.";
+      status.statusTone = "warn";
+      status.actionUrl = `${appUrl}/entries#entry-${registration.id}`;
+      status.actionLabel = "Choose how to pay";
+    } else {
+      status.statusTitle = "Confirmed — no payment required";
+      status.statusDetail = "You've been moved into the category. See you at the venue.";
+      status.statusTone = "good";
+      status.actionUrl = undefined;
+      status.actionLabel = undefined;
+    }
+  }
 
   if (kind === "payment_confirmed") {
     status.statusTitle = "Confirmed — payment received";

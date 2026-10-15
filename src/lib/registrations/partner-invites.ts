@@ -22,6 +22,8 @@ export type PartnerInvite = {
   paymentStatus: string;
   registrantId: string;
   registrantName: string;
+  /** the partner who registered left — this player was left holding the slot and becomes captain */
+  partnerLeft: boolean;
   divisionId: string;
   categoryName: string;
   tournament: {
@@ -39,13 +41,14 @@ export type PartnerInvite = {
 const ACTIVE = ["confirmed", "awaiting_payment", "pending", "awaiting_partner"];
 
 const INVITE_SELECT =
-  "id, guest_name, guest_email, user_id, partner_invite_status, partner_invite_token, registrations!inner(id, status, payment_status, registered_by, division_id, tournament_divisions(name), tournaments(id, name, slug, start_date, end_date, venue_name, city, cover_image_url))";
+  "id, guest_name, guest_email, user_id, is_primary, partner_invite_status, partner_invite_token, registrations!inner(id, status, payment_status, registered_by, needs_partner_since, division_id, tournament_divisions(name), tournaments(id, name, slug, start_date, end_date, venue_name, city, cover_image_url))";
 
 type InviteRow = {
   id: string;
   guest_name: string | null;
   guest_email: string | null;
   user_id: string | null;
+  is_primary: boolean | null;
   partner_invite_status: PartnerInvite["status"] | null;
   partner_invite_token: string | null;
   registrations: unknown;
@@ -57,6 +60,7 @@ async function toInvite(row: InviteRow): Promise<PartnerInvite | null> {
     status: string;
     payment_status: string;
     registered_by: string;
+    needs_partner_since: string | null;
     division_id: string;
     tournament_divisions: unknown;
     tournaments: unknown;
@@ -89,6 +93,7 @@ async function toInvite(row: InviteRow): Promise<PartnerInvite | null> {
     registrationStatus: reg.status,
     paymentStatus: reg.payment_status,
     registrantId: reg.registered_by,
+    partnerLeft: Boolean(row.is_primary && reg.needs_partner_since),
     registrantName: registrant?.full_name || "Your partner",
     divisionId: reg.division_id,
     categoryName: (relationOne(reg.tournament_divisions as never) as { name: string } | null)?.name ?? "Category",
@@ -123,11 +128,14 @@ export async function pendingInvitesForEmail(email: string | null | undefined): 
     .select(INVITE_SELECT)
     .ilike("guest_email", normalizePartnerEmail(email))
     .is("user_id", null)
-    .eq("is_primary", false)
     .or("partner_invite_status.is.null,partner_invite_status.eq.pending");
   const invites = await Promise.all(((data ?? []) as InviteRow[]).map(toInvite));
   return invites.filter(
-    (i): i is PartnerInvite => i !== null && ACTIVE.includes(i.registrationStatus)
+    (i): i is PartnerInvite =>
+      i !== null &&
+      ACTIVE.includes(i.registrationStatus) &&
+      // partners, plus guests whose partner left them holding the slot (not desk walk-ins)
+      (!((data ?? []) as InviteRow[]).find((r) => r.id === i.rowId)?.is_primary || i.partnerLeft)
   );
 }
 
@@ -136,7 +144,7 @@ export async function pendingInvitesForEmail(email: string | null | undefined): 
  * active entry in the same category (one team per category).
  */
 export async function linkPartner(invite: PartnerInvite, userId: string): Promise<{ ok?: true; error?: string }> {
-  if (invite.registrantId === userId) return { error: "That's your own entry — you're already on it." };
+  if (invite.registrantId === userId && !invite.partnerLeft) return { error: "That's your own entry — you're already on it." };
   if (invite.status === "declined") return { error: "This invite was declined. Ask your partner to add you again." };
   if (invite.linkedUserId && invite.linkedUserId !== userId) {
     return { error: "This invite has already been accepted by another account." };
@@ -169,6 +177,8 @@ export async function linkPartner(invite: PartnerInvite, userId: string): Promis
     })
     .eq("id", invite.rowId);
   if (error) return { error: error.message };
+  // left holding the slot: they're the captain now
+  if (invite.partnerLeft) await admin.from("registrations").update({ registered_by: userId }).eq("id", invite.registrationId);
   // they're a player now, whatever they signed up as
   await admin.from("profiles").update({ player_enabled: true }).eq("id", userId);
   return { ok: true };

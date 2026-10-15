@@ -1,21 +1,46 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
+
+/**
+ * The public "who's in" list for a category. Deliberately shows only who
+ * entered (names + profile photos) — never payment state.
+ */
 
 const SLOT_STATUSES = ["confirmed", "awaiting_payment", "pending", "awaiting_partner"] as const;
 
-export type PublicRosterEntry = {
+export type PublicRosterPlayer = {
   name: string;
-  status: string;
-  statusLabel: string;
+  avatarUrl: string | null;
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "Confirmed",
-  awaiting_payment: "Reserved",
-  pending: "Pending",
-  awaiting_partner: "Awaiting partner",
-  waitlisted: "Waitlist",
+export type PublicRosterEntry = {
+  players: PublicRosterPlayer[];
+  waitlistPosition?: number | null;
 };
+
+type PlayerRow = {
+  guest_name: string | null;
+  is_primary: boolean | null;
+  profiles: { full_name: string | null; avatar_url: string | null } | Array<{ full_name: string | null; avatar_url: string | null }> | null;
+};
+
+/** "ANDREW FUERZAS" → "Andrew Fuerzas"; leaves normal casing alone. */
+function tidyName(name: string) {
+  const n = name.trim().replace(/\s+/g, " ");
+  if (n !== n.toUpperCase() && n !== n.toLowerCase()) return n;
+  return n.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+function toPlayers(rows: PlayerRow[] | null | undefined): PublicRosterPlayer[] {
+  return (rows ?? [])
+    .slice()
+    .sort((x, y) => Number(Boolean(y.is_primary)) - Number(Boolean(x.is_primary)))
+    .map((p) => {
+      const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+      const name = prof?.full_name || p.guest_name;
+      return name ? { name: tidyName(name), avatarUrl: prof?.avatar_url?.trim() || null } : null;
+    })
+    .filter((p): p is PublicRosterPlayer => p !== null);
+}
 
 export async function loadPublicDivisionRoster(tournamentId: string, divisionId: string) {
   const admin = createAdminClient();
@@ -23,7 +48,7 @@ export async function loadPublicDivisionRoster(tournamentId: string, divisionId:
   const [{ data: division }, { data: tournament }] = await Promise.all([
     admin
       .from("tournament_divisions")
-      .select("id, name, capacity, tournament_id")
+      .select("id, name, capacity, format, tournament_id")
       .eq("id", divisionId)
       .eq("tournament_id", tournamentId)
       .maybeSingle(),
@@ -35,7 +60,7 @@ export async function loadPublicDivisionRoster(tournamentId: string, divisionId:
 
   const { data: regs } = await admin
     .from("registrations")
-    .select(`id, status, waitlist_position, created_at, ${REGISTRATION_PLAYERS_SELECT}`)
+    .select("id, status, waitlist_position, created_at, registration_players(guest_name, is_primary, profiles(full_name, avatar_url))")
     .eq("tournament_id", tournamentId)
     .eq("division_id", divisionId)
     .in("status", [...SLOT_STATUSES, "waitlisted"])
@@ -45,34 +70,16 @@ export async function loadPublicDivisionRoster(tournamentId: string, divisionId:
   const waitlist: PublicRosterEntry[] = [];
 
   for (const r of regs ?? []) {
-    const name = registrationName(r);
-    const status = r.status as string;
-    const entry: PublicRosterEntry = {
-      name,
-      status,
-      statusLabel: STATUS_LABEL[status] ?? status,
-    };
-    if (status === "waitlisted") {
-      waitlist.push({
-        ...entry,
-        statusLabel: r.waitlist_position
-          ? `Waitlist #${r.waitlist_position}`
-          : STATUS_LABEL.waitlisted,
-      });
-    } else if (SLOT_STATUSES.includes(status as (typeof SLOT_STATUSES)[number])) {
-      slots.push(entry);
-    }
+    const players = toPlayers(r.registration_players as PlayerRow[]);
+    if (!players.length) continue;
+    if (r.status === "waitlisted") waitlist.push({ players, waitlistPosition: r.waitlist_position });
+    else slots.push({ players });
   }
-
-  waitlist.sort((a, b) => {
-    const pos = (name: string) =>
-      regs?.find((x) => x.status === "waitlisted" && registrationName(x) === name)?.waitlist_position ??
-      999;
-    return pos(a.name) - pos(b.name);
-  });
+  waitlist.sort((a, b) => (a.waitlistPosition ?? 999) - (b.waitlistPosition ?? 999));
 
   return {
     divisionName: division.name as string,
+    format: division.format as string,
     capacity: division.capacity as number | null,
     slots,
     waitlist,

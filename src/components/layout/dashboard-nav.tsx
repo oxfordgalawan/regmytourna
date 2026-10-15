@@ -9,11 +9,10 @@ export const playerLinks: SideNavLink[] = [
   { href: "/settings", label: "Profile", icon: UserRound },
 ];
 
-/** Organizers: run events, get paid — and still play in others' events. */
+/** Organizers: run events and get paid. Their own entries live in the player view. */
 export const organizerLinks: SideNavLink[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/organizer/tournaments", label: "My events", icon: Trophy },
-  { href: "/entries", label: "Entries", icon: Ticket },
   { href: "/organizer/wallet", label: "Wallet", icon: Wallet },
   { href: "/settings", label: "Profile", icon: UserRound },
 ];

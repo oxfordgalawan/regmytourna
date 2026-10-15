@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Profile } from "@/types/database";
 import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
+import { AvatarUpload } from "@/components/settings/avatar-upload";
 
 export function ProfileForm({
   userId,
@@ -58,8 +59,21 @@ export function ProfileForm({
     }
   }
 
+  const displayName = profile?.full_name?.trim() || email;
+
   return (
     <form onSubmit={save} className="grid max-w-xl gap-5 sm:grid-cols-2">
+      <div className="space-y-2 sm:col-span-2">
+        <Label>Profile photo</Label>
+        <AvatarUpload
+          userId={userId}
+          displayName={displayName}
+          email={email}
+          avatarUrl={profile?.avatar_url}
+          variant="inline"
+        />
+        <p className="text-xs text-muted-foreground">Shown on your account menu and to partners.</p>
+      </div>
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" value={email} disabled />

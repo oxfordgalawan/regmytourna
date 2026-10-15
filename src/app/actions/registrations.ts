@@ -11,6 +11,8 @@ import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registra
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
+import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
+import { cancelEntry, isCaptainOf, loadTeam } from "@/lib/registrations/team-changes";
 
 export async function listMyRegistrationsForTournamentAction(tournamentSlug: string) {
   const user = await requireUser();
@@ -22,11 +24,15 @@ export async function listMyRegistrationsForTournamentAction(tournamentSlug: str
     .maybeSingle();
   if (!tournament) return { entries: [] as const };
 
+  // entries I'm on (as captain or partner) — not ones I've left
+  const { data: mine } = await admin.from("registration_players").select("registration_id").eq("user_id", user.id);
+  const ids = (mine ?? []).map((r) => r.registration_id);
+  if (!ids.length) return { entries: [] };
   const { data: regs } = await admin
     .from("registrations")
     .select("id, status, payment_status, division_id, tournament_divisions(name)")
     .eq("tournament_id", tournament.id)
-    .eq("registered_by", user.id)
+    .in("id", ids)
     .neq("status", "cancelled");
 
   return {
@@ -46,17 +52,20 @@ export async function cancelMyRegistrationAction(registrationId: string) {
   const admin = createAdminClient();
   const { data: reg } = await admin
     .from("registrations")
-    .select("id, registered_by, payment_status, status, tournament_id, tournaments(slug)")
+    .select("id, registered_by, payment_status, status, tournament_id, division_id, tournaments(slug)")
     .eq("id", registrationId)
     .maybeSingle();
-  if (!reg || reg.registered_by !== user.id) return { error: "Entry not found." };
+  if (!reg || !(await isCaptainOf(reg.id, user.id))) return { error: "Entry not found." };
   if (reg.payment_status === "paid") {
     return { error: "This entry is already paid. Ask the organizer if you need to change categories." };
   }
   if (reg.status === "cancelled") return { ok: true as const };
 
-  await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
-  await admin.from("registrations").update({ status: "cancelled" }).eq("id", registrationId);
+  // same path as "Cancel our entry": frees the slot for the waitlist and tells the partner
+  const team = await loadTeam(registrationId);
+  if (!team) return { error: "Entry not found." };
+  const res = await cancelEntry(team, user.id);
+  if (!res.ok) return { error: res.error };
 
   const slug = (relationOne(reg.tournaments) as { slug: string } | null)?.slug;
   if (slug) revalidatePath(`/tournaments/${slug}`);
@@ -105,7 +114,7 @@ export async function createRegistrationAction(params: {
 
   const { data: tournament } = await supabase
     .from("tournaments")
-    .select("id, slug, name, entry_fee_cents, status, registration_closes_at, max_capacity, allow_walk_in_payment")
+    .select("id, slug, name, entry_fee_cents, status, registration_closes_at, max_capacity, allow_walk_in_payment, waitlist_enabled")
     .eq("slug", params.tournamentSlug)
     .single();
   if (!tournament) return { error: "Tournament not found" };
@@ -155,14 +164,10 @@ export async function createRegistrationAction(params: {
 
   const admin = createAdminClient();
 
-  const { count: existingCount } = await admin
-    .from("registrations")
-    .select("id", { count: "exact", head: true })
-    .eq("division_id", division.id)
-    .in("status", ["confirmed", "awaiting_payment", "pending", "awaiting_partner"]);
-
-  if (division.capacity && (existingCount ?? 0) >= division.capacity) {
-    return { error: "Division is full" };
+  // full category: join the waitlist (no payment) if the organizer allows it
+  const full = Boolean(division.capacity && (await takenInDivision(division.id, admin)) >= division.capacity);
+  if (full && !tournament.waitlist_enabled) {
+    return { error: "This category is full." };
   }
 
   const { data: dup } = await admin
@@ -209,8 +214,9 @@ export async function createRegistrationAction(params: {
     }
   }
 
-  const status = fee > 0 ? "awaiting_payment" : "confirmed";
-  const payAtVenue = Boolean(params.payAtVenue && tournament.allow_walk_in_payment && fee > 0);
+  const status = full ? "waitlisted" : fee > 0 ? "awaiting_payment" : "confirmed";
+  const payAtVenue = Boolean(!full && params.payAtVenue && tournament.allow_walk_in_payment && fee > 0);
+  const waitlistPosition = full ? await nextWaitlistPosition(division.id, admin) : null;
   const { data: registration, error } = await admin
     .from("registrations")
     .insert({
@@ -219,8 +225,9 @@ export async function createRegistrationAction(params: {
       registered_by: user.id,
       team_id: teamId,
       status,
-      payment_status: fee > 0 ? "pending" : "paid",
+      payment_status: full || fee > 0 ? "pending" : "paid",
       entry_source: payAtVenue ? "pay_at_venue" : "online",
+      waitlist_position: waitlistPosition,
     })
     .select("id")
     .single();
@@ -268,6 +275,13 @@ export async function createRegistrationAction(params: {
     revalidatePath("/dashboard");
   };
 
+  // waitlisted: nothing to pay until a slot opens; the partner hears once they're in
+  if (full) {
+    revalidate();
+    await notifyRegistrantAfterRegistration(registration.id, { kind: "waitlisted" });
+    return withWarnings({ registrationId: registration.id, waitlisted: true, position: waitlistPosition });
+  }
+
   if (payAtVenue) {
     revalidate();
     await notifyRegistrantAfterRegistration(registration.id);
@@ -289,7 +303,7 @@ export async function createRegistrationAction(params: {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const checkout = await createCheckoutSession({
       amountCents: fee,
-      description: `${tournament.name} registration`,
+      description: `${tournament.name} registration (non-refundable)`,
       successUrl: `${appUrl}/tournaments/${tournament.slug}/register/success?registration=${registration.id}`,
       cancelUrl: `${appUrl}/tournaments/${tournament.slug}?cancelled=1`,
       metadata: {
@@ -318,4 +332,31 @@ export async function createRegistrationAction(params: {
   await notifyRegistrantAfterRegistration(registration.id);
   await notifyPartnerAfterRegistration(registration.id);
   return withWarnings({ registrationId: registration.id, confirmed: true });
+}
+
+/**
+ * After being moved up from the waitlist, the player picks how to pay.
+ * "Pay at the venue" keeps the slot held; they're confirmed once the desk records it.
+ */
+export async function choosePayAtVenueAction(registrationId: string) {
+  const user = await requireUser();
+  const admin = createAdminClient();
+  const { data: reg } = await admin
+    .from("registrations")
+    .select("id, registered_by, status, payment_status, tournament_id, tournaments(slug, allow_walk_in_payment)")
+    .eq("id", registrationId)
+    .maybeSingle();
+  if (!reg || !(await isCaptainOf(reg.id, user.id))) return { error: "Only the team captain can choose how to pay." };
+  const t = relationOne(reg.tournaments) as { slug: string; allow_walk_in_payment: boolean | null } | null;
+  if (!t?.allow_walk_in_payment) return { error: "This tournament only takes online payment." };
+  if (reg.payment_status === "paid") return { error: "This entry is already paid." };
+  if (reg.status !== "awaiting_payment") return { error: "This entry isn't waiting for payment." };
+
+  await admin.from("registrations").update({ entry_source: "pay_at_venue" }).eq("id", registrationId);
+  await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
+  revalidatePath(`/tournaments/${t.slug}`);
+  revalidatePath(`/organizer/tournaments/${reg.tournament_id}/registrations`);
+  revalidatePath("/entries");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
 }

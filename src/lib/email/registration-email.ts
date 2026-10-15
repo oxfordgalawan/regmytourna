@@ -1,7 +1,7 @@
 import { formatDateRange, formatPhp } from "@/lib/format";
 import { escapeHtml } from "@/lib/email/escape";
 
-export type RegistrationEmailKind = "registered" | "payment_confirmed";
+export type RegistrationEmailKind = "registered" | "payment_confirmed" | "waitlisted" | "promoted";
 
 export type RegistrationEmailContent = {
   kind: RegistrationEmailKind;
@@ -118,12 +118,19 @@ const toneColors = {
 
 export function buildRegistrationEmailHtml(c: RegistrationEmailContent) {
   const tone = toneColors[c.statusTone];
-  const headline =
-    c.kind === "payment_confirmed" ? "Payment received — you're confirmed" : "You're registered";
-  const sub =
-    c.kind === "payment_confirmed"
-      ? `Thanks for completing payment for ${escapeHtml(c.tournamentName)}.`
-      : `Here's a summary of your entry for ${escapeHtml(c.tournamentName)}.`;
+  const headline = {
+    payment_confirmed: "Payment received — you're confirmed",
+    registered: "You're registered",
+    waitlisted: "You're on the waitlist",
+    promoted: "A slot opened — you're in!",
+  }[c.kind];
+  const sub = {
+    payment_confirmed: `Thanks for completing payment for ${escapeHtml(c.tournamentName)}.`,
+    registered: `Here's a summary of your entry for ${escapeHtml(c.tournamentName)}.`,
+    waitlisted: `${escapeHtml(c.divisionName)} at ${escapeHtml(c.tournamentName)} is full, so we saved your place in line.`,
+    promoted: `Someone left ${escapeHtml(c.divisionName)} at ${escapeHtml(c.tournamentName)} and you were next on the waitlist.`,
+  }[c.kind];
+  const showRefundNote = c.feeCents > 0 && c.kind !== "waitlisted";
 
   const dates = formatDateRange(c.startDate, c.endDate);
   const venue = [c.venueName, c.city].filter(Boolean).join(" · ") || "Venue to be announced";
@@ -178,6 +185,11 @@ export function buildRegistrationEmailHtml(c: RegistrationEmailContent) {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #2a2622;">
             ${rowsHtml}
             ${actionBlock}
+            ${
+              showRefundNote
+                ? `<tr><td colspan="2" style="padding:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#9a9185;">Entry fees are non-refundable once paid.</td></tr>`
+                : ""
+            }
             <tr><td colspan="2" style="padding:20px 0 0;">
               <a href="${escapeHtml(c.eventUrl)}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#c9a227;text-decoration:underline;">View tournament page</a>
             </td></tr>
@@ -197,5 +209,7 @@ export function registrationEmailSubject(kind: RegistrationEmailKind, tournament
   if (kind === "payment_confirmed") {
     return `Payment confirmed — ${tournamentName}`;
   }
+  if (kind === "waitlisted") return `You're on the waitlist — ${tournamentName}`;
+  if (kind === "promoted") return `A slot opened for you — ${tournamentName}`;
   return `Registration received — ${tournamentName}`;
 }

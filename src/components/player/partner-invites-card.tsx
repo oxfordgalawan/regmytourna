@@ -21,7 +21,13 @@ export function PartnerInvitesCard({ invites }: { invites: PartnerInvite[] }) {
             <div className="relative space-y-4">
               <div>
                 <p className="text-sm text-bone/80">
-                  <span className="font-semibold text-bone">{i.registrantName}</span> added you to
+                  {i.partnerLeft ? (
+                    "Your partner left — your slot is held in"
+                  ) : (
+                    <>
+                      <span className="font-semibold text-bone">{i.registrantName}</span> added you to
+                    </>
+                  )}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-bone">{i.categoryName}</p>
                 <Link

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CreditCard, Loader2, Lock, Swords, Ticket, UserRound } from "lucide-react";
+import { Check, Clock, CreditCard, Info, Loader2, Lock, Swords, Ticket, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import {
   cancelMyRegistrationAction,
@@ -33,7 +33,13 @@ type Division = {
   format: string;
   entry_fee_cents?: number | null;
   capacity?: number | null;
+  /** entries currently holding a slot */
+  taken?: number;
 };
+
+function isFull(d: Division | undefined) {
+  return Boolean(d?.capacity && (d.taken ?? 0) >= d.capacity);
+}
 
 export function RegisterSection({
   slug,
@@ -41,9 +47,12 @@ export function RegisterSection({
   currency = "PHP",
   defaultFeeCents = 0,
   allowPayAtVenue = false,
+  waitlistEnabled = false,
 }: {
   slug: string;
   divisions: Division[];
+  /** full categories take waitlist entries (no payment until a slot opens) */
+  waitlistEnabled?: boolean;
   /** tournament lets players pay in cash / QR on the day */
   allowPayAtVenue?: boolean;
   currency?: string;
@@ -78,7 +87,10 @@ export function RegisterSection({
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;
   const [payment, setPayment] = useState<"online" | "venue">("online");
-  const venue = allowPayAtVenue && fee > 0 && payment === "venue";
+  const full = isFull(selected);
+  const waitlist = full && waitlistEnabled;
+  const closed = full && !waitlistEnabled;
+  const venue = !waitlist && allowPayAtVenue && fee > 0 && payment === "venue";
   const isDoubles = selected?.format === "doubles";
 
   const runPartnerPreview = useCallback(async () => {
@@ -124,6 +136,11 @@ export function RegisterSection({
     }
     if ("warnings" in result && Array.isArray(result.warnings) && result.warnings.length) {
       setPartnerWarnings(result.warnings);
+    }
+    if ("waitlisted" in result && result.waitlisted && "registrationId" in result) {
+      const pos = "position" in result && result.position ? result.position : 1;
+      router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&waitlist=${pos}`);
+      return;
     }
     if ("checkoutUrl" in result && result.checkoutUrl) {
       window.location.href = result.checkoutUrl;
@@ -294,8 +311,19 @@ export function RegisterSection({
                   <span className="block truncate text-sm font-medium text-bone">{d.name}</span>
                   <span className="block text-xs text-muted-foreground capitalize">{d.format}</span>
                 </span>
-                <span className="font-mono text-sm text-bone/80">
-                  {formatPhp(d.entry_fee_cents ?? defaultFeeCents, currency)}
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="font-mono text-sm text-bone/80">
+                    {formatPhp(d.entry_fee_cents ?? defaultFeeCents, currency)}
+                  </span>
+                  {isFull(d) ? (
+                    <span className="rounded-full border border-brass/40 px-2 text-[0.65rem] leading-5 text-brass">
+                      {waitlistEnabled ? "Full · waitlist" : "Full"}
+                    </span>
+                  ) : d.capacity && d.capacity - (d.taken ?? 0) <= 3 ? (
+                    <span className="text-[0.65rem] text-brass">
+                      {d.capacity - (d.taken ?? 0)} {d.capacity - (d.taken ?? 0) === 1 ? "spot" : "spots"} left
+                    </span>
+                  ) : null}
                 </span>
               </button>
             );
@@ -339,10 +367,10 @@ export function RegisterSection({
         </fieldset>
       )}
 
-      {allowPayAtVenue && fee > 0 && (
-        <fieldset>
+      {allowPayAtVenue && fee > 0 && !closed && (
+        <fieldset disabled={waitlist} aria-disabled={waitlist}>
           <legend className="eyebrow mb-3">How will you pay?</legend>
-          <div className="grid grid-cols-2 gap-2" role="radiogroup">
+          <div className={cn("grid grid-cols-2 gap-2", waitlist && "pointer-events-none opacity-40")} role="radiogroup">
             {(
               [
                 ["online", "Pay online now", "GCash, Maya or card"],
@@ -353,11 +381,11 @@ export function RegisterSection({
                 key={value}
                 type="button"
                 role="radio"
-                aria-checked={payment === value}
+                aria-checked={!waitlist && payment === value}
                 onClick={() => setPayment(value)}
                 className={cn(
                   "rounded-xl border px-3 py-3 text-left transition-all",
-                  payment === value ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
+                  !waitlist && payment === value ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
                 )}
               >
                 <span className="block text-sm font-medium text-bone">{label}</span>
@@ -368,11 +396,41 @@ export function RegisterSection({
         </fieldset>
       )}
 
+      {waitlist && (
+        <div className="flex gap-3 rounded-xl border border-brass/40 bg-brass/[0.06] p-4 text-sm animate-in fade-in-0">
+          <Clock className="mt-0.5 size-4 shrink-0 text-brass" aria-hidden />
+          <div className="space-y-1">
+            <p className="font-medium text-bone">This category is full — join the waitlist</p>
+            <p className="text-bone/70">
+              No payment now. If a slot opens, we&apos;ll move you in automatically and email you to choose
+              {allowPayAtVenue ? " pay online or pay at the venue" : " how to pay"}. Payment is only collected once
+              you&apos;re in a slot.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-line bg-ink/40 p-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">{venue ? "Pay at the desk" : "Total due"}</span>
-          <span className="display text-3xl text-bone">{formatPhp(fee, currency)}</span>
+          <span className="text-muted-foreground">
+            {waitlist ? "Due now" : venue ? "Pay at the desk" : "Total due"}
+          </span>
+          <span className="display text-3xl text-bone">{formatPhp(waitlist ? 0 : fee, currency)}</span>
         </div>
+        {waitlist && fee > 0 && (
+          <p className="mt-1 text-right text-xs text-muted-foreground">
+            {formatPhp(fee, currency)} once you&apos;re moved into a slot
+          </p>
+        )}
+        {!waitlist && !closed && fee > 0 && (
+          <p className="mt-3 flex gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-bone/75">
+            <Info className="mt-0.5 size-3.5 shrink-0 text-brass" aria-hidden />
+            <span>
+              <span className="font-semibold text-bone">Entry fees are non-refundable.</span> Make sure you and your
+              partner can play on the event dates before paying.
+            </span>
+          </p>
+        )}
         <Button
           size="lg"
           className="mt-4 w-full"
@@ -380,6 +438,7 @@ export function RegisterSection({
           disabled={
             loading ||
             enablingPlayer ||
+            closed ||
             !divisionId ||
             Boolean(entryForDivision) ||
             (isDoubles && !partnerName.trim())
@@ -388,8 +447,12 @@ export function RegisterSection({
           {loading ? (
             <>
               <Loader2 className="animate-spin" />
-              {venue ? "Reserving your slot…" : "Preparing checkout…"}
+              {waitlist ? "Saving your place…" : venue ? "Reserving your slot…" : "Preparing checkout…"}
             </>
+          ) : closed ? (
+            "Category full"
+          ) : waitlist ? (
+            "Join the waitlist"
           ) : venue ? (
             "Reserve my slot"
           ) : fee > 0 ? (
@@ -399,8 +462,14 @@ export function RegisterSection({
           )}
         </Button>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-          {venue ? (
+          {closed ? (
+            "No slots left in this category. Try another one."
+          ) : waitlist ? (
+            "You'll get an email the moment a slot opens."
+          ) : venue ? (
             "Your slot is held. You're confirmed once you pay at the desk."
+          ) : fee <= 0 ? (
+            "Free entry — you're confirmed right away."
           ) : (
             <>
               <Lock className="size-3" aria-hidden />

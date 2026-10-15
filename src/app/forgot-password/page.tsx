@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { requestPasswordReset } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
@@ -12,19 +13,26 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setLoading(true);
     const fd = new FormData(e.currentTarget);
     const result = await requestPasswordReset(fd);
+    setLoading(false);
     if (result?.error) setError(result.error);
+    else if (result?.message) setMessage(result.message);
     else setMessage("If an account exists, a reset link has been sent.");
   }
 
   return (
-    <AuthShell title="Reset password" subtitle="We will email you a link to choose a new password.">
+    <AuthShell
+      title="Reset password"
+      subtitle="Enter your account email and we will send a secure link to choose a new password."
+    >
       <form onSubmit={onSubmit} className="space-y-5">
         {message && (
           <Alert>
@@ -40,7 +48,8 @@ export default function ForgotPasswordPage() {
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" autoComplete="email" placeholder="you@email.com" required />
         </div>
-        <Button type="submit" size="lg" className="w-full">
+        <Button type="submit" size="lg" className="w-full" disabled={loading}>
+          {loading ? <Loader2 className="animate-spin" /> : null}
           Send reset link
         </Button>
         <p className="text-center text-sm">

@@ -2,11 +2,15 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/env/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPasswordResetEmail } from "@/lib/email/send";
+import { getAppUrl, isResendConfigured, isSupabaseConfigured } from "@/lib/env/server";
+import { forgotPasswordSchema, resetPasswordSchema } from "@/lib/validations/auth";
 import { getPostLoginPath } from "@/lib/auth/get-post-login-path";
 import { sanitizeNext } from "@/lib/auth/safe-next";
 import { findInviteByToken, linkPartner } from "@/lib/registrations/partner-invites";
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { acceptSubstitution, findSubstitution } from "@/lib/registrations/team-changes";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -90,6 +94,15 @@ export async function signUp(formData: FormData) {
         await linkPartner(invite, data.user.id).catch(() => undefined);
       }
     }
+
+    // signed up from a "take my place" invite with the same email: they're in
+    const subToken = String(formData.get("substitute") ?? "");
+    if (subToken && data.user.identities?.length !== 0) {
+      const found = await findSubstitution(subToken);
+      if (found?.sub.status === "pending" && normalizePartnerEmail(found.sub.substitute_email) === normalizePartnerEmail(email)) {
+        await acceptSubstitution(subToken, data.user.id).catch(() => undefined);
+      }
+    }
   }
 
   const next = sanitizeNext(String(formData.get("next") ?? ""));
@@ -99,27 +112,79 @@ export async function signUp(formData: FormData) {
   redirect(dest === "/dashboard" ? "/dashboard?welcome=1" : dest);
 }
 
+function passwordResetRedirectUrl(): string {
+  const appUrl = getAppUrl().replace(/\/$/, "");
+  return `${appUrl}/auth/callback?next=${encodeURIComponent("/reset-password")}`;
+}
+
+const PASSWORD_RESET_ACK =
+  "If an account exists for that email, we sent a link to reset your password.";
+
 export async function requestPasswordReset(formData: FormData) {
   if (!isSupabaseConfigured()) {
     return { error: "Supabase is not configured." };
   }
-  const email = String(formData.get("email") ?? "");
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${appUrl}/reset-password`,
+  const parsed = forgotPasswordSchema.safeParse({
+    email: String(formData.get("email") ?? "").trim(),
   });
-  if (error) return { error: error.message };
-  return { success: true };
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Enter a valid email address." };
+  }
+  const email = parsed.data.email.toLowerCase();
+  const redirectTo = passwordResetRedirectUrl();
+
+  if (isResendConfigured()) {
+    const admin = createAdminClient();
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo },
+    });
+    if (error) {
+      console.warn("[auth] recovery generateLink:", error.message);
+      return { success: true, message: PASSWORD_RESET_ACK };
+    }
+    const resetUrl = data.properties?.action_link;
+    if (!resetUrl) {
+      return { success: true, message: PASSWORD_RESET_ACK };
+    }
+    const sent = await sendPasswordResetEmail({ to: email, resetUrl });
+    if ("error" in sent && sent.error) {
+      return { error: "Could not send the reset email. Try again in a few minutes." };
+    }
+    if (sent.skipped) {
+      const supabase = await createClient();
+      const { error: fallbackError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (fallbackError) {
+        console.warn("[auth] resetPasswordForEmail:", fallbackError.message);
+      }
+    }
+    return { success: true, message: PASSWORD_RESET_ACK };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) {
+    console.warn("[auth] resetPasswordForEmail:", error.message);
+  }
+  return { success: true, message: PASSWORD_RESET_ACK };
 }
 
 export async function updatePassword(formData: FormData) {
   if (!isSupabaseConfigured()) {
     return { error: "Supabase is not configured." };
   }
-  const password = String(formData.get("password") ?? "");
+  const parsed = resetPasswordSchema.safeParse({
+    password: String(formData.get("password") ?? ""),
+    confirmPassword: String(formData.get("confirmPassword") ?? ""),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Check your password and try again." };
+  }
   const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({ password });
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { error: error.message };
-  redirect("/dashboard");
+  redirect("/login?message=password_updated");
 }

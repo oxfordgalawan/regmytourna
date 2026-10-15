@@ -3,6 +3,7 @@ import { ArrowUpRight, Bell, KeyRound, Link2, UserRound } from "lucide-react";
 import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
+import { AvatarUpload } from "@/components/settings/avatar-upload";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { getViewRole } from "@/lib/auth/role";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
@@ -48,20 +49,17 @@ export default async function SettingsPage({
     getViewRole(user.id, { superAdmin: isSuperAdmin(user) }),
   ]);
   const name = profile?.full_name || user.email || "Player";
-  const initials = name
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w: string) => w[0]?.toUpperCase())
-    .join("");
-
   return (
     <div className="space-y-10">
       {/* identity header */}
       <header className="flex items-center gap-4 animate-rise sm:gap-6">
-        <span className="display flex size-16 shrink-0 items-center justify-center rounded-2xl border border-umber bg-espresso text-3xl text-brass sm:size-20 sm:text-4xl">
-          {initials || "P"}
-        </span>
+        <AvatarUpload
+          userId={user.id}
+          displayName={name}
+          email={user.email}
+          avatarUrl={profile?.avatar_url}
+          variant="header"
+        />
         <div className="min-w-0">
           <p className="eyebrow">
             {[roles.player && "Player", roles.organizer && "Organizer"].filter(Boolean).join(" · ")}

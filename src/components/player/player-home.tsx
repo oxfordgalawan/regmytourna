@@ -2,13 +2,14 @@ import Link from "next/link";
 import { ArrowRight, Compass, MapPin, Sparkles, Swords, Ticket, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/player/countdown";
-import { EntryTicket, paymentState } from "@/components/player/entry-ticket";
-import { PayNowButton } from "@/components/player/pay-now-button";
+import { EntryTicket, needsPaymentChoice, paymentState } from "@/components/player/entry-ticket";
+import { EntryPayActions } from "@/components/player/entry-pay-actions";
+import { ManageEntry } from "@/components/player/manage-entry";
 import { PartnerInvitesCard } from "@/components/player/partner-invites-card";
 import type { PartnerInvite } from "@/lib/registrations/partner-invites";
 import { TournamentCard, type TournamentCardData } from "@/components/tournaments/tournament-card";
 import { Reveal } from "@/components/motion/reveal";
-import { formatDateRange, formatPhp } from "@/lib/format";
+import { formatDateRange } from "@/lib/format";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { isUpcoming, type PlayerEntry } from "@/lib/player/entries";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ function greeting() {
 /** The hero: the very next event, with a countdown and what to do next. */
 function NextUp({ entry: e }: { entry: PlayerEntry }) {
   const pay = paymentState(e);
-  const canPayOnline = e.paymentStatus !== "paid" && e.entrySource === "online" && e.feeCents > 0;
+  const canPayOnline = needsPaymentChoice(e);
   const match = e.liveMatch ?? e.nextMatch;
 
   return (
@@ -57,6 +58,8 @@ function NextUp({ entry: e }: { entry: PlayerEntry }) {
             )}
           </div>
 
+          {e.needsPartner && e.isRegistrant && <ManageEntry entry={e} className="mt-5 max-w-md" />}
+
           {match && (
             <div className="mt-5 inline-flex max-w-full items-center gap-3 rounded-xl border border-line bg-ink/50 px-4 py-3 text-sm backdrop-blur">
               <Swords className="size-4 shrink-0 text-brass" />
@@ -80,7 +83,11 @@ function NextUp({ entry: e }: { entry: PlayerEntry }) {
               {pay.label}
             </span>
             {canPayOnline ? (
-              <PayNowButton registrationId={e.id} label={`Pay ${formatPhp(e.feeCents)}`} />
+              <EntryPayActions
+                registrationId={e.id}
+                feeCents={e.feeCents}
+                allowPayAtVenue={e.allowPayAtVenue}
+              />
             ) : (
               <Button size="sm" variant="outline" asChild>
                 <Link href={`/tournaments/${e.tournament.slug}${e.tournament.status === "in_progress" ? "#draw" : ""}`} transitionTypes={NAV_FORWARD}>

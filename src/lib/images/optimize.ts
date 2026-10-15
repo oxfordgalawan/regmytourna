@@ -8,6 +8,8 @@
 
 export const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 export const MAX_PETITION_SOURCE_BYTES = 5 * 1024 * 1024;
+export const MAX_AVATAR_SOURCE_BYTES = 8 * 1024 * 1024;
+export const AVATAR_OUTPUT_SIZE = 512;
 
 export type OptimizedImage = {
   blob: Blob;
@@ -145,4 +147,75 @@ export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export type CropArea = { x: number; y: number; width: number; height: number };
+
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.addEventListener("load", () => resolve(img));
+    img.addEventListener("error", () => reject(new Error("Couldn't load this image.")));
+    img.crossOrigin = "anonymous";
+    img.src = src;
+  });
+}
+
+/** Draw a user-selected square crop into a fixed-size canvas (for avatars). */
+export async function cropImageToCanvas(
+  imageSrc: string,
+  pixelCrop: CropArea,
+  outputSize = AVATAR_OUTPUT_SIZE
+): Promise<HTMLCanvasElement> {
+  const image = await loadImageElement(imageSrc);
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Your browser couldn't process this image.");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    outputSize,
+    outputSize
+  );
+  return canvas;
+}
+
+async function encodeCanvas(
+  canvas: HTMLCanvasElement,
+  opts: { quality?: number; maxBytes?: number } = {}
+): Promise<OptimizedImage> {
+  const { quality = 0.86, maxBytes = 400_000 } = opts;
+  let q = quality;
+  let blob = await toBlob(canvas, "image/webp", q);
+  let type: OptimizedImage["type"] = "image/webp";
+  if (!blob || blob.type !== "image/webp") {
+    type = "image/jpeg";
+    blob = await toBlob(canvas, "image/jpeg", q);
+  }
+  while (blob && blob.size > maxBytes && q > 0.5) {
+    q -= 0.08;
+    blob = await toBlob(canvas, type, q);
+  }
+  if (!blob) throw new Error("Your browser couldn't process this image.");
+  if (blob.size > maxBytes) throw new Error("This photo is too detailed to compress. Try another one.");
+
+  return { blob, type, width: canvas.width, height: canvas.height, originalBytes: 0 };
+}
+
+/** Re-encode a cropped avatar canvas as WebP/JPEG ≤ ~400 KB. */
+export async function optimizeAvatarCanvas(
+  canvas: HTMLCanvasElement,
+  originalBytes: number
+): Promise<OptimizedImage> {
+  const result = await encodeCanvas(canvas, { quality: 0.86, maxBytes: 400_000 });
+  return { ...result, originalBytes };
 }

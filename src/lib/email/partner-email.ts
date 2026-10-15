@@ -2,18 +2,21 @@ import { escapeHtml } from "@/lib/email/escape";
 import { formatDateRange } from "@/lib/format";
 
 /** Email-safe layout in the app's palette (inline styles only). */
-function layout(body: string) {
+export function layout(
+  body: string,
+  footer = "You're receiving this because someone entered your email as their tournament partner."
+) {
   return `<!doctype html><html><body style="margin:0;background:#000;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#e0dac8">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#1f1610;border:1px solid #45301a;border-radius:16px">
 <tr><td style="padding:28px 28px 8px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#b98e5a;font-weight:bold">RegMyTourna</td></tr>
 <tr><td style="padding:8px 28px 28px">${body}</td></tr>
 </table>
-<p style="font-size:12px;color:#8a8273;margin:16px 0 0">You're receiving this because someone entered your email as their tournament partner.</p>
+<p style="font-size:12px;color:#8a8273;margin:16px 0 0">${escapeHtml(footer)}</p>
 </td></tr></table></body></html>`;
 }
 
-function button(href: string, label: string, primary = true) {
+export function button(href: string, label: string, primary = true) {
   return `<a href="${escapeHtml(href)}" style="display:inline-block;margin:6px 8px 6px 0;padding:12px 18px;border-radius:10px;font-size:15px;font-weight:bold;text-decoration:none;${
     primary ? "background:#e0dac8;color:#000" : "border:1px solid #45301a;color:#e0dac8"
   }">${escapeHtml(label)}</a>`;

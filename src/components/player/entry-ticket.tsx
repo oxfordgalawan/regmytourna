@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowUpRight, MapPin, Swords } from "lucide-react";
-import { PayNowButton } from "@/components/player/pay-now-button";
+import { EntryPayActions } from "@/components/player/entry-pay-actions";
 import { PartnerLine } from "@/components/player/partner-line";
+import { ManageEntry } from "@/components/player/manage-entry";
 import { dateTile, formatDateRange, formatPhp } from "@/lib/format";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import type { PlayerEntry } from "@/lib/player/entries";
@@ -10,11 +11,25 @@ import { cn } from "@/lib/utils";
 /** What the player needs to know about payment, in plain words. */
 export function paymentState(e: PlayerEntry) {
   if (e.status === "cancelled") return { label: "Cancelled", tone: "quiet" as const };
+  if (e.status === "waitlisted") {
+    return { label: e.waitlistPosition ? `Waitlist #${e.waitlistPosition}` : "On the waitlist", tone: "quiet" as const };
+  }
   if (e.paymentStatus === "paid") return { label: "Paid · confirmed", tone: "good" as const };
   if (e.entrySource === "pay_at_venue" || e.entrySource === "desk") {
     return { label: `Pay ${formatPhp(e.feeCents)} at the desk`, tone: "warn" as const };
   }
   return { label: `${formatPhp(e.feeCents)} to pay`, tone: "warn" as const };
+}
+
+/** Holds a slot, unpaid, and the player still has to pay online or pick the venue. */
+export function needsPaymentChoice(e: PlayerEntry) {
+  return (
+    e.isRegistrant &&
+    e.status === "awaiting_payment" &&
+    e.paymentStatus !== "paid" &&
+    e.entrySource === "online" &&
+    e.feeCents > 0
+  );
 }
 
 const TONE = {
@@ -30,12 +45,14 @@ const TONE = {
 export function EntryTicket({ entry: e, className }: { entry: PlayerEntry; className?: string }) {
   const tile = dateTile(e.tournament.startDate);
   const pay = paymentState(e);
-  const canPayOnline = e.paymentStatus !== "paid" && e.status !== "cancelled" && e.entrySource === "online" && e.feeCents > 0;
+  const needsPayment = needsPaymentChoice(e);
   const match = e.liveMatch ?? e.nextMatch;
 
   return (
     <article
+      id={`entry-${e.id}`}
       className={cn(
+        "scroll-mt-24 target:ring-2 target:ring-brass",
         "group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors duration-300 hover:border-umber sm:flex-row",
         e.status === "cancelled" && "opacity-60",
         className
@@ -99,11 +116,24 @@ export function EntryTicket({ entry: e, className }: { entry: PlayerEntry; class
           </div>
         )}
 
-        {canPayOnline && (
+        {e.status === "waitlisted" && (
+          <p className="mt-4 rounded-xl border border-line bg-ink/30 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+            No payment needed yet. If a slot opens you&apos;ll be moved in automatically and we&apos;ll email you
+            to choose how to pay.
+          </p>
+        )}
+
+        {needsPayment && (
           <div className="mt-4">
-            <PayNowButton registrationId={e.id} label={`Pay ${formatPhp(e.feeCents)}`} />
+            <EntryPayActions
+              registrationId={e.id}
+              feeCents={e.feeCents}
+              allowPayAtVenue={e.allowPayAtVenue && e.isRegistrant}
+            />
           </div>
         )}
+
+        <ManageEntry entry={e} className="mt-4" />
       </div>
 
       {/* perforation + stub */}

@@ -23,6 +23,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatPhp } from "@/lib/format";
+import {
+  QRPH_DESK_CHOOSE_HINT,
+  QRPH_DESK_COMPATIBILITY_NOTE,
+  QRPH_DESK_SCAN_REMINDER,
+} from "@/lib/payments/qrph-desk-copy";
 import { cn } from "@/lib/utils";
 
 export type CollectTarget = { id: string; player: string; division: string; feeCents: number };
@@ -127,7 +132,7 @@ export function CollectPaymentDialog({
               {busy ? <Loader2 className="size-6 animate-spin text-brass" /> : <QrCode className="size-6 text-brass" />}
               <span>
                 <span className="block font-medium text-bone">Show QR</span>
-                <span className="block text-xs text-muted-foreground">Player pays with GCash, Maya or card</span>
+                <span className="block text-xs text-muted-foreground">{QRPH_DESK_CHOOSE_HINT}</span>
               </span>
             </button>
           </div>
@@ -152,9 +157,18 @@ export function CollectPaymentDialog({
                 </div>
               )}
             </div>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Waiting for payment — this updates by itself.
+            <p
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-sm text-bone/90"
+              role="note"
+            >
+              {QRPH_DESK_COMPATIBILITY_NOTE}
+            </p>
+            <p className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <Loader2 className="size-3.5 animate-spin" />
+                Waiting for payment — this updates by itself.
+              </span>
+              <span className="text-xs">{QRPH_DESK_SCAN_REMINDER}</span>
             </p>
           </div>
         )}

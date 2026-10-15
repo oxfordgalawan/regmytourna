@@ -1,6 +1,10 @@
 import { Resend } from "resend";
-import { isResendConfigured } from "@/lib/env/server";
+import { getResendFrom, isResendConfigured } from "@/lib/env/server";
 import { partnerAddedEmail, partnerDeclinedEmail } from "@/lib/email/partner-email";
+import {
+  passwordResetEmailHtml,
+  passwordResetEmailSubject,
+} from "@/lib/email/password-reset-email";
 
 export async function sendPartnerInviteEmail(params: {
   to: string;
@@ -13,7 +17,7 @@ export async function sendPartnerInviteEmail(params: {
   }
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { data, error } = await resend.emails.send({
-    from: "RegMyTourna <onboarding@resend.dev>",
+    from: getResendFrom(),
     to: params.to,
     subject: `Partner invite — ${params.tournamentName}`,
     html: `<p>You have been invited to join <strong>${params.tournamentName}</strong>.</p><p><a href="${params.inviteUrl}">Accept invitation</a></p>`,
@@ -58,13 +62,28 @@ export async function sendPetitionDecisionEmail(params: {
     ? `<p><strong>Organizer note:</strong> ${params.note.replace(/</g, "&lt;")}</p>`
     : "";
   const { data, error } = await resend.emails.send({
-    from: "RegMyTourna <onboarding@resend.dev>",
+    from: getResendFrom(),
     to: params.to,
     subject,
     html: `<p>${headline}</p>
 <p>Category: <strong>${params.divisionName}</strong> at <strong>${params.tournamentName}</strong>.</p>
 ${noteBlock}
 <p><a href="${params.eventUrl}">View the tournament</a></p>`,
+  });
+  if (error) return { error: error.message };
+  return { data };
+}
+
+export async function sendPasswordResetEmail(params: { to: string; resetUrl: string }) {
+  if (!isResendConfigured()) {
+    return { skipped: true as const };
+  }
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { data, error } = await resend.emails.send({
+    from: getResendFrom(),
+    to: params.to,
+    subject: passwordResetEmailSubject(),
+    html: passwordResetEmailHtml({ resetUrl: params.resetUrl }),
   });
   if (error) return { error: error.message };
   return { data };
@@ -77,7 +96,7 @@ export async function sendRegistrationEmail(params: { to: string; subject: strin
   }
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { data, error } = await resend.emails.send({
-    from: "RegMyTourna <onboarding@resend.dev>",
+    from: getResendFrom(),
     to: params.to,
     subject: params.subject,
     html: params.html,

@@ -43,6 +43,7 @@ export function SignupForm({
   defaultEmail,
   defaultName,
   inviteToken,
+  substituteToken,
 }: {
   defaultAccountType?: string;
   next?: string;
@@ -50,6 +51,8 @@ export function SignupForm({
   defaultName?: string;
   /** partner invite — the entry is linked to the new account right after signup */
   inviteToken?: string;
+  /** "take my place" invite — accepted right after signup */
+  substituteToken?: string;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -86,6 +89,7 @@ export function SignupForm({
     }
     if (next) fd.set("next", next);
     if (inviteToken) fd.set("invite", inviteToken);
+    if (substituteToken) fd.set("substitute", substituteToken);
     try {
       const result = await signUp(fd);
       if (result?.error) {
@@ -101,10 +105,12 @@ export function SignupForm({
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      {inviteToken && !serverError && (
+      {(inviteToken || substituteToken) && !serverError && (
         <Alert>
           <AlertDescription>
-            Use the email your partner entered and your entry is added to your account automatically.
+            {substituteToken
+              ? "Use the email the invite was sent to and you'll join the team as soon as your account is created."
+              : "Use the email your partner entered and your entry is added to your account automatically."}
           </AlertDescription>
         </Alert>
       )}

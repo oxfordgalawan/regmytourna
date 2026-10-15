@@ -20,6 +20,7 @@ import { RegisterSection } from "@/components/tournaments/register-section";
 import { DivisionRosterButton } from "@/components/tournaments/division-roster-button";
 import { TournamentCoverHero } from "@/components/tournaments/tournament-cover-hero";
 import { relationOne } from "@/lib/supabase/relations";
+import { slotCounts } from "@/lib/registrations/waitlist";
 import { entrantNoun } from "@/lib/categories";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
 import { loadDivisionContext } from "@/lib/draw/server";
@@ -58,6 +59,9 @@ export default async function TournamentDetailPage({
     bracket_config: unknown;
     bracket_state?: string | null;
   }>;
+
+  const counts = await slotCounts(tournament.id);
+  const waitlistOn = Boolean(tournament.waitlist_enabled);
 
   // live draws for categories that have started
   const startedIds = divisions.filter((d) => d.bracket_state && d.bracket_state !== "not_started").map((d) => d.id);
@@ -190,7 +194,12 @@ export default async function TournamentDetailPage({
                         {d.capacity && (
                           <span className="inline-flex items-center gap-1">
                             <Users className="size-3.5" aria-hidden />
-                            {d.capacity} {entrantNoun(d.format, d.capacity)}
+                            {counts[d.id]?.taken ?? 0}/{d.capacity} {entrantNoun(d.format, d.capacity)}
+                          </span>
+                        )}
+                        {d.capacity && (counts[d.id]?.taken ?? 0) >= d.capacity && (
+                          <span className="rounded-full border border-brass/40 px-2 py-0.5 text-[0.7rem] text-brass">
+                            {waitlistOn ? "Full · waitlist open" : "Full"}
                           </span>
                         )}
                       </p>
@@ -287,7 +296,8 @@ export default async function TournamentDetailPage({
                   currency={tournament.currency}
                   defaultFeeCents={tournament.entry_fee_cents}
                   allowPayAtVenue={Boolean(tournament.allow_walk_in_payment)}
-                  divisions={divisions}
+                  waitlistEnabled={waitlistOn}
+                  divisions={divisions.map((d) => ({ ...d, taken: counts[d.id]?.taken ?? 0 }))}
                 />
               ) : (
                 <div>

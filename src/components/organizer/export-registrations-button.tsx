@@ -16,8 +16,12 @@ export function ExportRegistrationsButton({
   registrations: Array<Record<string, unknown>>;
 }) {
   function exportCsv() {
-    const columns = ["id", "player", "division", "status", "payment_status", "checkedIn"];
-    const rows = [columns, ...registrations.map((r) => columns.map((c) => r[c]))];
+    const columns = ["id", "player", "emails", "division", "status", "payment_status", "checkedIn"];
+    const emailsOf = (r: Record<string, unknown>) =>
+      Array.isArray(r.players)
+        ? (r.players as Array<{ email: string | null }>).map((p) => p.email).filter(Boolean).join("; ")
+        : "";
+    const rows = [columns, ...registrations.map((r) => columns.map((c) => (c === "emails" ? emailsOf(r) : r[c])))];
     const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);

@@ -6,15 +6,15 @@ export const metadata = { title: "Log in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; message?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, message } = await searchParams;
   return (
     <AuthShell
       title="Welcome back."
       subtitle="Sign in to manage your tournaments and registrations."
     >
-      <LoginForm next={next} />
+      <LoginForm next={next} flashMessage={message === "password_updated" ? "Your password was updated. Sign in with your new password." : undefined} />
     </AuthShell>
   );
 }

@@ -15,7 +15,15 @@ const serverEnvSchema = z.object({
   PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(100).optional(),
   MIN_WITHDRAWAL_CENTS: z.coerce.number().int().min(0).optional(),
   RESEND_API_KEY: z.string().optional(),
+  /** Resend "From" header, e.g. RegMyTourna <info@regmytourna.com> */
+  RESEND_FROM: z.string().min(3).optional(),
   UMPIRE_SESSION_SECRET: z.string().min(16).optional(),
+  STARPAGO_APP_ID: z.string().optional(),
+  STARPAGO_APP_SECRET: z.string().optional(),
+  STARPAGO_API_URL: z.string().url().optional(),
+  STARPAGO_RELAY_URL: z.string().url().optional(),
+  STARPAGO_RELAY_SECRET: z.string().optional(),
+  STARPAGO_CALLBACK_IPS: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -57,8 +65,20 @@ export function isPayMongoConfigured(): boolean {
   );
 }
 
+export function isStarpagoConfigured(): boolean {
+  const env = getServerEnv();
+  return Boolean(env.STARPAGO_APP_ID?.trim() && env.STARPAGO_APP_SECRET?.trim());
+}
+
 export function isResendConfigured(): boolean {
   return Boolean(getServerEnv().RESEND_API_KEY);
+}
+
+const DEFAULT_RESEND_FROM = "RegMyTourna <info@regmytourna.com>";
+
+export function getResendFrom(): string {
+  const raw = getServerEnv().RESEND_FROM?.trim();
+  return raw || DEFAULT_RESEND_FROM;
 }
 
 export function getAppUrl(): string {

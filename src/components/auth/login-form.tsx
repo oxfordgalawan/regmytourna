@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,7 +48,12 @@ export function LoginForm({ next }: { next?: string }) {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      {next?.includes("#register") && !serverError && (
+      {flashMessage && !serverError && (
+        <Alert>
+          <AlertDescription>{flashMessage}</AlertDescription>
+        </Alert>
+      )}
+      {next?.includes("#register") && !serverError && !flashMessage && (
         <Alert>
           <AlertDescription>Log in and we&apos;ll take you straight back to registration.</AlertDescription>
         </Alert>

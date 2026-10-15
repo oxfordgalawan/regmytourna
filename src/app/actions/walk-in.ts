@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { promoteFromWaitlist } from "@/lib/registrations/waitlist";
+import { expireSubstitutions } from "@/lib/registrations/team-changes";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppUrl, isPayMongoConfigured } from "@/lib/env/server";
@@ -68,6 +70,7 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
     const user = await requireOrganizerForTournament(reg.tournament_id);
     if (reg.payment_status === "paid") return { error: "This entry is already paid." };
     if (reg.status === "cancelled") return { error: "This entry was cancelled." };
+    if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
 
     const admin = createAdminClient();
     // any abandoned online/QR checkout for this entry is superseded by the cash
@@ -127,6 +130,7 @@ export async function createDeskQrAction(registrationId: string): Promise<Result
     const { reg, division, tournament, feeCents } = found;
     const user = await requireOrganizerForTournament(reg.tournament_id);
     if (reg.payment_status === "paid") return { error: "This entry is already paid." };
+    if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
     if (feeCents <= 0) return { error: "This category is free — nothing to collect." };
 
     const appUrl = getAppUrl();
@@ -239,7 +243,13 @@ export async function cancelEntryAction(registrationId: string): Promise<Result>
   }
   const admin = createAdminClient();
   await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
-  await admin.from("registrations").update({ status: "cancelled" }).eq("id", registrationId);
+  await admin
+    .from("registrations")
+    .update({ status: "cancelled", waitlist_position: null, needs_partner_since: null })
+    .eq("id", registrationId);
+  await expireSubstitutions(registrationId);
+  // the freed slot goes to the next team on the waitlist
+  await promoteFromWaitlist(found.reg.division_id);
   revalidateEvent(found.reg.tournament_id, found.tournament.slug);
   return { ok: true };
 }

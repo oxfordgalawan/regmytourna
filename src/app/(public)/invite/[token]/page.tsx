@@ -51,6 +51,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   const mine = Boolean(user && invite.linkedUserId === user.id);
   const takenByOther = Boolean(invite.linkedUserId && !mine);
   const paid = invite.paymentStatus === "paid";
+  const left = invite.partnerLeft;
   const emailMismatch =
     user?.email && invite.partnerEmail && normalizePartnerEmail(user.email) !== normalizePartnerEmail(invite.partnerEmail);
 
@@ -92,10 +93,20 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
         <div className="court-grid pointer-events-none absolute inset-0 opacity-30" />
 
         <div className="relative p-6 sm:p-10">
-          <p className="eyebrow text-brass">{mine ? "Your entry" : "Partner invite"}</p>
+          <p className="eyebrow text-brass">{mine ? "Your entry" : left ? "Your partner left" : "Partner invite"}</p>
           <h1 className="display mt-3 text-4xl text-bone text-balance sm:text-5xl">
-            {mine ? "You're on the team." : `${invite.registrantName} added you as partner`}
+            {mine
+              ? "You're on the team."
+              : left
+                ? "Your slot is still held."
+                : `${invite.registrantName} added you as partner`}
           </h1>
+          {left && !mine && (
+            <p className="mt-3 text-bone/75">
+              Your partner can&apos;t play anymore. Keep the slot by inviting a new partner, or cancel it so another
+              team can play. You&apos;ll need a free account to manage the entry.
+            </p>
+          )}
 
           <div className="mt-6 rounded-2xl border border-line bg-ink/40 p-4 backdrop-blur sm:p-5">
             <p className="text-lg font-semibold text-bone">{invite.categoryName}</p>
@@ -116,19 +127,25 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               {paid ? (
                 <>
                   <CheckCircle2 className="size-4 text-brass" />
-                  <span className="text-bone">Entry paid by {invite.registrantName} — you&apos;re in the draw.</span>
+                  <span className="text-bone">
+                    {left ? "Entry fee is paid — the slot is yours." : `Entry paid by ${invite.registrantName} — you're in the draw.`}
+                  </span>
                 </>
               ) : (
                 <>
                   <Clock className="size-4 text-brass" />
-                  <span className="text-bone">Payment pending — {invite.registrantName} is handling it.</span>
+                  <span className="text-bone">
+                    {left ? "Entry fee not paid yet." : `Payment pending — ${invite.registrantName} is handling it.`}
+                  </span>
                 </>
               )}
             </div>
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground">
-            {mine
+            {left && !mine
+              ? "After you sign in, open My entries to invite a new partner or cancel the slot."
+              : mine
               ? "This entry is in your account. Follow your matches and results there, and file a petition if you need to."
               : "Nothing else is needed for you to play. Add it to your account to see your matches and results, and to file a petition if you need to."}
           </p>
@@ -154,6 +171,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
                   </p>
                 )}
                 <InviteActions
+                  acceptLabel={left ? "Keep the slot — add to my entries" : undefined}
                   accept={acceptPartnerInviteAction.bind(null, token)}
                   decline={declinePartnerInviteAction.bind(null, token)}
                 />
@@ -164,7 +182,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
                   <Button size="lg" asChild>
                     <Link href={signupHref}>
                       <UserPlus />
-                      Create free account
+                      {left ? "Create free account to keep the slot" : "Create free account"}
                     </Link>
                   </Button>
                   <Button size="lg" variant="outline" asChild>

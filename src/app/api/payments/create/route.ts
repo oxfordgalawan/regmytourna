@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { relationOne } from "@/lib/supabase/relations";
+import { isCaptainOf } from "@/lib/registrations/team-changes";
 
 export async function POST(request: NextRequest) {
   if (!isPayMongoConfigured()) {
@@ -26,12 +27,25 @@ export async function POST(request: NextRequest) {
 
   const { data: registration } = await supabase
     .from("registrations")
-    .select("id, tournament_id, division_id, registered_by, tournaments(name, slug, entry_fee_cents), tournament_divisions(entry_fee_cents)")
+    .select("id, tournament_id, division_id, registered_by, status, payment_status, tournaments(name, slug, entry_fee_cents), tournament_divisions(entry_fee_cents)")
     .eq("id", body.registrationId)
     .single();
 
-  if (!registration || registration.registered_by !== user.id) {
+  if (!registration || !(await isCaptainOf(registration.id, user.id))) {
     return NextResponse.json({ error: "Registration not found" }, { status: 404 });
+  }
+  // payment is only taken for an entry that holds a slot — never for the waitlist
+  if (registration.payment_status === "paid") {
+    return NextResponse.json({ error: "This entry is already paid." }, { status: 409 });
+  }
+  if (registration.status === "waitlisted") {
+    return NextResponse.json(
+      { error: "You're on the waitlist — we'll collect payment once you're moved into a slot." },
+      { status: 409 }
+    );
+  }
+  if (registration.status !== "awaiting_payment" && registration.status !== "pending") {
+    return NextResponse.json({ error: "This entry can't be paid." }, { status: 409 });
   }
 
   const tournament = relationOne(registration.tournaments) as {
@@ -47,7 +61,7 @@ export async function POST(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const checkout = await createCheckoutSession({
     amountCents: fee,
-    description: tournament.name,
+    description: `${tournament.name} registration (non-refundable)`,
     successUrl: `${appUrl}/tournaments/${tournament.slug}/register/success?registration=${registration.id}`,
     cancelUrl: `${appUrl}/tournaments/${tournament.slug}`,
     metadata: {

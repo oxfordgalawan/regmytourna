@@ -2,7 +2,7 @@
 
 import { startTransition, useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, Search, UserPlus, X } from "lucide-react";
+import { Banknote, Search, UserPlus, UserRoundPen, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { cancelEntryAction, setWalkInPaymentAction } from "@/app/actions/walk-in";
@@ -25,6 +25,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FilterChips } from "@/components/ui/filter-chips";
+import { ReplacePlayerDialog, type ReplaceTarget } from "@/components/organizer/replace-player-dialog";
+import { PlayerEmailCell } from "@/components/organizer/player-email-cell";
 import { formatPhp } from "@/lib/format";
 
 export type RegistrationRow = {
@@ -38,6 +40,10 @@ export type RegistrationRow = {
   feeCents: number;
   checkedIn: boolean;
   partner?: "on_platform" | "invited" | "declined" | "guest" | null;
+  players?: Array<{ rowId: string; name: string; email: string | null; primary: boolean; hasAccount: boolean }>;
+  doubles?: boolean;
+  needsPartner?: boolean;
+  substitutePending?: boolean;
 };
 
 const views = [
@@ -81,6 +87,7 @@ export function RegistrationsTable({
   const [collect, setCollect] = useState<{ target: CollectTarget; how: "choose" | "cash" | "qr" } | null>(null);
   const [adding, setAdding] = useState(false);
   const [walkIn, setWalkIn] = useState(allowWalkIn);
+  const [replacing, setReplacing] = useState<ReplaceTarget | null>(null);
 
   const visible = rows.filter((r) => r.status !== "cancelled");
   // deferred so typing stays snappy and the result swap can animate
@@ -88,10 +95,14 @@ export function RegistrationsTable({
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
     return visible.filter((r) => {
-      if (view === "unpaid" && r.payment_status === "paid") return false;
+      if (view === "unpaid" && (r.payment_status === "paid" || r.status === "waitlisted")) return false;
       if (view === "to_check_in" && r.checkedIn) return false;
       if (!q) return true;
-      return r.player.toLowerCase().includes(q) || r.division.toLowerCase().includes(q);
+      return (
+        r.player.toLowerCase().includes(q) ||
+        r.division.toLowerCase().includes(q) ||
+        Boolean(r.players?.some((p) => p.email?.toLowerCase().includes(q)))
+      );
     });
   }, [visible, deferredQuery, view]);
 
@@ -178,7 +189,7 @@ export function RegistrationsTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="pl-5">Player</TableHead>
+              <TableHead className="pl-5">Players</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Entry</TableHead>
               <TableHead>Payment</TableHead>
@@ -187,12 +198,55 @@ export function RegistrationsTable({
           </TableHeader>
           <TableBody>
             {filtered.map((r) => {
-              const unpaid = r.payment_status !== "paid";
+              const unpaid = r.payment_status !== "paid" && r.status !== "waitlisted";
+              const canReplace = Boolean(r.players?.length) && (r.source === "desk" || (r.doubles && r.players!.length > 1));
+              const replaceButton = canReplace ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setReplacing({
+                      registrationId: r.id,
+                      division: r.division,
+                      walkIn: r.source === "desk",
+                      players: r.players!,
+                    })
+                  }
+                  aria-label={r.source === "desk" ? `Replace a player on ${r.player}` : `Replace ${r.player}'s partner`}
+                  title={r.source === "desk" ? "Replace a player" : "Replace partner"}
+                >
+                  <UserRoundPen />
+                </Button>
+              ) : null;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="pl-5">
-                    <span className="block font-medium text-bone">{r.player}</span>
-                    <span className="flex flex-wrap gap-x-3">
+                    {r.players?.length ? (
+                      <span className="block space-y-1.5">
+                        {r.players.map((p) => (
+                          <span key={p.rowId} className="block min-w-0">
+                            <span className="block font-medium text-bone">{p.name}</span>
+                            <PlayerEmailCell
+                              key={`${p.rowId}-${p.email ?? ""}`}
+                              registrationId={r.id}
+                              rowId={p.rowId}
+                              email={p.email}
+                              hasAccount={p.hasAccount}
+                              partner={!p.primary}
+                            />
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="block font-medium text-bone">{r.player}</span>
+                    )}
+                    <span className="mt-1.5 flex flex-wrap gap-x-3">
+                      {r.needsPartner && (
+                        <span className="font-mono text-[0.65rem] font-semibold text-[#e58a72]">Needs partner</span>
+                      )}
+                      {r.substitutePending && (
+                        <span className="font-mono text-[0.65rem] text-brass">Substitute pending</span>
+                      )}
                       {r.source !== "online" && (
                         <span className="font-mono text-[0.65rem] text-muted-foreground">{SOURCE_LABEL[r.source]}</span>
                       )}
@@ -232,6 +286,7 @@ export function RegistrationsTable({
                           <Banknote />
                           Collect {formatPhp(r.feeCents)}
                         </Button>
+                        {replaceButton}
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -242,12 +297,27 @@ export function RegistrationsTable({
                           <X />
                         </Button>
                       </span>
+                    ) : r.status === "waitlisted" ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Pays once moved into a slot</span>
+                        {replaceButton}
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => cancel(r)}
+                          aria-label={`Remove ${r.player} from the waitlist`}
+                          title="Remove from waitlist"
+                        >
+                          <X />
+                        </Button>
+                      </span>
                     ) : (
                       <span className="flex items-center gap-2">
                         <StatusBadge status={r.payment_status} />
                         {r.paidVia && r.paidVia !== "online" && (
                           <span className="font-mono text-[0.65rem] text-muted-foreground">{PAID_LABEL[r.paidVia]}</span>
                         )}
+                        {replaceButton}
                       </span>
                     )}
                   </TableCell>
@@ -275,6 +345,9 @@ export function RegistrationsTable({
         onClose={() => setAdding(false)}
         onCollect={(target, how) => setCollect({ target, how })}
       />
+      {replacing && (
+        <ReplacePlayerDialog key={replacing.registrationId} target={replacing} onClose={() => setReplacing(null)} />
+      )}
       {collect && (
         <CollectPaymentDialog
           key={collect.target.id + collect.how}

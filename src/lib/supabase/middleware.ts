@@ -68,7 +68,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && isAuthRoute && !pathname.startsWith("/auth/callback")) {
+  if (
+    user &&
+    isAuthRoute &&
+    !pathname.startsWith("/auth/callback") &&
+    !pathname.startsWith("/reset-password")
+  ) {
     const redirectUrl = request.nextUrl.clone();
     const next = sanitizeNext(request.nextUrl.searchParams.get("next"));
     redirectUrl.pathname = getPostLoginPath(user, next);

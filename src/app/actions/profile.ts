@@ -71,3 +71,30 @@ export async function updateProfile(input: {
   revalidatePath("/settings");
   return { success: true as const };
 }
+
+function avatarUrlBelongsToUser(url: string, userId: string) {
+  try {
+    const path = new URL(url).pathname;
+    return path.includes(`/profile-avatars/${userId}/`);
+  } catch {
+    return false;
+  }
+}
+
+export async function updateProfileAvatarAction(avatarUrl: string) {
+  const user = await requireUser();
+  const trimmed = avatarUrl.trim().split("?")[0] ?? "";
+  if (!trimmed || !avatarUrlBelongsToUser(trimmed, user.id)) {
+    return { error: "Invalid profile photo URL." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("profiles").update({ avatar_url: trimmed }).eq("id", user.id);
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/", "layout");
+  return { success: true as const };
+}

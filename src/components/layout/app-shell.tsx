@@ -5,7 +5,7 @@ import { ArrowUpRight, Plus, Search } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { SideNav, type SideNavLink } from "@/components/layout/side-nav";
 import { BottomNav } from "@/components/layout/bottom-nav";
-import { SignOutButton } from "@/components/auth/sign-out-button";
+import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { RouteTransition } from "@/components/motion/route-transition";
 
 /**
@@ -62,7 +62,9 @@ export function AppShell({
             Public site
             <ArrowUpRight className="size-3.5" />
           </Link>
-          <SignOutButton variant="ghost" className="w-full justify-start px-3 text-muted-foreground" />
+          <div className="flex justify-end px-2 py-1">
+            <UserAccountMenu size="sm" />
+          </div>
         </div>
       </aside>
 
@@ -83,7 +85,7 @@ export function AppShell({
               {primaryAction.icon === "search" ? <Search className="size-4" /> : <Plus className="size-4" />}
             </Link>
           )}
-          <SignOutButton variant="ghost" size="icon" iconOnly />
+          <UserAccountMenu size="sm" />
         </div>
         </div>
       </header>

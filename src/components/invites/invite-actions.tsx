@@ -17,6 +17,7 @@ export function InviteActions({
   afterAccept = "/entries",
   compact = false,
   declineOnly = false,
+  copy = {},
 }: {
   accept: Action;
   decline: Action;
@@ -26,7 +27,17 @@ export function InviteActions({
   compact?: boolean;
   /** logged-out visitors can still say "not me" */
   declineOnly?: boolean;
+  /** wording overrides (defaults fit partner invites) */
+  copy?: { decline?: string; confirmDecline?: string; confirmDeclineButton?: string; declined?: string; accepted?: string };
 }) {
+  const text = {
+    decline: "Not me",
+    confirmDecline: "Not your entry? We'll remove your email and tell the player so they can fix their partner.",
+    confirmDeclineButton: "Yes, it's not me",
+    declined: "Got it — we'll let them know.",
+    accepted: "You're on the team. Opening your entries…",
+    ...copy,
+  };
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<"accept" | "decline" | null>(null);
@@ -62,7 +73,7 @@ export function InviteActions({
           {done === "accepted" ? <Check className="size-5" strokeWidth={3} /> : <UserX className="size-5" />}
         </span>
         <p className="text-sm text-bone">
-          {done === "accepted" ? "You're on the team. Opening your entries…" : "Got it — we'll let them know."}
+          {done === "accepted" ? text.accepted : text.declined}
         </p>
       </div>
     );
@@ -71,13 +82,11 @@ export function InviteActions({
   if (confirmDecline) {
     return (
       <div className="space-y-3 rounded-xl border border-line bg-ink/40 p-4">
-        <p className="text-sm text-bone">
-          Not your entry? We&apos;ll remove your email and tell the player so they can fix their partner.
-        </p>
+        <p className="text-sm text-bone">{text.confirmDecline}</p>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="destructive" disabled={pending} onClick={() => run("decline")}>
             {busy === "decline" && <Loader2 className="animate-spin" />}
-            Yes, it&apos;s not me
+            {text.confirmDeclineButton}
           </Button>
           <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirmDecline(false)}>
             Cancel
@@ -94,7 +103,7 @@ export function InviteActions({
         onClick={() => setConfirmDecline(true)}
         className="text-sm text-muted-foreground underline-offset-4 hover:text-bone hover:underline"
       >
-        Not me
+        {text.decline}
       </button>
     );
   }
@@ -106,7 +115,7 @@ export function InviteActions({
         {acceptLabel}
       </Button>
       <Button size={compact ? "sm" : "lg"} variant="ghost" disabled={pending} onClick={() => setConfirmDecline(true)}>
-        Not me
+        {text.decline}
       </Button>
     </div>
   );

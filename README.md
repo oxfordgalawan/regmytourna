@@ -51,7 +51,7 @@ Tournament registration and management platform for pickleball (multi-sport read
    - Set `CHALLONGE_CLIENT_ID`, `CHALLONGE_CLIENT_SECRET`, `CHALLONGE_REDIRECT_URI`.
    - Generate a 32-byte key: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` → `CHALLONGE_TOKEN_ENCRYPTION_KEY`.
 
-4. **PayMongo**
+4. **PayMongo** (active payment rail — see [docs/PAYMENTS.md](docs/PAYMENTS.md))
 
    - Dashboard keys → `PAYMONGO_SECRET_KEY`, `PAYMONGO_PUBLIC_KEY`.
    - Webhook URL: `{NEXT_PUBLIC_APP_URL}/api/webhooks/paymongo` → `PAYMONGO_WEBHOOK_SECRET`.
@@ -59,6 +59,15 @@ Tournament registration and management platform for pickleball (multi-sport read
    - **`PLATFORM_FEE_PERCENT`** (default `5`): platform fee on entry payments; the rest credits the tournament owner’s **organizer wallet** at `/organizer/wallet`. Funds still settle to your PayMongo account (ledger only in v1).
    - **`MIN_WITHDRAWAL_CENTS`** (optional, default `10000` = ₱100): minimum amount for a wallet withdrawal request.
    - Backfill wallet credits for older paid rows: `npx tsx scripts/backfill-organizer-wallets.ts`.
+   - **Desk QR:** organizers see a QR Ph notice — scan with Maya, GoTyme, Maribank, or other bank apps; **not GCash**.
+
+5. **StarPago** (optional — merchant onboarding only until API is live; separate from DoGoGo)
+
+   - Ops guide: [docs/STARPAGO_PRODUCTION.md](docs/STARPAGO_PRODUCTION.md)
+   - Merchant form + droplet: [docs/STARPAGO_MERCHANT_REGISTRATION.md](docs/STARPAGO_MERCHANT_REGISTRATION.md)
+   - Relay source: [scripts/starpago-relay/server.mjs](scripts/starpago-relay/server.mjs)
+   - Callbacks: `{NEXT_PUBLIC_APP_URL}/api/starpago/notify` and `/api/starpago/payout-notify`
+   - Verify relay from laptop: `node --env-file=.env.local scripts/verify-starpago-relay.mjs`
 
 ## Organizer wallet & withdrawals
 
@@ -67,11 +76,15 @@ Tournament registration and management platform for pickleball (multi-sport read
 - **Withdrawals:** Submit a request from the wallet page. Funds move from available to pending; a super admin reviews at `/super-admin/withdrawals`, copies payout details for manual transfer outside the app, then approves or rejects. Rejection restores available balance.
 - **Registration QR:** On each event overview (`/organizer/tournaments/[id]`), **Share registration** generates a QR and link to `{NEXT_PUBLIC_APP_URL}/tournaments/{slug}#register` (copy link or download PNG).
 
-5. **Resend** (optional)
+6. **Resend** (optional)
 
-   - `RESEND_API_KEY` for partner invites and confirmation emails.
+   - Create an API key at [resend.com](https://resend.com) → **Domains** → add **regmytourna.com** and complete DNS (required to send from `info@regmytourna.com`).
+   - **`.env.local` and Vercel (Production + Preview):**
+     - `RESEND_API_KEY` — secret API key (`re_…`).
+     - `RESEND_FROM` — optional; defaults to `RegMyTourna <info@regmytourna.com>`.
+   - Emails are skipped with a console warning if `RESEND_API_KEY` is missing.
 
-6. **Run**
+7. **Run**
 
    ```bash
    npm run dev
@@ -86,6 +99,7 @@ After signing up as an organizer, insert demo tournaments via SQL or the create-
 - Set all env vars from `.env.example`.
 - Connect Supabase; run migrations on production DB.
 - Configure Challonge and PayMongo webhooks to production URLs.
+- StarPago: set `NEXT_PUBLIC_APP_URL`, `STARPAGO_*`, and relay vars per [docs/STARPAGO_PRODUCTION.md](docs/STARPAGO_PRODUCTION.md) (Production vs Preview/staging).
 
 ## Missing credentials
 

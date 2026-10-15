@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { Compass, History, Ticket } from "lucide-react";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
+import { getViewRole } from "@/lib/auth/role";
+import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 import { loadPlayerEntries, isUpcoming } from "@/lib/player/entries";
 import { PageHeader } from "@/components/layout/page-header";
 import { EntryTicket } from "@/components/player/entry-ticket";
@@ -19,6 +22,10 @@ export default async function EntriesPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const user = await requireUser("/entries");
+  // entries belong to the player app; organizers switch over (or go back to their events)
+  const { view: appView, roles } = await getViewRole(user.id, { superAdmin: isSuperAdmin(user) });
+  if (appView !== "player") redirect(roles.player ? "/view/player?next=/entries" : "/organizer/tournaments");
+
   const { view } = await searchParams;
   const tab = view === "past" ? "past" : "upcoming";
 

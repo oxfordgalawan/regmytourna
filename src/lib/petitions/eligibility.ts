@@ -40,11 +40,11 @@ export async function getPetitionEligibilityForUser(
     .eq("division_id", divisionId)
     .in("status", [...PETITION_ELIGIBLE_STATUSES]);
 
+  // only players currently on the entry (someone who left the team can't petition for it)
   const owned = (regs ?? []).filter(
     (r) =>
-      r.registered_by === userId ||
-      (Array.isArray(r.registration_players) &&
-        r.registration_players.some((p: { user_id: string | null }) => p.user_id === userId))
+      Array.isArray(r.registration_players) &&
+      r.registration_players.some((p: { user_id: string | null }) => p.user_id === userId)
   );
 
   if (!owned.length) {
