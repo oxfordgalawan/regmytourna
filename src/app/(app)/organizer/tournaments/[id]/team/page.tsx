@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
-import { getAppUrl } from "@/lib/env/server";
+import { getRequestAppUrl } from "@/lib/env/server";
 import { loadTeam } from "@/lib/organizers/team";
 import { TeamPanel } from "@/components/organizer/team-panel";
 
@@ -26,7 +26,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         team={data.team}
         pending={data.pending}
         link={data.link}
-        appUrl={getAppUrl()}
+        appUrl={await getRequestAppUrl()}
       />
     </div>
   );

@@ -81,8 +81,76 @@ export function getResendFrom(): string {
   return raw || DEFAULT_RESEND_FROM;
 }
 
+function normalizeAppUrl(url: string): string {
+  return url.replace(/\/$/, "");
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function appUrlFromHost(host: string): string {
+  const cleaned = host.replace(/^https?:\/\//, "").split("/")[0]!.trim();
+  return `https://${cleaned}`;
+}
+
+/** When NEXT_PUBLIC_APP_URL is missing, Vercel still knows the deployment host. */
+function resolveVercelAppUrl(): string | null {
+  if (process.env.VERCEL !== "1") return null;
+  for (const raw of [process.env.VERCEL_PROJECT_PRODUCTION_URL, process.env.VERCEL_URL]) {
+    const value = raw?.trim();
+    if (!value) continue;
+    if (value.includes("://")) {
+      try {
+        const u = new URL(value);
+        if (!isLoopbackHost(u.hostname)) return normalizeAppUrl(value);
+      } catch {
+        continue;
+      }
+    } else if (!isLoopbackHost(value)) {
+      return normalizeAppUrl(appUrlFromHost(value));
+    }
+  }
+  return null;
+}
+
+/** Public site origin for links in email, redirects, and copy-to-clipboard (server). */
 export function getAppUrl(): string {
-  return getServerEnv().NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    try {
+      const u = new URL(configured);
+      const onVercel = process.env.VERCEL === "1";
+      if (!onVercel || !isLoopbackHost(u.hostname)) {
+        return normalizeAppUrl(configured);
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const vercel = resolveVercelAppUrl();
+  if (vercel) return vercel;
+  if (configured) return normalizeAppUrl(configured);
+  return normalizeAppUrl(getServerEnv().NEXT_PUBLIC_APP_URL);
+}
+
+/** Prefer the host the organizer is actually on (fixes missing env on Vercel). */
+export async function getRequestAppUrl(): Promise<string> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host =
+      h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host")?.trim();
+    if (host && !isLoopbackHost(host.split(":")[0]!)) {
+      const proto =
+        h.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+        (host.includes("localhost") ? "http" : "https");
+      return normalizeAppUrl(`${proto}://${host}`);
+    }
+  } catch {
+    /* outside a request */
+  }
+  return getAppUrl();
 }
 
 const DEFAULT_PLATFORM_FEE_PERCENT = 5;

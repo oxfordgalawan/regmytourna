@@ -4,6 +4,7 @@ import { relationOne } from "@/lib/supabase/relations";
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { sendRegistrationEmail } from "@/lib/email/send";
 import { organizerInviteEmail } from "@/lib/email/organizer-email";
+import { getAppUrl } from "@/lib/env/server";
 
 /**
  * Co-organizers. The owner invites people by email or with a share link;
@@ -20,8 +21,7 @@ export type TeamMember = {
 };
 export type PendingInvite = { id: string; email: string; createdAt: string };
 
-const appUrl = () => process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-export const joinUrl = (token: string) => `${appUrl()}/join/${token}`;
+export const joinUrl = (token: string) => `${getAppUrl()}/join/${token}`;
 const newToken = () => randomBytes(24).toString("hex");
 
 export function migrationMessage(message: string) {
