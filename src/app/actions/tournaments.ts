@@ -9,6 +9,42 @@ import { isSupabaseConfigured } from "@/lib/env/server";
 import { categoriesPayloadSchema, categoryName, categoryType } from "@/lib/categories";
 import { defaultConfigFor } from "@/lib/bracket-format";
 import { validateSchedule } from "@/lib/validations/schedule";
+import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
+import type { TournamentStatus } from "@/types/database";
+
+const PUBLISH_STATUSES: TournamentStatus[] = ["published", "registration_open"];
+
+export async function updateTournamentStatusAction(
+  tournamentId: string,
+  status: TournamentStatus
+): Promise<{ ok?: true; error?: string }> {
+  if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId))) {
+    return { error: "You don't have permission to change this event." };
+  }
+  if (!PUBLISH_STATUSES.includes(status) && status !== "registration_closed") {
+    return { error: "That status change isn't supported here." };
+  }
+  if ((await getRegistrationMode(tournamentId)) === "bracket_only" && status === "registration_open") {
+    return { error: "Bracket-only events don't take online registration." };
+  }
+
+  const supabase = await createClient();
+  const { data: row, error } = await supabase
+    .from("tournaments")
+    .update({ status })
+    .eq("id", tournamentId)
+    .select("slug")
+    .single();
+  if (error) return { error: error.message };
+
+  revalidatePath("/organizer/tournaments");
+  revalidatePath(`/organizer/tournaments/${tournamentId}`);
+  if (row?.slug) revalidatePath(`/tournaments/${row.slug}`);
+  return { ok: true };
+}
 
 export async function createTournamentAction(formData: FormData) {
   if (!isSupabaseConfigured()) return { error: "Supabase not configured" };

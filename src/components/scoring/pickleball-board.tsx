@@ -22,7 +22,8 @@ export function PickleballBoard({
   scores: { a: number; b: number };
   teams: { a: Team; b: Team };
   base: { a: number; b: number } | null;
-  lastCall: string | null;
+  /** the last call ("Side out"…) — key changes replay the animation */
+  lastCall: { text: string; key: string | number } | null;
 }) {
   const serving = state.serving;
   const receiving = other(serving);
@@ -122,10 +123,10 @@ export function PickleballBoard({
 
         {lastCall && (
           <span
-            key={lastCall}
+            key={lastCall.key}
             className="animate-rise absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink/90 px-3 py-1 font-mono text-xs tracking-wide text-bone uppercase shadow-lg"
           >
-            {lastCall}
+            {lastCall.text}
           </span>
         )}
       </div>

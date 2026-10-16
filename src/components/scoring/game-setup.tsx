@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Coins, Loader2, Play } from "lucide-react";
+import { Coins, Play } from "lucide-react";
 import { toast } from "sonner";
-import { startGameAction } from "@/app/actions/officiating";
 import { PlayerAvatar } from "@/components/players/player-avatar";
-import { MatchTimers, type TimerEvent } from "@/components/scoring/match-timers";
+import { MatchTimers, type TimerEvent, type TimerLogFn } from "@/components/scoring/match-timers";
 import { Button } from "@/components/ui/button";
 import { other, type MatchSetup, type Side } from "@/lib/scoring/pickleball";
 import type { CourtPlayer } from "@/lib/scoring/officiating";
@@ -18,21 +17,22 @@ type Team = { side: Side; label: string; players: CourtPlayer[] };
  * each team's base player. Everything here is saved to the match record.
  */
 export function GameSetup({
-  matchId,
   game,
   doubles,
   teams,
   setup,
   events,
-  onStarted,
+  onTimer,
+  onStart,
 }: {
-  matchId: string;
   game: number;
   doubles: boolean;
   teams: [Team, Team];
   setup: MatchSetup | null;
   events: TimerEvent[];
-  onStarted: () => void;
+  onTimer: TimerLogFn;
+  /** applies the start on this device; returns an error message or null */
+  onStart: (input: { tossWinner: Side; firstServe: Side; base: { a: number; b: number } }) => string | null;
 }) {
   const firstGame = !setup;
   // later games alternate the first serve from game 1
@@ -43,7 +43,6 @@ export function GameSetup({
   const [base, setBase] = useState<{ a: number | null; b: number | null }>(
     doubles ? { a: setup?.base.a ?? null, b: setup?.base.b ?? null } : { a: 0, b: 0 }
   );
-  const [busy, setBusy] = useState(false);
 
   const ready = toss !== null && serve !== null && base.a !== null && base.b !== null;
   const missing = [
@@ -52,17 +51,11 @@ export function GameSetup({
     (base.a === null || base.b === null) && "base players",
   ].filter(Boolean);
 
-  async function start() {
-    if (!ready || busy) return;
-    setBusy(true);
-    const res = await startGameAction(matchId, { tossWinner: toss!, firstServe: serve!, base: { a: base.a!, b: base.b! } });
-    if (!res.ok) {
-      setBusy(false);
-      toast.error(res.error);
-      return;
-    }
+  function start() {
+    if (!ready) return;
+    const error = onStart({ tossWinner: toss!, firstServe: serve!, base: { a: base.a!, b: base.b! } });
+    if (error) return toast.error(error);
     if (navigator.vibrate) navigator.vibrate(30);
-    onStarted();
   }
 
   const teamName = (s: Side) => teams.find((t) => t.side === s)!.label;
@@ -70,7 +63,7 @@ export function GameSetup({
   return (
     <div className="mt-5 flex flex-1 flex-col gap-4">
       <Section step={1} title="Timers" hint="Run what you need. Each run is logged as proof.">
-        <MatchTimers matchId={matchId} events={events} />
+        <MatchTimers events={events} onLog={onTimer} />
       </Section>
 
       {firstGame && (
@@ -147,8 +140,8 @@ export function GameSetup({
       )}
 
       <div className="sticky bottom-0 -mx-4 mt-auto border-t border-line bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-        <Button size="lg" className="h-14 w-full text-base" disabled={!ready || busy} onClick={start}>
-          {busy ? <Loader2 className="animate-spin" /> : <Play />}
+        <Button size="lg" className="h-14 w-full text-base" disabled={!ready} onClick={start}>
+          <Play />
           Start game {game}
         </Button>
         <p className="mt-1.5 text-center text-xs text-muted-foreground">

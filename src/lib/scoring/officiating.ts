@@ -5,6 +5,7 @@ export type CourtPlayer = { name: string; avatarUrl: string | null };
 
 export type OfficiatingEvent = {
   id: string;
+  clientOpId: string | null;
   kind: string;
   payload: Record<string, unknown>;
   operatorLabel: string | null;
@@ -57,17 +58,20 @@ export async function loadMatchPlayers(match: {
 
 /** Timers run and games started, oldest first. Empty before the migration. */
 export async function loadOfficiatingLog(matchId: string): Promise<OfficiatingEvent[]> {
+  // select * so this works before and after the offline-scoring columns exist
   const { data, error } = await createAdminClient()
     .from("match_events")
-    .select("id, kind, payload, operator_label, created_at")
+    .select("*")
     .eq("match_id", matchId)
     .order("created_at", { ascending: true });
   if (error || !data) return [];
   return data.map((e) => ({
     id: e.id as string,
+    clientOpId: ((e as { client_op_id?: string | null }).client_op_id ?? null) as string | null,
     kind: e.kind as string,
     payload: (e.payload ?? {}) as Record<string, unknown>,
     operatorLabel: (e.operator_label as string | null) ?? null,
-    createdAt: e.created_at as string,
+    // when it happened on court, even if it synced later
+    createdAt: (((e as { occurred_at?: string | null }).occurred_at ?? e.created_at) as string),
   }));
 }

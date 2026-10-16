@@ -62,25 +62,7 @@ export async function loadQueue(tournamentId: string) {
   const activeUmpires = (umpires ?? []).filter((u) => u.active && !u.deleted_at);
   const umpireName = new Map((umpires ?? []).map((u) => [u.id as string, u.name as string]));
 
-  const toMatch = (m: Row): QueueMatch => ({
-    id: m.id,
-    status: m.status,
-    teamA: m.team_a_label ?? "TBD",
-    teamB: m.team_b_label ?? "TBD",
-    divisionId: m.division_id,
-    divisionName: m.division_id ? (divisionName.get(m.division_id) ?? "Category") : "Category",
-    label: [m.pool ? `Pool ${m.pool}` : null, m.round_label ?? (m.match_number ? `Match ${m.match_number}` : null)]
-      .filter(Boolean)
-      .join(" · "),
-    courtId: m.court_id,
-    position: m.court_queue_position ?? null,
-    umpireId: m.assigned_umpire_id,
-    umpireName: m.assigned_umpire_id ? (umpireName.get(m.assigned_umpire_id) ?? "Umpire") : null,
-    scoreA: Number(m.score_a ?? 0),
-    scoreB: Number(m.score_b ?? 0),
-    gamesA: Number(m.games_won_a ?? 0),
-    gamesB: Number(m.games_won_b ?? 0),
-  });
+  const toMatch = (m: Row) => rowToQueueMatch(m, divisionName, umpireName);
 
   const rows = ((matches ?? []) as Row[]).filter(isPlayableMatch);
   const activeCourts = (courts ?? []).filter((c) => c.active !== false);
@@ -125,3 +107,49 @@ export async function loadQueue(tournamentId: string) {
 }
 
 export type QueueData = Awaited<ReturnType<typeof loadQueue>>;
+
+function rowToQueueMatch(
+  m: Row,
+  divisionName: Map<string, string>,
+  umpireName: Map<string, string>
+): QueueMatch {
+  return {
+    id: m.id,
+    status: m.status,
+    teamA: m.team_a_label ?? "TBD",
+    teamB: m.team_b_label ?? "TBD",
+    divisionId: m.division_id,
+    divisionName: m.division_id ? (divisionName.get(m.division_id) ?? "Category") : "Category",
+    label: [m.pool ? `Pool ${m.pool}` : null, m.round_label ?? (m.match_number ? `Match ${m.match_number}` : null)]
+      .filter(Boolean)
+      .join(" · "),
+    courtId: m.court_id,
+    position: m.court_queue_position ?? null,
+    umpireId: m.assigned_umpire_id,
+    umpireName: m.assigned_umpire_id ? (umpireName.get(m.assigned_umpire_id) ?? "Umpire") : null,
+    scoreA: Number(m.score_a ?? 0),
+    scoreB: Number(m.score_b ?? 0),
+    gamesA: Number(m.games_won_a ?? 0),
+    gamesB: Number(m.games_won_b ?? 0),
+  };
+}
+
+/** Matches this umpire already finished (newest first). */
+export async function loadUmpireFinishedMatches(tournamentId: string, umpireId: string) {
+  const admin = createAdminClient();
+  const [{ data: divisions }, { data: umpires }, { data: matches }] = await Promise.all([
+    admin.from("tournament_divisions").select("id, name").eq("tournament_id", tournamentId),
+    admin.from("tournament_umpires").select("id, name").eq("tournament_id", tournamentId),
+    admin
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .eq("assigned_umpire_id", umpireId)
+      .in("status", ["completed", "walkover"])
+      .order("updated_at", { ascending: false })
+      .limit(40),
+  ]);
+  const divisionName = new Map((divisions ?? []).map((d) => [d.id, d.name as string]));
+  const umpireName = new Map((umpires ?? []).map((u) => [u.id as string, u.name as string]));
+  return ((matches ?? []) as Row[]).filter(isPlayableMatch).map((m) => rowToQueueMatch(m, divisionName, umpireName));
+}

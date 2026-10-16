@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUmpireSession } from "@/lib/auth/umpire";
 import { UmpireHub } from "@/components/umpire/umpire-hub";
+import { UmpirePinGate } from "@/components/umpire/umpire-pin-gate";
 import { AutoRefresh } from "@/components/display/auto-refresh";
-import { loadQueue } from "@/lib/queue/load";
+import { RegisterUmpireSW } from "@/components/umpire/register-sw";
+import { loadQueue, loadUmpireFinishedMatches } from "@/lib/queue/load";
 import { loadDivisionContext } from "@/lib/draw/server";
 import { buildDrawView } from "@/lib/draw/view";
 
@@ -25,11 +27,20 @@ export default async function UmpireBoardPage({
     .maybeSingle();
   if (!tournament) notFound();
 
-  const [session, queue, { data: divisions }] = await Promise.all([
-    getUmpireSession(tournamentId),
-    // same court queue the organizer manages: courts in order, then matches not on a court yet
+  const session = await getUmpireSession(tournamentId);
+  // the PIN comes first: no matches until the umpire is signed in
+  if (!session) {
+    return (
+      <main id="main" className="min-h-dvh bg-background">
+        <RegisterUmpireSW />
+        <UmpirePinGate tournamentId={tournamentId} tournamentName={tournament.name} />
+      </main>
+    );
+  }
+  const [queue, { data: divisions }, finishedMatches] = await Promise.all([
     loadQueue(tournamentId),
     admin.from("tournament_divisions").select("id, name, bracket_state").eq("tournament_id", tournamentId).order("sort_order"),
+    loadUmpireFinishedMatches(tournamentId, session.id),
   ]);
 
   const startedIds = (divisions ?? [])
@@ -48,11 +59,13 @@ export default async function UmpireBoardPage({
   return (
     <main id="main" className="min-h-dvh bg-background">
       <AutoRefresh seconds={20} clock={false} />
+      <RegisterUmpireSW />
       <UmpireHub
         tournamentId={tournamentId}
         tournamentName={tournament.name}
         sessionUmpire={session}
         queue={queue}
+        finishedMatches={finishedMatches}
         bracketCategories={bracketCategories}
       />
     </main>

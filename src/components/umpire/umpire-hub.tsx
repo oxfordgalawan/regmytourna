@@ -24,12 +24,14 @@ export function UmpireHub({
   tournamentName,
   sessionUmpire,
   queue,
+  finishedMatches,
   bracketCategories,
 }: {
   tournamentId: string;
   tournamentName: string;
   sessionUmpire: { id: string; name: string } | null;
   queue: QueueData;
+  finishedMatches: QueueMatch[];
   bracketCategories: Array<{ id: string; name: string; view: DrawView }>;
 }) {
   const router = useRouter();
@@ -42,17 +44,20 @@ export function UmpireHub({
     ...queue.liveElsewhere,
     ...queue.ready,
   ];
-  const mine = sessionUmpire
+  const mineActive = sessionUmpire
     ? all
         .filter((m) => m.umpireId === sessionUmpire.id)
         .sort((a, b) => Number(b.status === "in_progress") - Number(a.status === "in_progress"))
     : [];
+  const mineDone = finishedMatches;
   const courtName = new Map(queue.courts.map((c) => [c.id, c.name]));
 
   const tabs: Array<{ key: Tab; label: string; icon: typeof ListOrdered; count?: number }> = [
     { key: "queue", label: "Queue", icon: ListOrdered },
     { key: "matches", label: "Matches", icon: ListChecks },
-    ...(sessionUmpire ? [{ key: "mine" as const, label: "My matches", icon: UserRound, count: mine.length }] : []),
+    ...(sessionUmpire
+      ? [{ key: "mine" as const, label: "My matches", icon: UserRound, count: mineActive.length + mineDone.length }]
+      : []),
     { key: "brackets", label: "Brackets", icon: GitBranch },
   ];
 
@@ -147,7 +152,7 @@ export function UmpireHub({
         {tab === "matches" && <UmpireMatches tournamentId={tournamentId} data={queue} meId={sessionUmpire?.id ?? null} />}
 
         {tab === "mine" &&
-          (mine.length === 0 ? (
+          (mineActive.length === 0 && mineDone.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line px-6 py-10 text-center">
               <p className="font-semibold text-bone">No matches yet</p>
               <p className="mt-1 text-sm text-muted-foreground">Claim one from the Queue tab.</p>
@@ -156,40 +161,80 @@ export function UmpireHub({
               </Button>
             </div>
           ) : (
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {mine.map((m) => (
-                <li
-                  key={m.id}
-                  className={cn(
-                    "flex min-w-0 items-center gap-3 rounded-2xl border bg-surface p-4",
-                    m.status === "in_progress" ? "border-rust/40" : "border-line"
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs text-muted-foreground">
-                      {[m.courtId ? courtName.get(m.courtId) : null, m.divisionName, m.status === "in_progress" ? "Live" : null]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    <p className="mt-1 truncate text-sm font-medium text-bone">{m.teamA}</p>
-                    <p className="truncate text-sm font-medium text-bone">
-                      <span className="mr-1 font-mono text-[0.65rem] text-muted-foreground">vs</span>
-                      {m.teamB}
-                    </p>
-                  </div>
-                  {m.status === "scheduled" ? (
-                    <StartMatchButton tournamentId={tournamentId} matchId={m.id} className="h-10" />
-                  ) : (
-                    <Button size="sm" className="h-10 shrink-0" asChild>
-                      <Link href={`/umpire/${tournamentId}/match/${m.id}`} transitionTypes={NAV_FORWARD}>
-                        Continue
-                        <ChevronRight />
-                      </Link>
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-8">
+              {mineActive.length > 0 && (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-bone">Up next</h2>
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {mineActive.map((m) => (
+                      <li
+                        key={m.id}
+                        className={cn(
+                          "flex min-w-0 items-center gap-3 rounded-2xl border bg-surface p-4",
+                          m.status === "in_progress" ? "border-rust/40" : "border-line"
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[m.courtId ? courtName.get(m.courtId) : null, m.divisionName, m.status === "in_progress" ? "Live" : null]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-medium text-bone">{m.teamA}</p>
+                          <p className="truncate text-sm font-medium text-bone">
+                            <span className="mr-1 font-mono text-[0.65rem] text-muted-foreground">vs</span>
+                            {m.teamB}
+                          </p>
+                        </div>
+                        {m.status === "scheduled" ? (
+                          <StartMatchButton tournamentId={tournamentId} matchId={m.id} className="h-10" />
+                        ) : (
+                          <Button size="sm" className="h-10 shrink-0" asChild>
+                            <Link href={`/umpire/${tournamentId}/match/${m.id}`} transitionTypes={NAV_FORWARD}>
+                              Continue
+                              <ChevronRight />
+                            </Link>
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {mineDone.length > 0 && (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-bone">Finished</h2>
+                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {mineDone.map((m) => (
+                      <li
+                        key={m.id}
+                        className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface/60 p-4 opacity-95"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[m.divisionName, m.label, m.status === "walkover" ? "Walkover" : "Done"].filter(Boolean).join(" · ")}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-medium text-bone">{m.teamA}</p>
+                          <p className="truncate text-sm font-medium text-bone">
+                            <span className="mr-1 font-mono text-[0.65rem] text-muted-foreground">vs</span>
+                            {m.teamB}
+                          </p>
+                          <p className="mt-1 font-mono text-xs text-brass">
+                            Games {m.gamesA}–{m.gamesB}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" className="h-10 shrink-0" asChild>
+                          <Link href={`/umpire/${tournamentId}/match/${m.id}`} transitionTypes={NAV_FORWARD}>
+                            View
+                            <ChevronRight />
+                          </Link>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
           ))}
 
         {tab === "brackets" && <UmpireBrackets tournamentId={tournamentId} categories={bracketCategories} />}

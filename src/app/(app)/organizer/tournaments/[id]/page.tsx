@@ -9,6 +9,8 @@ import { formatDateRange, formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getAppUrl } from "@/lib/env/server";
 import { RegistrationQrCard } from "@/components/tournaments/registration-qr-card";
+import { PublishChecklistAction } from "@/components/organizer/tournament-status-controls";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
 
 const DRAW_STATE: Record<string, string> = {
   not_started: "Seeding",
@@ -28,6 +30,8 @@ export default async function OrganizerTournamentOverviewPage({
   const { data: t } = await supabase.from("tournaments").select("*").eq("id", id).single();
 
   if (!t) return null;
+
+  const bracketOnly = (await getRegistrationMode(id)) === "bracket_only";
 
   const [{ data: divisions }, { data: regs }, { count: courtCount }] = await Promise.all([
     supabase
@@ -117,6 +121,7 @@ export default async function OrganizerTournamentOverviewPage({
                   {!item.done && item.href && <ArrowRight className="size-4 text-muted-foreground" />}
                 </>
               );
+              const isPublish = item.label === "Publish the event";
               return (
                 <li key={item.label}>
                   {!item.done && item.href ? (
@@ -127,7 +132,12 @@ export default async function OrganizerTournamentOverviewPage({
                       {content}
                     </Link>
                   ) : (
-                    <div className="flex items-center gap-3 px-2 py-2.5 text-sm text-bone">{content}</div>
+                    <div className="px-2 py-2.5 text-sm text-bone">
+                      <div className="flex items-center gap-3">{content}</div>
+                      {isPublish && !item.done && (
+                        <PublishChecklistAction tournamentId={id} bracketOnly={bracketOnly} />
+                      )}
+                    </div>
                   )}
                 </li>
               );

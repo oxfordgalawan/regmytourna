@@ -11,6 +11,7 @@ import {
   clientIp,
   generateUmpirePin,
   getUmpireAccess,
+  getUmpireSession,
   hashPin,
   isValidPin,
   issueUmpireSession,
@@ -180,7 +181,7 @@ export async function umpireSignInAction(tournamentId: string, pin: string) {
   return { ok: true, name: umpire.name };
 }
 
-export async function claimMatchAction(tournamentId: string, matchId: string, pin: string) {
+export async function claimMatchAction(tournamentId: string, matchId: string, pin: string): Promise<{ ok?: boolean; matchId?: string; error?: string }> {
   const lock = await pinLockout(tournamentId, "umpire.claim_failed");
   if (lock.locked) return { error: lock.error };
 
@@ -200,6 +201,28 @@ export async function claimMatchAction(tournamentId: string, matchId: string, pi
     };
   }
 
+  const res = await assignClaim(tournamentId, matchId, umpire.id);
+  if (res.error) return res;
+
+  const access = await getUmpireAccess(tournamentId);
+  await issueUmpireSession(tournamentId, umpire.id, access?.access_version ?? 0);
+  revalidateUmpirePaths(tournamentId);
+  revalidatePath(`/umpire/${tournamentId}/match/${matchId}`);
+  return { ok: true, matchId };
+}
+
+/** Claim as the umpire already signed in on this device — no PIN again. */
+export async function claimMatchAsSignedInAction(tournamentId: string, matchId: string): Promise<{ ok?: boolean; matchId?: string; error?: string }> {
+  const session = await getUmpireSession(tournamentId);
+  if (!session) return { error: "Your sign-in expired. Enter your PIN again." };
+  const res = await assignClaim(tournamentId, matchId, session.id);
+  if (res.error) return res;
+  revalidateUmpirePaths(tournamentId);
+  revalidatePath(`/umpire/${tournamentId}/match/${matchId}`);
+  return { ok: true, matchId };
+}
+
+async function assignClaim(tournamentId: string, matchId: string, umpireId: string): Promise<{ error?: string }> {
   const admin = createAdminClient();
   const { data: match } = await admin
     .from("matches")
@@ -210,14 +233,14 @@ export async function claimMatchAction(tournamentId: string, matchId: string, pi
   if (!match || !isPlayableMatch(match) || match.status !== "scheduled") {
     return { error: "This match is not available to claim." };
   }
-  if (match.assigned_umpire_id && match.assigned_umpire_id !== umpire.id) {
+  if (match.assigned_umpire_id && match.assigned_umpire_id !== umpireId) {
     return { error: "This match is already assigned to another umpire." };
   }
 
   if (!match.assigned_umpire_id) {
     const { data: updated, error } = await admin
       .from("matches")
-      .update({ assigned_umpire_id: umpire.id })
+      .update({ assigned_umpire_id: umpireId })
       .eq("id", matchId)
       .is("assigned_umpire_id", null)
       .select("id")
@@ -225,12 +248,7 @@ export async function claimMatchAction(tournamentId: string, matchId: string, pi
     if (error) return { error: error.message };
     if (!updated) return { error: "Someone else just claimed this match." };
   }
-
-  const access = await getUmpireAccess(tournamentId);
-  await issueUmpireSession(tournamentId, umpire.id, access?.access_version ?? 0);
-  revalidateUmpirePaths(tournamentId);
-  revalidatePath(`/umpire/${tournamentId}/match/${matchId}`);
-  return { ok: true, matchId };
+  return {};
 }
 
 export async function assignMatchUmpireAction(

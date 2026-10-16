@@ -10,6 +10,8 @@ import { getRegistrationMode } from "@/lib/tournaments/mode";
 import { RouteTransition } from "@/components/motion/route-transition";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
+import { TournamentStatusControls } from "@/components/organizer/tournament-status-controls";
+import type { TournamentStatus } from "@/types/database";
 
 export default async function TournamentManageLayout({
   children,
@@ -31,6 +33,8 @@ export default async function TournamentManageLayout({
     .single();
   if (!tournament) notFound();
 
+  const bracketOnly = (await getRegistrationMode(id)) === "bracket_only";
+
   return (
     <div className="space-y-8">
       <div>
@@ -49,7 +53,12 @@ export default async function TournamentManageLayout({
               {tournament.name}
             </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <TournamentStatusControls
+              tournamentId={id}
+              status={tournament.status as TournamentStatus}
+              bracketOnly={bracketOnly}
+            />
             <Button variant="outline" size="sm" asChild>
               <Link href={`/tournaments/${tournament.slug}`} target="_blank">
                 <ExternalLink />
@@ -65,7 +74,7 @@ export default async function TournamentManageLayout({
           </div>
         </div>
       </div>
-      <TournamentNav tournamentId={id} bracketOnly={(await getRegistrationMode(id)) === "bracket_only"} />
+      <TournamentNav tournamentId={id} bracketOnly={bracketOnly} />
       <RouteTransition scope="tab">{children}</RouteTransition>
     </div>
   );

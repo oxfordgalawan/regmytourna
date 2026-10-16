@@ -127,6 +127,7 @@ export function UmpireMatches({
         open={Boolean(claim)}
         onOpenChange={(o) => !o && setClaim(null)}
         tournamentId={tournamentId}
+        signedIn={Boolean(meId)}
         matchId={claim?.id ?? null}
         matchLabel={claim ? `${claim.teamA} vs ${claim.teamB} · ${claim.divisionName}` : ""}
       />

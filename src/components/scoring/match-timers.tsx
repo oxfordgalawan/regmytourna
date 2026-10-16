@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CircleCheck, CircleStop, Loader2, Play, ShieldCheck, Square, Timer } from "lucide-react";
-import { toast } from "sonner";
-import { logTimerAction } from "@/app/actions/officiating";
+import { CircleCheck, CircleStop, Play, ShieldCheck, Square, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TIMERS, timerLabel } from "@/lib/scoring/pickleball";
 import { cn } from "@/lib/utils";
@@ -74,9 +71,13 @@ function beep() {
   }
 }
 
-/** 1 / 3 / 5 minute timers. Every start, finish and stop is saved to the match log. */
-export function MatchTimers({ matchId, events, compact = false }: { matchId: string; events: TimerEvent[]; compact?: boolean }) {
-  const router = useRouter();
+export type TimerLogFn = (event: "started" | "finished" | "stopped", seconds: number, elapsed?: number) => void;
+
+/**
+ * 1 / 3 / 5 minute timers. The countdown runs on the device; every start,
+ * finish and stop is recorded (saved locally first, synced when online).
+ */
+export function MatchTimers({ events, onLog, compact = false }: { events: TimerEvent[]; onLog: TimerLogFn; compact?: boolean }) {
   const runs = useMemo(() => timerRuns(events), [events]);
   // a timer left running (page reloaded mid-countdown) picks up where it was
   const [running, setRunning] = useState<{ seconds: number; startedAt: number } | null>(() => {
@@ -84,7 +85,6 @@ export function MatchTimers({ matchId, events, compact = false }: { matchId: str
     return r && r.startedAt + r.seconds * 1000 > nowMs() - 2000 ? { seconds: r.seconds, startedAt: r.startedAt } : null;
   });
   const [now, setNow] = useState(nowMs);
-  const [busy, setBusy] = useState<number | "stop" | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const finishing = useRef(false);
 
@@ -104,43 +104,23 @@ export function MatchTimers({ matchId, events, compact = false }: { matchId: str
     setDone(finished.seconds);
     beep();
     if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
-    logTimerAction(matchId, "finished", finished.seconds, finished.seconds).then((res) => {
-      finishing.current = false;
-      if (!res.ok) toast.error(res.error);
-      router.refresh();
-    });
-  }, [left, running, matchId, router]);
+    onLog("finished", finished.seconds, finished.seconds);
+    finishing.current = false;
+  }, [left, running, onLog]);
 
-  async function start(seconds: number) {
-    if (busy !== null) return;
-    setBusy(seconds);
+  function start(seconds: number) {
     setDone(null);
-    if (running) {
-      const elapsed = (nowMs() - running.startedAt) / 1000;
-      await logTimerAction(matchId, "stopped", running.seconds, elapsed);
-    }
-    const res = await logTimerAction(matchId, "started", seconds);
-    setBusy(null);
-    if (!res.ok) {
-      toast.error(res.error);
-      setRunning(null);
-      return;
-    }
+    if (running) onLog("stopped", running.seconds, (nowMs() - running.startedAt) / 1000);
+    onLog("started", seconds);
     const t = nowMs();
     setNow(t);
     setRunning({ seconds, startedAt: t });
-    router.refresh();
   }
 
-  async function stop() {
-    if (!running || busy !== null) return;
-    setBusy("stop");
-    const elapsed = (nowMs() - running.startedAt) / 1000;
-    const res = await logTimerAction(matchId, "stopped", running.seconds, elapsed);
-    setBusy(null);
-    if (!res.ok) return toast.error(res.error);
+  function stop() {
+    if (!running) return;
+    onLog("stopped", running.seconds, (nowMs() - running.startedAt) / 1000);
     setRunning(null);
-    router.refresh();
   }
 
   const progress = running ? Math.min(1, Math.max(0, 1 - left / running.seconds)) : 0;
@@ -157,8 +137,8 @@ export function MatchTimers({ matchId, events, compact = false }: { matchId: str
                 {mmss(left)}
               </p>
             </div>
-            <Button variant="outline" size="lg" onClick={stop} disabled={busy !== null}>
-              {busy === "stop" ? <Loader2 className="animate-spin" /> : <Square />}
+            <Button variant="outline" size="lg" onClick={stop}>
+              <Square />
               Stop
             </Button>
           </div>
@@ -179,7 +159,7 @@ export function MatchTimers({ matchId, events, compact = false }: { matchId: str
             <button
               key={t.seconds}
               type="button"
-              disabled={busy !== null || active}
+              disabled={active}
               onClick={() => start(t.seconds)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-xl border px-2 py-3 text-center transition-colors disabled:opacity-60",
@@ -187,7 +167,7 @@ export function MatchTimers({ matchId, events, compact = false }: { matchId: str
               )}
             >
               <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                {busy === t.seconds ? <Loader2 className="size-3 animate-spin" /> : active ? <Timer className="size-3" /> : <Play className="size-3" />}
+                {active ? <Timer className="size-3" /> : <Play className="size-3" />}
                 {t.short}
               </span>
               <span className="text-sm font-semibold leading-tight text-bone">{t.label}</span>

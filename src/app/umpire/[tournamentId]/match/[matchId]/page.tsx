@@ -4,6 +4,7 @@ import { getOptionalUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { getUmpireSession } from "@/lib/auth/umpire";
 import { PickleballScoring } from "@/components/scoring/pickleball-scoring";
+import { RegisterUmpireSW } from "@/components/umpire/register-sw";
 import { loadMatchPlayers, loadOfficiatingLog } from "@/lib/scoring/officiating";
 import type { Match } from "@/types/database";
 
@@ -50,14 +51,19 @@ export default async function UmpireMatchPage({
     loadOfficiatingLog(matchId),
   ]);
   const format = (division as { format?: string } | null)?.format ?? "doubles";
+  const { data: tournament } = await admin.from("tournaments").select("scoring_config").eq("id", tournamentId).maybeSingle();
+  const gamesToWin = Number((tournament?.scoring_config as { games_to_win?: number } | null)?.games_to_win ?? 2) || 2;
 
   return (
     <main id="main" className="min-h-dvh bg-background">
+      <RegisterUmpireSW />
       <PickleballScoring
         courtName={(court as { name?: string } | null)?.name ?? "Any court"}
         match={match as Match}
         divisionName={(division as { name?: string } | null)?.name}
         backHref={`/umpire/${tournamentId}`}
+        tournamentId={tournamentId}
+        gamesToWin={gamesToWin}
         doubles={format !== "singles"}
         players={players}
         events={events}
