@@ -47,7 +47,7 @@ export function roundRobinMatches(
         round: r + 1,
         position,
         matchNumber: 0,
-        roundLabel: opts.pool ? `Pool ${opts.pool} · Round ${r + 1}` : `Round ${r + 1}`,
+        roundLabel: opts.pool ? `Pool ${opts.pool} · RR ${r + 1}` : `Round robin · RR ${r + 1}`,
         a: x.id,
         b: y.id,
         aLabel: x.name,

@@ -49,13 +49,28 @@ const finalSchema = z.object({
   matchTiePoints: z.number().min(0).max(10),
 });
 
+export const DEFAULT_GAMES_TO_WIN = 2;
+
 export const bracketConfigSchema = z.object({
   preset: z.enum(PRESET_IDS),
   pools: poolsSchema.nullable(),
   final: finalSchema,
   /** how tied teams are ordered in pool / round-robin / Swiss standings */
   tiebreakers: z.array(z.enum(TIEBREAKERS)).min(1).default(DEFAULT_TIEBREAKERS),
+  /** games a side must win to take the match (umpire scoring) */
+  gamesToWin: z.number().int().min(1).max(3).default(DEFAULT_GAMES_TO_WIN),
 });
+
+export function matchGamesToWinHint(gamesToWin: number): string {
+  if (gamesToWin === 1) return "Single game — one game decides the match.";
+  if (gamesToWin === 2) return "Best of 3 — first to 2 games wins.";
+  return "Best of 5 — first to 3 games wins.";
+}
+
+export function gamesToWinFromDivisionConfig(config: BracketConfig): number {
+  const n = config.gamesToWin ?? DEFAULT_GAMES_TO_WIN;
+  return n >= 1 && n <= 3 ? n : DEFAULT_GAMES_TO_WIN;
+}
 
 export type BracketConfig = z.infer<typeof bracketConfigSchema>;
 export type PoolsConfig = z.infer<typeof poolsSchema>;
@@ -142,15 +157,23 @@ export function presetConfig(preset: PresetId, teamCount: number): BracketConfig
         pools: { size: 4, advance: 2, playEachOther: 1 },
         final: baseFinal({ rounds: swissRounds }),
         tiebreakers: DEFAULT_TIEBREAKERS,
+        gamesToWin: DEFAULT_GAMES_TO_WIN,
       };
     case "knockout":
-      return { preset, pools: null, final: baseFinal({ rounds: swissRounds }), tiebreakers: DEFAULT_TIEBREAKERS };
+      return {
+        preset,
+        pools: null,
+        final: baseFinal({ rounds: swissRounds }),
+        tiebreakers: DEFAULT_TIEBREAKERS,
+        gamesToWin: DEFAULT_GAMES_TO_WIN,
+      };
     case "double_knockout":
       return {
         preset,
         pools: null,
         final: baseFinal({ type: "double_elimination", thirdPlaceMatch: false, rounds: swissRounds }),
         tiebreakers: DEFAULT_TIEBREAKERS,
+        gamesToWin: DEFAULT_GAMES_TO_WIN,
       };
     case "round_robin":
       return {
@@ -158,6 +181,7 @@ export function presetConfig(preset: PresetId, teamCount: number): BracketConfig
         pools: null,
         final: baseFinal({ type: "round_robin", thirdPlaceMatch: false, rounds: swissRounds }),
         tiebreakers: DEFAULT_TIEBREAKERS,
+        gamesToWin: DEFAULT_GAMES_TO_WIN,
       };
     case "swiss":
       return {
@@ -165,6 +189,7 @@ export function presetConfig(preset: PresetId, teamCount: number): BracketConfig
         pools: null,
         final: baseFinal({ type: "swiss", thirdPlaceMatch: false, rounds: swissRounds }),
         tiebreakers: DEFAULT_TIEBREAKERS,
+        gamesToWin: DEFAULT_GAMES_TO_WIN,
       };
   }
 }
@@ -222,9 +247,16 @@ function finalStageMath(final: FinalConfig, n: number): StageMath {
   }
 }
 
+/** Circle-method schedule rounds inside one pool (one match per team per round). */
+export function poolScheduleRoundsPerPool(poolSize: number, playEachOther: 1 | 2): number {
+  return playEachOther * (poolSize % 2 === 0 ? poolSize - 1 : poolSize);
+}
+
 export type FormatSummary = {
   teams: number;
   pools: number[] | null;
+  /** When pools are configured: schedule rounds inside a full pool of `pools.size`. */
+  poolScheduleRoundsPerPool: number | null;
   advancing: number;
   knockoutSize: number;
   byes: number;
@@ -240,6 +272,7 @@ export type FormatSummary = {
 export function summarize(config: BracketConfig, teams: number): FormatSummary {
   const warnings: string[] = [];
   let pools: number[] | null = null;
+  let poolScheduleRounds: number | null = null;
   let poolMatches = 0;
   let advancing = teams;
   let guaranteed = 0;
@@ -249,6 +282,7 @@ export function summarize(config: BracketConfig, teams: number): FormatSummary {
   if (config.pools) {
     const { size, advance, playEachOther } = config.pools;
     pools = poolSizes(teams, size);
+    poolScheduleRounds = poolScheduleRoundsPerPool(size, playEachOther);
     const smallest = Math.min(...pools);
     poolMatches = pools.reduce((n, s) => n + (playEachOther * s * (s - 1)) / 2, 0);
     guaranteed = playEachOther * (smallest - 1);
@@ -283,6 +317,7 @@ export function summarize(config: BracketConfig, teams: number): FormatSummary {
   return {
     teams,
     pools,
+    poolScheduleRoundsPerPool: poolScheduleRounds,
     advancing,
     knockoutSize,
     byes,
@@ -301,10 +336,12 @@ export function describeFormat(config: BracketConfig, teams: number) {
   const s = summarize(config, teams);
   const matches =
     s.totalMatches === s.totalMatchesMax ? `${s.totalMatches}` : `${s.totalMatches}–${s.totalMatchesMax}`;
+  const gamesToWin = gamesToWinFromDivisionConfig(config);
   return {
     name: config.preset === "custom" ? customName(config) : PRESETS[config.preset].label,
     matches: `${matches} matches`,
     guaranteed: `${s.guaranteedGames} ${s.guaranteedGames === 1 ? "game" : "games"} guaranteed`,
+    scoring: gamesToWin === 1 ? "First to 1 game" : `First to ${gamesToWin} games`,
   };
 }
 

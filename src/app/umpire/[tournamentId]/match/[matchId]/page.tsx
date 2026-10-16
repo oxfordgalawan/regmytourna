@@ -6,6 +6,7 @@ import { getUmpireSession } from "@/lib/auth/umpire";
 import { PickleballScoring } from "@/components/scoring/pickleball-scoring";
 import { RegisterUmpireSW } from "@/components/umpire/register-sw";
 import { loadMatchPlayers, loadOfficiatingLog } from "@/lib/scoring/officiating";
+import { gamesToWinForMatch } from "@/lib/scoring/config";
 import type { Match } from "@/types/database";
 
 export const metadata = { title: "Score match", robots: { index: false } };
@@ -40,7 +41,7 @@ export default async function UmpireMatchPage({
     if (match.status === "scheduled") redirect(`/umpire/${tournamentId}`);
   }
 
-  const [{ data: division }, { data: court }, players, events] = await Promise.all([
+  const [{ data: division }, { data: court }, players, events, gamesToWin] = await Promise.all([
     match.division_id
       ? admin.from("tournament_divisions").select("name, format").eq("id", match.division_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -49,10 +50,9 @@ export default async function UmpireMatchPage({
       : Promise.resolve({ data: null }),
     loadMatchPlayers(match),
     loadOfficiatingLog(matchId),
+    gamesToWinForMatch(admin, matchId),
   ]);
   const format = (division as { format?: string } | null)?.format ?? "doubles";
-  const { data: tournament } = await admin.from("tournaments").select("scoring_config").eq("id", tournamentId).maybeSingle();
-  const gamesToWin = Number((tournament?.scoring_config as { games_to_win?: number } | null)?.games_to_win ?? 2) || 2;
 
   return (
     <main id="main" className="min-h-dvh bg-background">

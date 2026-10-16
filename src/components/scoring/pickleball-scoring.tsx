@@ -171,6 +171,9 @@ export function PickleballScoring({
             {match.round_label ?? `Match ${match.match_number ?? "—"}`}
             {divisionName ? ` · ${divisionName}` : ""}
           </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {gamesToWin === 1 ? "First to 1 game" : `First to ${gamesToWin} games`}
+          </p>
         </div>
         <div className="text-right">
           <p className="eyebrow">Game</p>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireMatchScoringAccess } from "@/lib/auth/umpire";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { advanceAfterResult } from "@/lib/draw/progress";
+import { gamesToWinForMatch } from "@/lib/scoring/config";
 
 type MatchRow = {
   id: string;
@@ -113,17 +114,10 @@ export async function finalizeMatchAction(matchId: string) {
     return { ok: false, error: "A game can't end on a tied score." };
   }
 
-  const { data: tournament } = await admin
-    .from("tournaments")
-    .select("scoring_config")
-    .eq("id", match.tournament_id)
-    .single();
-
   const gamesWonA = match.games_won_a + (match.score_a > match.score_b ? 1 : 0);
   const gamesWonB = match.games_won_b + (match.score_b > match.score_a ? 1 : 0);
 
-  const config = (tournament?.scoring_config ?? {}) as { games_to_win?: number };
-  const gamesToWin = config.games_to_win ?? 2;
+  const gamesToWin = await gamesToWinForMatch(admin, matchId);
   const isMatchComplete = gamesWonA >= gamesToWin || gamesWonB >= gamesToWin;
   const games = await gameScores(matchId, match.current_game, { a: match.score_a, b: match.score_b });
 

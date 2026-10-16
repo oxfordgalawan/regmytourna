@@ -13,6 +13,7 @@ import {
   presetConfig,
   recommendedPreset,
   summarize,
+  matchGamesToWinHint,
   type BracketConfig,
   type FinalConfig,
   type PoolsConfig,
@@ -137,7 +138,9 @@ export function FormatPicker({
         type="button"
         role="radio"
         aria-checked={active}
-        onClick={() => !active && set(presetConfig(id, teams))}
+        onClick={() =>
+          !active && set({ ...presetConfig(id, teams), gamesToWin: value.gamesToWin ?? 2 })
+        }
         className={cn(
           "relative flex flex-col rounded-xl border p-4 text-left transition-all duration-200",
           active ? "border-bone bg-bone text-ink" : "border-line text-bone hover:border-bone/40 hover:bg-espresso/40"
@@ -238,9 +241,9 @@ export function FormatPicker({
               value={value.pools.advance}
               onChange={(advance) => setPools({ advance })}
             />{" "}
-            from each pool go through · play each other{" "}
+            from each pool go through · meet each opponent{" "}
             <Segmented
-              label="Pool rounds"
+              label="Meet each opponent"
               value={value.pools.playEachOther}
               options={[
                 { value: 1, label: "once" },
@@ -252,21 +255,23 @@ export function FormatPicker({
         )}
         {value.pools && (
           <p className="text-sm text-muted-foreground">
-            Each team plays{" "}
             <span className="font-semibold text-bone">
-              {(value.pools.size - 1) * value.pools.playEachOther} pool{" "}
-              {(value.pools.size - 1) * value.pools.playEachOther === 1 ? "match" : "matches"}
+              {(value.pools.size - 1) * value.pools.playEachOther} matches per team
             </span>{" "}
-            — {value.pools.playEachOther === 1 ? "one" : "two"} against each of the other {value.pools.size - 1} teams in
-            its pool, one per round.
+            ·{" "}
+            <span className="font-semibold text-bone">
+              {summary.poolScheduleRoundsPerPool ?? 0} schedule{" "}
+              {(summary.poolScheduleRoundsPerPool ?? 0) === 1 ? "round" : "rounds"}
+            </span>{" "}
+            per pool (each team plays once per schedule round — not a rematch for ties).
           </p>
         )}
 
         {f.type === "round_robin" && (
           <p>
-            Everyone plays each other{" "}
+            Everyone meets each opponent{" "}
             <Segmented
-              label="Rounds"
+              label="Meet each opponent"
               value={f.playEachOther}
               options={[
                 { value: 1, label: "once" },
@@ -296,7 +301,14 @@ export function FormatPicker({
           {[
             { k: "Matches", v: summary.totalMatches === summary.totalMatchesMax ? summary.totalMatches : `${summary.totalMatches}–${summary.totalMatchesMax}` },
             { k: "Games guaranteed", v: summary.guaranteedGames },
-            { k: value.pools ? "Pools" : "Rounds", v: value.pools ? summary.pools?.length ?? 0 : f.type === "swiss" ? f.rounds : "—" },
+            {
+              k: value.pools ? "Schedule rounds (per pool)" : "Rounds",
+              v: value.pools
+                ? (summary.poolScheduleRoundsPerPool ?? "—")
+                : f.type === "swiss"
+                  ? f.rounds
+                  : "—",
+            },
           ].map((stat) => (
             <div key={stat.k} className="bg-surface px-3 py-3">
               <p className="display text-3xl text-bone tabular-nums">{stat.v}</p>
@@ -326,6 +338,22 @@ export function FormatPicker({
           <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
         </summary>
         <div className="space-y-4 border-t border-line p-4">
+          <div>
+            <p className="text-sm font-medium">Match scoring</p>
+            <p className="mb-3 text-xs text-muted-foreground">How many games a team must win to take the match.</p>
+            <Segmented
+              label="Games to win the match"
+              value={value.gamesToWin ?? 2}
+              options={[
+                { value: 1, label: "1" },
+                { value: 2, label: "2" },
+                { value: 3, label: "3" },
+              ]}
+              onChange={(gamesToWin) => set({ ...value, gamesToWin })}
+            />
+            <p className="mt-2 text-xs text-muted-foreground">{matchGamesToWinHint(value.gamesToWin ?? 2)}</p>
+          </div>
+
           {hasRanking && (
             <div>
               <p className="text-sm font-medium">Breaking ties in the standings</p>

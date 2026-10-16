@@ -76,7 +76,7 @@ export function DivisionFormatButton({
         <span>
           <span className="block text-sm whitespace-nowrap text-bone">{info.name}</span>
           <span className="block font-mono text-[0.7rem] whitespace-nowrap text-muted-foreground">
-            {info.matches}
+            {info.matches} · {info.scoring}
           </span>
         </span>
       </button>
