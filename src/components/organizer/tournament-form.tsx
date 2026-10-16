@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { Check, ChevronDown, ClipboardList, Loader2, Upload } from "lucide-react";
 import { createTournamentAction } from "@/app/actions/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +103,8 @@ function Toggle({
 
 export function TournamentForm() {
   const router = useRouter();
+  const [mode, setMode] = useState<"open" | "bracket_only">("open");
+  const bracketOnly = mode === "bracket_only";
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("draft");
@@ -150,7 +152,10 @@ export function TournamentForm() {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    if (result.id) router.push(`/organizer/tournaments/${result.id}`);
+    if (result.id) {
+      // bracket-only: straight to the Players tab to import the list
+      router.push(`/organizer/tournaments/${result.id}${bracketOnly ? "/registrations" : ""}`);
+    }
   }
 
   return (
@@ -160,6 +165,51 @@ export function TournamentForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <section className="mb-10 space-y-3">
+        <h2 className="eyebrow">How will players get in?</h2>
+        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="How players get in">
+          {(
+            [
+              ["open", ClipboardList, "Players register online", "A public page where players sign up and pay. You approve, collect and run the draw."],
+              ["bracket_only", Upload, "I already have my player list", "Bracket & scoring only. Import names from Excel — no registration page, no payments."],
+            ] as const
+          ).map(([value, Icon, title, body]) => {
+            const active = mode === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => {
+                  setMode(value);
+                  if (value === "bracket_only" && status === "registration_open") setStatus("published");
+                }}
+                className={cn(
+                  "relative flex gap-4 rounded-2xl border p-5 text-left transition-all",
+                  active ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                    active ? "bg-bone text-ink" : "bg-umber/40 text-brass"
+                  )}
+                >
+                  <Icon className="size-5" />
+                </span>
+                <span>
+                  <span className="block font-semibold text-bone">{title}</span>
+                  <span className="mt-1 block text-sm text-muted-foreground">{body}</span>
+                </span>
+                {active && <Check className="absolute top-4 right-4 size-4 text-bone" strokeWidth={3} />}
+              </button>
+            );
+          })}
+        </div>
+        <input type="hidden" name="registrationMode" value={mode} />
+      </section>
 
       <FormSection step={1} title="The basics" description="What players see first.">
         <Field id="name" label="Tournament name" className="sm:col-span-2">
@@ -247,7 +297,11 @@ export function TournamentForm() {
         </Field>
       </FormSection>
 
-      <FormSection step={2} title="When" description="Event days and the registration window.">
+      <FormSection
+        step={2}
+        title="When"
+        description={bracketOnly ? "The event days." : "Event days and the registration window."}
+      >
         <Field id="startDate" label="First day">
           <Input id="startDate" name="startDate" type="date" value={schedule.startDate} onChange={setDate("startDate")} />
         </Field>
@@ -262,6 +316,7 @@ export function TournamentForm() {
             aria-invalid={Boolean(scheduleErrors.endDate)}
           />
         </Field>
+        {!bracketOnly && (<>
         <Field
           id="registrationOpensAt"
           label="Registration period opens"
@@ -301,6 +356,7 @@ export function TournamentForm() {
             aria-invalid={Boolean(scheduleErrors.registrationClosesAt)}
           />
         </Field>
+        </>)}
       </FormSection>
 
       <FormSection step={3} title="Where" description="Help players find the venue.">
@@ -340,7 +396,7 @@ export function TournamentForm() {
         />
       </FormSection>
 
-      <CategoryBuilder />
+      <CategoryBuilder bracketOnly={bracketOnly} />
 
       <FormSection step={6} title="Rules & extras" description="The fine print and finishing touches.">
         <Field id="rules" label="Rules & eligibility" className="sm:col-span-2">
@@ -354,16 +410,18 @@ export function TournamentForm() {
         <Field label="Cover photo" hint="Optional. Shown at the top of your tournament page." className="sm:col-span-2">
           <CoverImageUpload />
         </Field>
-        <Toggle
-          name="waitlistEnabled"
-          label="Waitlist when full"
-          hint="Extra entries queue up instead of being turned away."
-        />
+        {!bracketOnly && (
+          <Toggle
+            name="waitlistEnabled"
+            label="Waitlist when full"
+            hint="Extra entries queue up instead of being turned away."
+          />
+        )}
       </FormSection>
 
       <FormSection step={7} title="Publish" description="Choose who can see it.">
         <div className="grid gap-2 sm:col-span-2 sm:grid-cols-3" role="radiogroup" aria-label="Publication status">
-          {publishOptions.map((opt) => {
+          {publishOptions.filter((o) => !bracketOnly || o.value !== "registration_open").map((opt) => {
             const active = status === opt.value;
             return (
               <button
@@ -378,9 +436,9 @@ export function TournamentForm() {
                 )}
               >
                 {active && <Check className="absolute top-4 right-4 size-4" strokeWidth={3} />}
-                <span className="block text-sm font-semibold">{opt.label}</span>
+                <span className="block text-sm font-semibold">{bracketOnly && opt.value === "published" ? "Publish" : opt.label}</span>
                 <span className={cn("mt-1 block text-xs", active ? "text-ink/65" : "text-muted-foreground")}>
-                  {opt.hint}
+                  {bracketOnly && opt.value === "published" ? "Public page with categories and live bracket" : opt.hint}
                 </span>
               </button>
             );

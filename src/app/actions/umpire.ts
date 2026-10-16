@@ -15,6 +15,8 @@ import {
   isValidPin,
   issueUmpireSession,
   verifyPin,
+  encryptPin,
+  decryptPin,
 } from "@/lib/auth/umpire";
 import { isPlayableMatch } from "@/lib/umpire/playable";
 
@@ -22,6 +24,7 @@ function revalidateUmpirePaths(tournamentId: string) {
   revalidatePath(`/organizer/tournaments/${tournamentId}/umpires`);
   revalidatePath(`/organizer/tournaments/${tournamentId}/matches`);
   revalidatePath(`/umpire/${tournamentId}`);
+  revalidatePath(`/organizer/tournaments/${tournamentId}/queue`);
 }
 
 async function pinLockout(tournamentId: string, action: string) {
@@ -89,11 +92,10 @@ export async function createUmpireAction(tournamentId: string, name: string) {
   if (!generated) return { error: "Could not generate a unique PIN. Try again." };
 
   const admin = createAdminClient();
-  const { error } = await admin.from("tournament_umpires").insert({
-    tournament_id: tournamentId,
-    name: trimmed,
-    pin_hash: generated.pin_hash,
-  });
+  const row = { tournament_id: tournamentId, name: trimmed, pin_hash: generated.pin_hash };
+  let { error } = await admin.from("tournament_umpires").insert({ ...row, pin_encrypted: encryptPin(generated.pin) });
+  // before the reveal migration: save without the encrypted copy
+  if (error?.message.includes("pin_encrypted")) ({ error } = await admin.from("tournament_umpires").insert(row));
   if (error) return { error: error.message };
 
   await getUmpireAccess(tournamentId);
@@ -120,11 +122,11 @@ export async function regenerateUmpirePinAction(tournamentId: string, umpireId: 
   const generated = await generateUniquePin(tournamentId, umpireId);
   if (!generated) return { error: "Could not generate a unique PIN. Try again." };
 
-  const { error } = await createAdminClient()
-    .from("tournament_umpires")
-    .update({ pin_hash: generated.pin_hash })
-    .eq("id", umpireId)
-    .eq("tournament_id", tournamentId);
+  const admin = createAdminClient();
+  const update = (fields: Record<string, string>) =>
+    admin.from("tournament_umpires").update(fields).eq("id", umpireId).eq("tournament_id", tournamentId);
+  let { error } = await update({ pin_hash: generated.pin_hash, pin_encrypted: encryptPin(generated.pin) });
+  if (error?.message.includes("pin_encrypted")) ({ error } = await update({ pin_hash: generated.pin_hash }));
   if (error) return { error: error.message };
 
   await bumpUmpireAccessVersion(tournamentId);
@@ -382,4 +384,70 @@ export async function umpireSignOutAction(tournamentId: string) {
 /** @deprecated Shared PIN removed — kept so old imports fail loudly if any remain. */
 export async function setUmpirePinAction(_tournamentId: string, _pin: string) {
   return { error: "Use the umpire roster instead of a shared PIN." };
+}
+
+/**
+ * Removes an umpire without losing their history: they're signed out, their
+ * unstarted matches go back to "claimable", and they can be restored later.
+ */
+export async function deleteUmpireAction(tournamentId: string, umpireId: string) {
+  await requireOrganizerForTournament(tournamentId);
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("tournament_umpires")
+    .update({ deleted_at: new Date().toISOString(), active: false })
+    .eq("id", umpireId)
+    .eq("tournament_id", tournamentId);
+  if (error) {
+    return {
+      error: error.message.includes("deleted_at")
+        ? "Deleting umpires needs the latest database migration — run it and try again."
+        : error.message,
+    };
+  }
+  await admin
+    .from("matches")
+    .update({ assigned_umpire_id: null })
+    .eq("tournament_id", tournamentId)
+    .eq("assigned_umpire_id", umpireId)
+    .eq("status", "scheduled");
+  await admin.from("umpire_pool_assignments").delete().eq("tournament_id", tournamentId).eq("umpire_id", umpireId);
+  await bumpUmpireAccessVersion(tournamentId);
+  revalidateUmpirePaths(tournamentId);
+  return { ok: true };
+}
+
+/** Brings a deleted umpire back (same name and PIN). */
+export async function restoreUmpireAction(tournamentId: string, umpireId: string) {
+  await requireOrganizerForTournament(tournamentId);
+  const { error } = await createAdminClient()
+    .from("tournament_umpires")
+    .update({ deleted_at: null, active: true })
+    .eq("id", umpireId)
+    .eq("tournament_id", tournamentId);
+  if (error) return { error: error.message };
+  revalidateUmpirePaths(tournamentId);
+  return { ok: true };
+}
+
+/** Shows one umpire's PIN to an organizer of this event (decrypted on demand). */
+export async function revealUmpirePinAction(tournamentId: string, umpireId: string) {
+  await requireOrganizerForTournament(tournamentId);
+  const { data } = await createAdminClient()
+    .from("tournament_umpires")
+    .select("*")
+    .eq("id", umpireId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!data) return { error: "Umpire not found." };
+  if (!("pin_encrypted" in data)) {
+    return { error: "PIN reveal isn't set up yet — the database update (umpire_pin_reveal migration) hasn't been applied." };
+  }
+  const pin = decryptPin((data as { pin_encrypted?: string | null }).pin_encrypted);
+  if (!pin) {
+    return {
+      error: "This PIN was created before PINs could be shown. Tap New PIN once — after that you can reveal it any time.",
+    };
+  }
+  return { ok: true as const, pin };
 }

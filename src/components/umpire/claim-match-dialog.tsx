@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { claimMatchAction } from "@/app/actions/umpire";
 import { PinEntry } from "@/components/umpire/pin-entry";
 import {
@@ -39,8 +40,9 @@ export function ClaimMatchDialog({
             onSubmit={async (pin) => {
               const res = await claimMatchAction(tournamentId, matchId, pin);
               if (res.error) return { error: res.error };
+              // claiming only reserves the match; the umpire starts it when players are on court
               onOpenChange(false);
-              router.push(`/umpire/${tournamentId}/match/${matchId}`);
+              toast.success("Match claimed — tap Start match when the players are on court.");
               router.refresh();
             }}
           />

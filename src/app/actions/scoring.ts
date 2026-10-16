@@ -69,12 +69,18 @@ export async function undoLastScoreAction(matchId: string) {
   if (!last) return { ok: false };
 
   await admin.from("match_scores").delete().eq("id", last.id);
+  // pickleball rallies keep the full state before the rally (score + serve)
+  const prev = (last as { prev_state?: { score_a: number; score_b: number; serve_state: unknown } | null }).prev_state;
   await admin
     .from("matches")
-    .update({
-      score_a: last.action_type === "increment_a" ? Math.max(0, match.score_a - 1) : match.score_a,
-      score_b: last.action_type === "increment_b" ? Math.max(0, match.score_b - 1) : match.score_b,
-    })
+    .update(
+      prev
+        ? { score_a: prev.score_a, score_b: prev.score_b, serve_state: prev.serve_state }
+        : {
+            score_a: last.action_type === "increment_a" ? Math.max(0, match.score_a - 1) : match.score_a,
+            score_b: last.action_type === "increment_b" ? Math.max(0, match.score_b - 1) : match.score_b,
+          }
+    )
     .eq("id", matchId);
 
   revalidateScoring(match);
@@ -121,19 +127,19 @@ export async function finalizeMatchAction(matchId: string) {
   const isMatchComplete = gamesWonA >= gamesToWin || gamesWonB >= gamesToWin;
   const games = await gameScores(matchId, match.current_game, { a: match.score_a, b: match.score_b });
 
-  await admin
-    .from("matches")
-    .update({
-      games_won_a: gamesWonA,
-      games_won_b: gamesWonB,
-      score_a: 0,
-      score_b: 0,
-      current_game: match.current_game + 1,
-      status: isMatchComplete ? "completed" : "in_progress",
-      completed_at: isMatchComplete ? new Date().toISOString() : null,
-      game_scores: games.map((g) => [g.a, g.b]),
-    })
-    .eq("id", matchId);
+  const ended = {
+    games_won_a: gamesWonA,
+    games_won_b: gamesWonB,
+    score_a: 0,
+    score_b: 0,
+    current_game: match.current_game + 1,
+    status: isMatchComplete ? "completed" : "in_progress",
+    completed_at: isMatchComplete ? new Date().toISOString() : null,
+    game_scores: games.map((g) => [g.a, g.b]),
+  };
+  // the next game starts with a fresh serve (setup screen); fall back if officiating isn't migrated
+  const { error: endError } = await admin.from("matches").update({ ...ended, serve_state: null }).eq("id", matchId);
+  if (endError?.message.includes("serve_state")) await admin.from("matches").update(ended).eq("id", matchId);
 
   if (isMatchComplete) {
     // moves the winner (and loser, in double knockout) into their next matches
@@ -146,4 +152,34 @@ export async function finalizeMatchAction(matchId: string) {
 
   revalidateScoring(match);
   return { ok: true, complete: isMatchComplete };
+}
+
+/** The claiming umpire puts a scheduled match on court; the scoreboard opens after this. */
+export async function startMatchAction(matchId: string): Promise<{ ok?: true; error?: string }> {
+  const admin = createAdminClient();
+  const { data: match } = await admin.from("matches").select("*").eq("id", matchId).maybeSingle();
+  if (!match) return { error: "Match not found." };
+  try {
+    await requireMatchScoringAccess(match.tournament_id, matchId);
+  } catch {
+    return { error: "Only the umpire who claimed this match can start it." };
+  }
+  if (match.status === "in_progress") return { ok: true };
+  if (match.status !== "scheduled") return { error: "This match can't be started." };
+  if (match.stage && (!match.team_a_registration_id || !match.team_b_registration_id)) {
+    return { error: "Waiting for both teams to be decided." };
+  }
+
+  const { error } = await admin
+    .from("matches")
+    .update({ status: "in_progress", started_at: match.started_at ?? new Date().toISOString() })
+    .eq("id", matchId)
+    .eq("status", "scheduled");
+  if (error) return { error: error.message };
+
+  revalidateScoring(match);
+  revalidatePath(`/organizer/tournaments/${match.tournament_id}/queue`);
+  revalidatePath(`/organizer/tournaments/${match.tournament_id}/matches`);
+  revalidatePath(`/display/${match.tournament_id}`);
+  return { ok: true };
 }

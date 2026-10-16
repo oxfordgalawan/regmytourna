@@ -238,7 +238,8 @@ export async function cancelEntryAction(registrationId: string): Promise<Result>
   const found = await loadRegistration(registrationId);
   if (!found) return { error: "Entry not found" };
   await requireOrganizerForTournament(found.reg.tournament_id);
-  if (found.reg.payment_status === "paid") {
+  // imported entries (bracket-only events) never involved a payment
+  if (found.reg.payment_status === "paid" && found.reg.entry_source !== "import") {
     return { error: "This entry is paid — refund it before cancelling." };
   }
   const admin = createAdminClient();

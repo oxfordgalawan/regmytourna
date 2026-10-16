@@ -89,7 +89,7 @@ function PesoInput({
  * Card-based editor for a tournament's categories. Emits two hidden fields:
  * `categories` (JSON) and `entryFeeCents` (shared fee, or the lowest category fee).
  */
-export function CategoryBuilder() {
+export function CategoryBuilder({ bracketOnly = false }: { bracketOnly?: boolean }) {
   const uid = useId();
   const [feeMode, setFeeMode] = useState<Mode>("shared");
   const [formatMode, setFormatMode] = useState<Mode>("shared");
@@ -187,7 +187,8 @@ export function CategoryBuilder() {
       <input type="hidden" name="categories" value={JSON.stringify(payload)} />
       <input type="hidden" name="entryFeeCents" value={Number.isFinite(tournamentFee) ? tournamentFee : 0} />
 
-      {/* Fee mode */}
+      {/* Fee mode — bracket-only events don't take payments */}
+      {!bracketOnly && (
       <div className="rounded-xl border border-line p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -224,6 +225,7 @@ export function CategoryBuilder() {
           </span>
         </label>
       </div>
+      )}
 
       {/* Category cards */}
       <ol className="grid gap-4 lg:grid-cols-2">
@@ -415,7 +417,7 @@ export function CategoryBuilder() {
       </FormSection>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[92dvh] w-[calc(100%-1.5rem)] overflow-y-auto sm:max-w-5xl xl:max-w-6xl">
           {editing && editingDraft && (
             <>
               <DialogHeader>

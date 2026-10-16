@@ -16,17 +16,20 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { MatchUmpireControls } from "@/components/organizer/match-umpire-controls";
+import { QueueButton, type CourtSummary } from "@/components/organizer/queue-dialog";
+import { isPlayableMatch } from "@/lib/umpire/playable";
 
 export default async function MatchesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const admin = createAdminClient();
 
-  const [{ data: matches }, { data: umpires }] = await Promise.all([
+  const [{ data: matches }, { data: umpires }, { data: courtRows }] = await Promise.all([
     supabase
       .from("matches")
       .select(
-        "id, match_number, round_label, team_a_label, team_b_label, status, court_id, assigned_umpire_id, umpire_queue_order, courts(name), tournament_divisions(name)"
+        // "*" includes the queue position (and still works before that migration)
+        "*, courts(name), tournament_divisions(name)"
       )
       .eq("tournament_id", id)
       .eq("is_bye", false)
@@ -39,8 +42,32 @@ export default async function MatchesPage({ params }: { params: Promise<{ id: st
       .eq("tournament_id", id)
       .eq("active", true)
       .order("name"),
+    supabase
+      .from("courts")
+      .select("id, name, active, sort_order")
+      .eq("tournament_id", id)
+      .order("sort_order"),
   ]);
 
+  // each court: playing now? how many waiting?
+  const live = new Set((matches ?? []).filter((m) => m.status === "in_progress" && m.court_id).map((m) => m.court_id));
+  const courts: CourtSummary[] = (courtRows ?? [])
+    .filter((c) => c.active !== false)
+    .map((c) => ({
+      id: c.id,
+      name: c.name as string,
+      live: live.has(c.id),
+      queued: (matches ?? []).filter((m) => m.court_id === c.id && m.status === "scheduled").length,
+    }));
+
+  // place in each court's line among matches still waiting (1 = next)
+  const linePlace = new Map<string, number>();
+  for (const c of courtRows ?? []) {
+    (matches ?? [])
+      .filter((m) => m.court_id === c.id && m.status === "scheduled")
+      .sort((a, b) => ((a.court_queue_position as number | null) ?? 9999) - ((b.court_queue_position as number | null) ?? 9999))
+      .forEach((m, i) => linePlace.set(m.id, i + 1));
+  }
   const roster = (umpires ?? []).map((u) => ({ id: u.id, name: u.name as string }));
   const umpireName = new Map(roster.map((u) => [u.id, u.name]));
 
@@ -96,7 +123,28 @@ export default async function MatchesPage({ params }: { params: Promise<{ id: st
                   {division?.name ?? "—"}
                   {m.round_label && <span className="block font-mono text-xs">{m.round_label}</span>}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{court?.name ?? "Unassigned"}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {m.status !== "scheduled" || !isPlayableMatch(m) ? (
+                    (court?.name ?? (m.status === "scheduled" ? <span className="text-xs">Waiting for teams</span> : "—"))
+                  ) : !courts.length ? (
+                    <Link href={`/organizer/tournaments/${id}/courts`} className="text-xs underline underline-offset-4 hover:text-bone">
+                      Add courts
+                    </Link>
+                  ) : (
+                    <QueueButton
+                      tournamentId={id}
+                      match={{
+                        id: m.id,
+                        teamA: m.team_a_label ?? "TBD",
+                        teamB: m.team_b_label ?? "TBD",
+                        divisionName: division?.name ?? "Category",
+                      }}
+                      courts={courts}
+                      currentCourtId={courts.some((c) => c.id === m.court_id) ? m.court_id : null}
+                      position={linePlace.get(m.id) ?? null}
+                    />
+                  )}
+                </TableCell>
                 <TableCell>
                   <StatusBadge status={m.status} />
                 </TableCell>

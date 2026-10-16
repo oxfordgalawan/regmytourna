@@ -96,3 +96,4 @@ export async function deleteCourtAction(tournamentId: string, courtId: string) {
   revalidateCourts(tournamentId);
   return { ok: true };
 }
+

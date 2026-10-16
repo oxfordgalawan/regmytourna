@@ -250,6 +250,17 @@ export function FormatPicker({
             />
           </p>
         )}
+        {value.pools && (
+          <p className="text-sm text-muted-foreground">
+            Each team plays{" "}
+            <span className="font-semibold text-bone">
+              {(value.pools.size - 1) * value.pools.playEachOther} pool{" "}
+              {(value.pools.size - 1) * value.pools.playEachOther === 1 ? "match" : "matches"}
+            </span>{" "}
+            — {value.pools.playEachOther === 1 ? "one" : "two"} against each of the other {value.pools.size - 1} teams in
+            its pool, one per round.
+          </p>
+        )}
 
         {f.type === "round_robin" && (
           <p>

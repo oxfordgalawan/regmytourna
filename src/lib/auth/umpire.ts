@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOptionalUser } from "@/lib/auth/require-user";
@@ -178,4 +178,32 @@ export async function requireMatchScoringAccess(tournamentId: string, matchId: s
 export async function clientIp() {
   const h = await headers();
   return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
+}
+
+/**
+ * Organizers can reveal an umpire's PIN, so alongside the hash we keep an
+ * encrypted copy (AES-256-GCM, key derived from the server secret). It is only
+ * decrypted on demand for one umpire by an organizer of that event.
+ */
+function pinKey() {
+  return createHash("sha256").update(`umpire-pin:${secret()}`).digest();
+}
+
+export function encryptPin(pin: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", pinKey(), iv);
+  const data = Buffer.concat([cipher.update(pin, "utf8"), cipher.final()]);
+  return `v1:${iv.toString("base64")}:${cipher.getAuthTag().toString("base64")}:${data.toString("base64")}`;
+}
+
+export function decryptPin(stored: string | null | undefined): string | null {
+  if (!stored?.startsWith("v1:")) return null;
+  try {
+    const [, iv, tag, data] = stored.split(":");
+    const decipher = createDecipheriv("aes-256-gcm", pinKey(), Buffer.from(iv, "base64"));
+    decipher.setAuthTag(Buffer.from(tag, "base64"));
+    return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
 }

@@ -16,7 +16,8 @@ export default async function UmpiresPage({ params }: { params: Promise<{ id: st
     await Promise.all([
       admin
         .from("tournament_umpires")
-        .select("id, name, active")
+        // "*" includes deleted_at (and works before that migration)
+        .select("*")
         .eq("tournament_id", id)
         .order("created_at"),
       admin
@@ -43,7 +44,10 @@ export default async function UmpiresPage({ params }: { params: Promise<{ id: st
     counts.set(uid, cur);
   }
 
-  const roster: RosterUmpire[] = (umpires ?? []).map((u) => {
+  const deleted = (umpires ?? [])
+    .filter((u) => u.deleted_at)
+    .map((u) => ({ id: u.id as string, name: u.name as string, deletedAt: u.deleted_at as string }));
+  const roster: RosterUmpire[] = (umpires ?? []).filter((u) => !u.deleted_at).map((u) => {
     const c = counts.get(u.id) ?? { completed: 0, walkover: 0 };
     return {
       id: u.id,
@@ -80,6 +84,7 @@ export default async function UmpiresPage({ params }: { params: Promise<{ id: st
       tournamentId={id}
       umpireUrl={`${getAppUrl()}/umpire/${id}`}
       umpires={roster}
+      deleted={deleted}
       pools={pools}
     />
   );

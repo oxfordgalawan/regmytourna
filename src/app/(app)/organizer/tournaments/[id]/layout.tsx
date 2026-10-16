@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createClient } from "@/lib/supabase/server";
 import { TournamentNav } from "@/components/organizer/tournament-nav";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
 import { RouteTransition } from "@/components/motion/route-transition";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -64,7 +65,7 @@ export default async function TournamentManageLayout({
           </div>
         </div>
       </div>
-      <TournamentNav tournamentId={id} />
+      <TournamentNav tournamentId={id} bracketOnly={(await getRegistrationMode(id)) === "bracket_only"} />
       <RouteTransition scope="tab">{children}</RouteTransition>
     </div>
   );

@@ -5,6 +5,7 @@ import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service"
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { relationOne } from "@/lib/supabase/relations";
 import { isCaptainOf } from "@/lib/registrations/team-changes";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
 
 export async function POST(request: NextRequest) {
   if (!isPayMongoConfigured()) {
@@ -33,6 +34,9 @@ export async function POST(request: NextRequest) {
 
   if (!registration || !(await isCaptainOf(registration.id, user.id))) {
     return NextResponse.json({ error: "Registration not found" }, { status: 404 });
+  }
+  if ((await getRegistrationMode(registration.tournament_id)) === "bracket_only") {
+    return NextResponse.json({ error: "This event doesn't take payments." }, { status: 409 });
   }
   // payment is only taken for an entry that holds a slot — never for the waitlist
   if (registration.payment_status === "paid") {

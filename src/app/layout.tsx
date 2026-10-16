@@ -3,6 +3,7 @@ import { Big_Shoulders, Geist, Geist_Mono, Instrument_Serif } from "next/font/go
 import { Toaster } from "@/components/ui/sonner";
 import { NavigationProgress } from "@/components/motion/navigation-progress";
 import { RouteTransition } from "@/components/motion/route-transition";
+import { ViewTransitionGuard } from "@/components/motion/view-transition-guard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -60,6 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
+        <ViewTransitionGuard />
         <NavigationProgress />
         <RouteTransition scope="area" className="flex min-h-full flex-1 flex-col">
           {children}

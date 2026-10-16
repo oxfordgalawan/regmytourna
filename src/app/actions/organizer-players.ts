@@ -39,7 +39,7 @@ export async function replacePlayerAction(
     .eq("registration_id", registrationId)
     .maybeSingle();
   if (!row) return { error: "Player not found on this entry." };
-  if (row.is_primary && reg.entry_source !== "desk") {
+  if (row.is_primary && reg.entry_source !== "desk" && reg.entry_source !== "import") {
     return { error: "The player who registered online can't be replaced — only their partner." };
   }
 

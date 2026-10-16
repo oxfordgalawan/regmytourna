@@ -11,24 +11,35 @@ import {
   GitBranch,
   UserCheck,
   FileText,
+  Users,
+  ListOrdered,
+  UsersRound,
 } from "lucide-react";
 import { useSlidingIndicator } from "@/components/motion/use-sliding-indicator";
 import { TAB_BACK, TAB_FORWARD } from "@/lib/nav-transitions";
 import { cn } from "@/lib/utils";
 
-const items = [
+const allItems = [
   { suffix: "", label: "Overview", icon: Gauge },
   { suffix: "/divisions", label: "Categories", icon: Layers },
   { suffix: "/registrations", label: "Registrations", icon: ClipboardList },
   { suffix: "/petitions", label: "Petitions", icon: FileText },
   { suffix: "/draw", label: "Brackets", icon: GitBranch },
   { suffix: "/matches", label: "Matches", icon: Swords },
+  { suffix: "/queue", label: "Queue", icon: ListOrdered },
   { suffix: "/courts", label: "Courts", icon: LayoutGrid },
   { suffix: "/umpires", label: "Umpires", icon: UserCheck },
+  { suffix: "/team", label: "Team", icon: UsersRound },
 ];
 
-export function TournamentNav({ tournamentId }: { tournamentId: string }) {
+export function TournamentNav({ tournamentId, bracketOnly = false }: { tournamentId: string; bracketOnly?: boolean }) {
   const pathname = usePathname();
+  // bracket-only events: the roster is "Players" (imported) and there are no petitions
+  const items = bracketOnly
+    ? allItems
+        .filter((i) => i.suffix !== "/petitions")
+        .map((i) => (i.suffix === "/registrations" ? { ...i, label: "Players", icon: Users } : i))
+    : allItems;
   const base = `/organizer/tournaments/${tournamentId}`;
   // sub-pages (e.g. one category's draw) keep their tab highlighted
   const activeIndex = items.findIndex(

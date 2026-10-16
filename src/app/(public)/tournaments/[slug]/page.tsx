@@ -20,6 +20,7 @@ import { RegisterSection } from "@/components/tournaments/register-section";
 import { DivisionRosterButton } from "@/components/tournaments/division-roster-button";
 import { TournamentCoverHero } from "@/components/tournaments/tournament-cover-hero";
 import { relationOne } from "@/lib/supabase/relations";
+import { modeOf } from "@/lib/tournaments/mode";
 import { slotCounts } from "@/lib/registrations/waitlist";
 import { entrantNoun } from "@/lib/categories";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
@@ -74,7 +75,9 @@ export default async function TournamentDetailPage({
     )
   ).filter((d): d is NonNullable<typeof d> => d !== null);
 
-  const isOpen = tournament.status === "registration_open";
+  // bracket-only: the organizer entered the players — no registration or fees here
+  const bracketOnly = modeOf(tournament as Record<string, unknown>) === "bracket_only";
+  const isOpen = !bracketOnly && tournament.status === "registration_open";
   const fees = divisions.map((d) => d.entry_fee_cents ?? tournament.entry_fee_cents);
   const minFee = fees.length ? Math.min(...fees) : tournament.entry_fee_cents;
   const maxFee = fees.length ? Math.max(...fees) : tournament.entry_fee_cents;
@@ -222,9 +225,11 @@ export default async function TournamentDetailPage({
                         divisionId={d.id}
                         format={d.format}
                       />
-                      <span className="font-mono text-bone">
-                        {formatPhp(d.entry_fee_cents ?? tournament.entry_fee_cents, tournament.currency)}
-                      </span>
+                      {!bracketOnly && (
+                        <span className="font-mono text-bone">
+                          {formatPhp(d.entry_fee_cents ?? tournament.entry_fee_cents, tournament.currency)}
+                        </span>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -273,6 +278,29 @@ export default async function TournamentDetailPage({
 
         {/* Sticky sidebar */}
         <aside className="lg:sticky lg:top-24 lg:self-start" id="register">
+          {bracketOnly ? (
+            <div className="grain relative overflow-hidden rounded-2xl border border-umber bg-espresso p-6">
+              <div className="court-grid pointer-events-none absolute inset-0 opacity-30" />
+              <div className="relative">
+                <p className="eyebrow">Players</p>
+                <p className="display mt-2 text-5xl text-bone">
+                  {Object.values(counts).reduce((n, c) => n + c.taken, 0)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {divisions.length} {divisions.length === 1 ? "category" : "categories"} · entered by the organizer
+                </p>
+                <p className="mt-5 text-sm leading-relaxed text-bone/75">
+                  Players for this event were entered by the organizer, so there&apos;s no sign-up here. Open a
+                  category&apos;s entries to see who&apos;s playing, and follow the bracket and live scores below.
+                </p>
+                {draws.length > 0 && (
+                  <Button className="mt-5 w-full" asChild>
+                    <Link href="#draw">Live bracket &amp; scores</Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
           <div className="overflow-hidden rounded-2xl border border-umber bg-espresso">
             <div className="border-b border-line p-6">
               <p className="eyebrow">Entry fee</p>
@@ -320,6 +348,7 @@ export default async function TournamentDetailPage({
               )}
             </div>
           </div>
+          )}
         </aside>
       </div>
 

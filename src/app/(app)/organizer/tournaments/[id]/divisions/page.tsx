@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddDivisionForm } from "@/components/organizer/add-division-form";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
 import { entrantNoun } from "@/lib/categories";
 import { LOCKED_BRACKET_STATES, parseBracketConfig } from "@/lib/bracket-format";
 import { DivisionFormatButton } from "@/components/organizer/division-format-button";
@@ -29,9 +30,18 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
     .eq("id", id)
     .single();
 
+  const bracketOnly = (await getRegistrationMode(id)) === "bracket_only";
+
   return (
     <div className="space-y-6">
-      <AddDivisionForm tournamentId={id} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {divisions?.length
+            ? `${divisions.length} ${divisions.length === 1 ? "category" : "categories"} · each one is its own bracket`
+            : "Each category is its own bracket."}
+        </p>
+        <AddDivisionForm tournamentId={id} showFee={!bracketOnly} />
+      </div>
       {divisions?.length ? (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
           <Table>
@@ -41,7 +51,7 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
                 <TableHead>Type</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead>Format</TableHead>
-                <TableHead className="pr-5 text-right">Fee</TableHead>
+                {!bracketOnly && <TableHead className="pr-5 text-right">Fee</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -62,12 +72,14 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
                       locked={LOCKED_BRACKET_STATES.has(d.challonge_state ?? "")}
                     />
                   </TableCell>
-                  <TableCell className="pr-5 text-right font-mono">
-                    {formatPhp(d.entry_fee_cents ?? tournament?.entry_fee_cents ?? 0, tournament?.currency)}
-                    {d.entry_fee_cents == null && (
-                      <span className="ml-2 text-xs text-muted-foreground">default</span>
-                    )}
-                  </TableCell>
+                  {!bracketOnly && (
+                    <TableCell className="pr-5 text-right font-mono">
+                      {formatPhp(d.entry_fee_cents ?? tournament?.entry_fee_cents ?? 0, tournament?.currency)}
+                      {d.entry_fee_cents == null && (
+                        <span className="ml-2 text-xs text-muted-foreground">default</span>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -75,7 +87,7 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
         </div>
       ) : (
         <p className="rounded-2xl border border-dashed border-line px-5 py-10 text-center text-sm text-muted-foreground">
-          No categories yet. Add one above — players need at least one to register.
+          No categories yet. Use “Add category” — {bracketOnly ? "you need at least one before importing players." : "players need at least one to register."}
         </p>
       )}
     </div>

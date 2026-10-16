@@ -17,6 +17,8 @@ import { listPublicTournaments } from "@/lib/tournaments/queries";
 import { PlayerHome } from "@/components/player/player-home";
 import { PartnerInvitesCard } from "@/components/player/partner-invites-card";
 import { pendingInvitesForEmail } from "@/lib/registrations/partner-invites";
+import { pendingOrganizerInvites } from "@/lib/organizers/team";
+import { OrganizerInvitesCard } from "@/components/organizer/organizer-invites-card";
 
 export const metadata = { title: "Dashboard" };
 
@@ -34,11 +36,10 @@ export default async function DashboardPage() {
   }
 
   const supabase = await createClient();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, orgInvites] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+    pendingOrganizerInvites(user.email),
+  ]);
 
   // players get their own home: entries, countdown, events to join — no organizer tools
   if ((await getViewRole(user.id, { superAdmin: isSuperAdmin(user) })).view === "player") {
@@ -48,12 +49,15 @@ export default async function DashboardPage() {
       pendingInvitesForEmail(user.email).catch(() => []),
     ]);
     return (
+      <div className="space-y-6">
+      <OrganizerInvitesCard invites={orgInvites} />
       <PlayerHome
         firstName={(profile?.full_name || user.email || "Player").split(/[\s@]/)[0]}
         entries={entries}
         openTournaments={open.data}
         invites={invites}
       />
+      </div>
     );
   }
 
@@ -105,6 +109,8 @@ export default async function DashboardPage() {
           </Button>
         }
       />
+
+      <OrganizerInvitesCard invites={orgInvites} />
 
       {/* someone added this organizer as their partner — accepting moves it to the player view */}
       <PartnerInvitesCard invites={invites} />

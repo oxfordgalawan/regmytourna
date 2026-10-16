@@ -82,7 +82,7 @@ export function DivisionFormatButton({
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[92dvh] w-[calc(100%-1.5rem)] overflow-y-auto sm:max-w-5xl xl:max-w-6xl">
           <DialogHeader>
             <DialogTitle className="text-lg">{name}</DialogTitle>
             <DialogDescription>

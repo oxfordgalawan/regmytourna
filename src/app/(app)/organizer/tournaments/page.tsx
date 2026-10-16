@@ -5,7 +5,7 @@ import Form from "next/form";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { ChevronRight, Plus, Search, Trophy } from "lucide-react";
 import { requireUser } from "@/lib/auth/require-user";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -87,11 +87,16 @@ export default async function OrganizerTournamentsPage({
 
 
 async function EventList({ userId, q, status }: { userId: string; q?: string; status?: string }) {
-  const supabase = await createClient();
-  let query = supabase
+  // events I own, plus ones I co-organize
+  const { data: memberships } = await createAdminClient()
+    .from("tournament_organizers")
+    .select("tournament_id")
+    .eq("user_id", userId);
+  const shared = (memberships ?? []).map((m) => m.tournament_id);
+  let query = createAdminClient()
     .from("tournaments")
-    .select("id, name, slug, status, start_date, end_date, city")
-    .eq("owner_id", userId)
+    .select("id, name, slug, status, start_date, end_date, city, owner_id")
+    .or(shared.length ? `owner_id.eq.${userId},id.in.(${shared.join(",")})` : `owner_id.eq.${userId}`)
     .order("created_at", { ascending: false });
 
   if (q) query = query.ilike("name", `%${q}%`);
@@ -144,7 +149,14 @@ async function EventList({ userId, q, status }: { userId: string; q?: string; st
                   <span className="display text-2xl text-bone">{tile?.day ?? "––"}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-bone">{t.name}</p>
+                  <p className="flex items-center gap-2 truncate font-medium text-bone">
+                    <span className="truncate">{t.name}</span>
+                    {t.owner_id !== userId && (
+                      <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[0.65rem] font-normal text-muted-foreground">
+                        Co-organizer
+                      </span>
+                    )}
+                  </p>
                   <p className="truncate text-sm text-muted-foreground">
                     {[t.city, formatDateRange(t.start_date, t.end_date)].filter(Boolean).join(" · ")}
                   </p>

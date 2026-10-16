@@ -13,6 +13,7 @@ import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registran
 import { relationOne } from "@/lib/supabase/relations";
 import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
 import { cancelEntry, isCaptainOf, loadTeam } from "@/lib/registrations/team-changes";
+import { getRegistrationMode } from "@/lib/tournaments/mode";
 
 export async function listMyRegistrationsForTournamentAction(tournamentSlug: string) {
   const user = await requireUser();
@@ -118,6 +119,9 @@ export async function createRegistrationAction(params: {
     .eq("slug", params.tournamentSlug)
     .single();
   if (!tournament) return { error: "Tournament not found" };
+  if ((await getRegistrationMode(tournament.id)) === "bracket_only") {
+    return { error: "Players for this event are entered by the organizer." };
+  }
   if (tournament.status !== "registration_open") {
     return { error: "Registration is not open" };
   }

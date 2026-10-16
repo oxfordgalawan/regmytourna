@@ -23,3 +23,10 @@ export function registrationName(reg: { registration_players?: unknown }) {
       .join(" / ") || "Unnamed entry"
   );
 }
+
+/** "  ANDREW   FUERZAS " → "Andrew Fuerzas"; leaves normal casing alone. */
+export function tidyPersonName(name: string) {
+  const n = name.trim().replace(/\s+/g, " ");
+  if (n !== n.toUpperCase() && n !== n.toLowerCase()) return n;
+  return n.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}

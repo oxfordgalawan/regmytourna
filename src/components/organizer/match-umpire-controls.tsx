@@ -60,6 +60,8 @@ export function MatchUmpireControls({
       )}
       <Select
         value={umpireId ?? "none"}
+        // labels for the trigger, so it shows the umpire's name instead of their id
+        items={[{ value: "none", label: "Unassigned" }, ...umpires.map((u) => ({ value: u.id, label: u.name }))]}
         onValueChange={async (v) => {
           const res = await assignMatchUmpireAction(tournamentId, matchId, v === "none" ? null : v);
           if (res.error) toast.error(res.error);

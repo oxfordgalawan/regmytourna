@@ -54,6 +54,16 @@ export async function createTournamentAction(formData: FormData) {
   }
 
   const v = parsed.data;
+  // bracket-only: the organizer imports players — no registration window, fees, waitlist or payments
+  const bracketOnly = formData.get("registrationMode") === "bracket_only";
+  if (bracketOnly) {
+    v.registrationOpensAt = undefined;
+    v.registrationClosesAt = undefined;
+    v.entryFeeCents = 0;
+    v.waitlistEnabled = false;
+    if (!["draft", "published"].includes(v.status)) v.status = "published";
+    for (const c of categories.data) c.entryFeeCents = 0;
+  }
   const scheduleError = Object.values(validateSchedule(v))[0];
   if (scheduleError) return { error: scheduleError };
 
@@ -87,12 +97,20 @@ export async function createTournamentAction(formData: FormData) {
       cover_image_url: v.coverImageUrl || null,
       is_public: v.isPublic,
       waitlist_enabled: v.waitlistEnabled,
-      allow_walk_in_payment: formData.get("allowWalkInPayment") === "on",
+      allow_walk_in_payment: !bracketOnly && formData.get("allowWalkInPayment") === "on",
+      // only sent when needed, so regular events still save before the migration is applied
+      ...(bracketOnly ? { registration_mode: "bracket_only" } : {}),
     })
     .select("id, slug")
     .single();
 
-  if (error) return { error: error.message };
+  if (error) {
+    return {
+      error: error.message.includes("registration_mode")
+        ? "Bracket-only events need the latest database migration — run it and try again."
+        : error.message,
+    };
+  }
 
   await admin.from("tournament_organizers").insert({
     tournament_id: tournament.id,

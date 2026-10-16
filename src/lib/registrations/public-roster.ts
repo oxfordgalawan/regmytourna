@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { tidyPersonName } from "@/lib/registrations/name";
 
 /**
  * The public "who's in" list for a category. Deliberately shows only who
@@ -23,13 +24,6 @@ type PlayerRow = {
   profiles: { full_name: string | null; avatar_url: string | null } | Array<{ full_name: string | null; avatar_url: string | null }> | null;
 };
 
-/** "ANDREW FUERZAS" → "Andrew Fuerzas"; leaves normal casing alone. */
-function tidyName(name: string) {
-  const n = name.trim().replace(/\s+/g, " ");
-  if (n !== n.toUpperCase() && n !== n.toLowerCase()) return n;
-  return n.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
-}
-
 function toPlayers(rows: PlayerRow[] | null | undefined): PublicRosterPlayer[] {
   return (rows ?? [])
     .slice()
@@ -37,7 +31,7 @@ function toPlayers(rows: PlayerRow[] | null | undefined): PublicRosterPlayer[] {
     .map((p) => {
       const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
       const name = prof?.full_name || p.guest_name;
-      return name ? { name: tidyName(name), avatarUrl: prof?.avatar_url?.trim() || null } : null;
+      return name ? { name: tidyPersonName(name), avatarUrl: prof?.avatar_url?.trim() || null } : null;
     })
     .filter((p): p is PublicRosterPlayer => p !== null);
 }
