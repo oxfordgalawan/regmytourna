@@ -64,13 +64,24 @@ check("round robin: 6 teams → 15 matches, 5 each, no repeats", () => {
   for (const e of entries) assert.equal(matches.filter((m) => m.a === e.id || m.b === e.id).length, 5);
 });
 
-check("pools → knockout: 16 teams, pools of 4, top 2, cross-paired, bronze", () => {
+function qfHasPair(qf: EngineMatch[], a: string, b: string) {
+  return qf.some((m) => [m.a, m.b].includes(a) && [m.a, m.b].includes(b));
+}
+
+function qfHalfIndex(qf: EngineMatch[], teamId: string, halves: number) {
+  const sorted = [...qf].sort((x, y) => x.position - y.position);
+  const perHalf = sorted.length / halves;
+  const i = sorted.findIndex((m) => m.a === teamId || m.b === teamId);
+  assert.ok(i >= 0, `team ${teamId} not in QF`);
+  return Math.floor(i / perHalf);
+}
+
+check("pools → knockout: 16 teams, Challonge cross-seed QFs, bronze", () => {
   const entries = teams(16);
   const config = presetConfig("pools_knockout", 16);
   const first = generateFirstStage(config, entries, { newId });
   assert.equal(first.state, "pools");
   assert.equal(first.matches.length, 24);
-  // snake seeding: seeds 1-4 in different pools
   const poolOf = (id: string) => first.matches.find((m) => m.a === id || m.b === id)!.pool;
   assert.equal(new Set(["t1", "t2", "t3", "t4"].map(poolOf)).size, 4);
 
@@ -80,10 +91,26 @@ check("pools → knockout: 16 teams, pools of 4, top 2, cross-paired, bronze", (
   const real = ko.filter((m) => !m.isBye);
   assert.equal(real.length, 8, "7 knockout matches + bronze");
   const qf = ko.filter((m) => m.stage === "winners" && m.round === 1);
-  const a1 = standings.get("A")![0].id;
-  const b2 = standings.get("B")![1].id;
-  assert.ok(qf.some((m) => [m.a, m.b].includes(a1) && [m.a, m.b].includes(b2)), "A1 plays B2");
+  const id = (pool: string, place: number) => standings.get(pool)![place].id;
+  assert.ok(qfHasPair(qf, id("A", 0), id("D", 1)), "A1 vs D2");
+  assert.ok(qfHasPair(qf, id("C", 0), id("B", 1)), "C1 vs B2");
+  assert.ok(qfHasPair(qf, id("B", 0), id("C", 1)), "B1 vs C2");
+  assert.ok(qfHasPair(qf, id("D", 0), id("A", 1)), "D1 vs A2");
+  assert.notEqual(qfHalfIndex(qf, id("A", 0), 2), qfHalfIndex(qf, id("A", 1), 2), "A1 and A2 in opposite halves");
   assert.equal(Math.min(...ko.map((m) => m.matchNumber)), 25);
+});
+
+check("pools → knockout: 8 teams, 2 pools, A1–B2 / B1–A2", () => {
+  const entries = teams(8);
+  const config = presetConfig("pools_knockout", 8);
+  const first = generateFirstStage(config, entries, { newId });
+  playAll(first.matches, entries);
+  const standings = poolStandings(config, entries, first.matches);
+  const ko = knockoutFromPools(config, standings, entries, { newId, startAt: 10 });
+  const qf = ko.filter((m) => m.stage === "winners" && m.round === 1);
+  const id = (pool: string, place: number) => standings.get(pool)![place].id;
+  assert.ok(qfHasPair(qf, id("A", 0), id("B", 1)), "A1 vs B2");
+  assert.ok(qfHasPair(qf, id("B", 0), id("A", 1)), "B1 vs A2");
 });
 
 check("knockout: 12 teams → 4 byes auto-advanced, champion reachable", () => {

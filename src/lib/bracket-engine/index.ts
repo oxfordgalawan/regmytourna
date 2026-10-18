@@ -1,5 +1,6 @@
 import { poolSizes, type BracketConfig } from "../bracket-format";
 import { settle } from "./advance";
+import { challongeAdvanceTwoSupported, challongePoolKnockoutPairs } from "./challonge-pool-knockout";
 import { buildDoubleElimination, buildSingleElimination, seededPairs, type Pair } from "./elimination";
 import {
   entriesFromKnockoutSlots,
@@ -214,13 +215,11 @@ export function poolStandings(config: BracketConfig, entries: Entry[], matches: 
   );
 }
 
-const isPowerOfTwo = (n: number) => n > 0 && (n & (n - 1)) === 0;
-
 /**
- * Knockout seeded from pool results. With two through from an even, power-of-two
- * number of pools, winners meet runners-up of the neighbouring pool (A1 v B2,
- * B1 v A2 …) so pool-mates can only meet in the final. Otherwise advancers are
- * ranked by finishing place, then record, and seeded normally.
+ * Knockout seeded from pool results. With two through from a power-of-two number
+ * of pools, uses Challonge-style cross seeding (e.g. four pools: A1 v D2, C1 v B2,
+ * B1 v C2, D1 v A2) so 1st and 2nd from the same pool are in opposite bracket
+ * halves. Otherwise advancers are ranked by place, then record, and seeded normally.
  */
 export function knockoutFromPools(
   config: BracketConfig,
@@ -236,14 +235,10 @@ export function knockoutFromPools(
 
   let pairs: Pair[] | undefined;
   const isBracket = config.final.type === "single_elimination" || config.final.type === "double_elimination";
-  if (isBracket && advance === 2 && pools.length >= 2 && isPowerOfTwo(pools.length)) {
-    const top: Pair[] = [];
-    const bottom: Pair[] = [];
-    for (let g = 0; g < pools.length; g += 2) {
-      top.push([entry(pools[g][0]), entry(pools[g + 1][1])]);
-      bottom.push([entry(pools[g + 1][0]), entry(pools[g][1])]);
-    }
-    pairs = [...top, ...bottom];
+  if (isBracket && advance === 2 && challongeAdvanceTwoSupported(pools.length)) {
+    pairs = challongePoolKnockoutPairs(
+      pools.map((rows) => [entry(rows[0]), entry(rows[1])])
+    );
   }
 
   // place-by-place ranking, used for seeding everything else
