@@ -4,6 +4,7 @@ import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   currentSwissRound,
+  flattenSeedsFromLayout,
   generateFirstStage,
   knockoutFromPools,
   nextSwissRound,
@@ -11,9 +12,10 @@ import {
   resolvePending,
   revertResult,
   stageDone,
+  validateSeedingLayout,
   type GameScore,
 } from "@/lib/bracket-engine";
-import { toChallongeTournament } from "@/lib/bracket-format";
+import { seedingLayoutSchema, toChallongeTournament } from "@/lib/bracket-format";
 import { insertMatches, loadDivisionContext, nextMatchNumber, setDivisionState, writePatches } from "@/lib/draw/server";
 import { advanceAfterResult, refreshDivisionState, revalidateDraw } from "@/lib/draw/progress";
 
@@ -28,6 +30,46 @@ async function contextFor(divisionId: string) {
 
 const fail = (e: unknown): Result => ({ error: e instanceof Error ? e.message : "Something went wrong" });
 
+async function persistSeedOrder(divisionId: string, registrationIds: string[]) {
+  const admin = createAdminClient();
+  await Promise.all(
+    registrationIds.map((id, i) => admin.from("registrations").update({ seed: i + 1 }).eq("id", id))
+  );
+}
+
+/** Saves manual pool / bracket layout in bracket_config. Only before the bracket starts. */
+export async function saveSeedingLayoutAction(
+  divisionId: string,
+  layout: unknown,
+  listOrder: string[]
+): Promise<Result> {
+  try {
+    const ctx = await contextFor(divisionId);
+    if (ctx.division.bracket_state !== "not_started") return { error: "Seeds are locked once the bracket starts." };
+    const parsed = seedingLayoutSchema.safeParse(layout);
+    if (!parsed.success) return { error: "That seeding layout isn't valid." };
+    const valid = new Set(ctx.entries.map((e) => e.id));
+    if (listOrder.some((id) => !valid.has(id))) return { error: "That list doesn't match this category." };
+
+    const config = { ...ctx.config, seedingLayout: parsed.data };
+    const entryIds = ctx.entries.map((e) => e.id);
+    const ordered = flattenSeedsFromLayout(config, entryIds, listOrder);
+
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("tournament_divisions")
+      .update({ bracket_config: config })
+      .eq("id", divisionId);
+    if (error) return { error: error.message };
+
+    await persistSeedOrder(divisionId, [...ordered, ...ctx.allEntries.filter((e) => e.withdrawn).map((e) => e.id)]);
+    await revalidateDraw(ctx.division.tournament_id, divisionId);
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 /** Saves the seed order (top seed first). Only before the bracket starts. */
 export async function saveSeedsAction(divisionId: string, registrationIds: string[]): Promise<Result> {
   try {
@@ -35,10 +77,7 @@ export async function saveSeedsAction(divisionId: string, registrationIds: strin
     if (ctx.division.bracket_state !== "not_started") return { error: "Seeds are locked once the bracket starts." };
     const valid = new Set(ctx.allEntries.map((e) => e.id));
     if (registrationIds.some((id) => !valid.has(id))) return { error: "That list doesn't match this category." };
-    const admin = createAdminClient();
-    await Promise.all(
-      registrationIds.map((id, i) => admin.from("registrations").update({ seed: i + 1 }).eq("id", id))
-    );
+    await persistSeedOrder(divisionId, registrationIds);
     await revalidateDraw(ctx.division.tournament_id, divisionId);
     return { ok: true };
   } catch (e) {
@@ -53,13 +92,15 @@ export async function startBracketAction(divisionId: string): Promise<Result> {
     if (ctx.matches.some((m) => m.stage)) return { error: "Reset the existing draw first." };
     if (ctx.entries.length < 2) return { error: "You need at least 2 confirmed entries to start." };
 
+    const entryIds = ctx.entries.map((e) => e.id);
+    const listOrder = entryIds;
+    const check = validateSeedingLayout(ctx.config, entryIds);
+    if (!check.ok) return { error: check.errors[0] };
+
     const stage = generateFirstStage(ctx.config, ctx.entries);
     await insertMatches(stage.matches, ctx.division.tournament_id, divisionId);
-    // lock in the order the draw was made from
-    const admin = createAdminClient();
-    await Promise.all(
-      ctx.entries.map((e, i) => admin.from("registrations").update({ seed: i + 1 }).eq("id", e.id))
-    );
+    const ordered = flattenSeedsFromLayout(ctx.config, entryIds, listOrder);
+    await persistSeedOrder(divisionId, ordered);
     await setDivisionState(divisionId, stage.state, { bracket_started_at: new Date().toISOString() });
     await revalidateDraw(ctx.division.tournament_id, divisionId);
     return { ok: true };

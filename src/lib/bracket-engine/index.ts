@@ -1,6 +1,12 @@
 import { poolSizes, type BracketConfig } from "../bracket-format";
 import { settle } from "./advance";
 import { buildDoubleElimination, buildSingleElimination, seededPairs, type Pair } from "./elimination";
+import {
+  entriesFromKnockoutSlots,
+  poolGroupsToEntryPools,
+  usesKnockoutSlotSeeding,
+  usesMultiPool,
+} from "./layout";
 import { roundRobinMatches } from "./round-robin";
 import { POOL_LETTERS, snakePools } from "./seeding";
 import { computeStandings, type StandingRow } from "./standings";
@@ -11,6 +17,8 @@ export * from "./types";
 export { applyResult, resolvePending, revertResult, settle, stageDone } from "./advance";
 export { computeStandings, type StandingRow } from "./standings";
 export { seedOrder, shuffle, snakePools, POOL_LETTERS } from "./seeding";
+export { seededPairs } from "./elimination";
+export * from "./layout";
 
 /** Rough play order so match numbers read naturally: earlier rounds first. */
 function playOrder(m: EngineMatch, finalRound: number): number {
@@ -104,7 +112,13 @@ export function generateFirstStage(
   let matches: EngineMatch[];
   let state: GeneratedStage["state"];
   if (config.pools && entries.length > config.pools.size) {
-    const pools = snakePools(entries, poolSizes(entries.length, config.pools.size));
+    const manual =
+      config.seedingLayout?.mode === "manual" && config.seedingLayout.poolGroups?.length
+        ? poolGroupsToEntryPools(config.seedingLayout.poolGroups, entries)
+        : null;
+    const pools =
+      manual ??
+      snakePools(entries, poolSizes(entries.length, config.pools.size));
     matches = pools.flatMap((members, i) =>
       roundRobinMatches(members, {
         stage: "pool",
@@ -118,7 +132,16 @@ export function generateFirstStage(
     // a pools format with only one pool's worth of teams is just a round robin
     matches = config.pools
       ? roundRobinMatches(entries, { stage: "round_robin", iterations: config.pools.playEachOther, newId })
-      : finalStage(config, entries, newId);
+      : finalStage(
+          config,
+          entries,
+          newId,
+          usesKnockoutSlotSeeding(config, entries.length) &&
+            config.seedingLayout?.mode === "manual" &&
+            config.seedingLayout.knockoutSlots?.length
+            ? seededPairs(entriesFromKnockoutSlots(config.seedingLayout.knockoutSlots, entries))
+            : undefined
+        );
     state = "final";
   }
 

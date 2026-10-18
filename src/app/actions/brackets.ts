@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { LOCKED_BRACKET_STATES, bracketConfigSchema } from "@/lib/bracket-format";
+import { LOCKED_BRACKET_STATES, bracketConfigSchema, parseBracketConfig } from "@/lib/bracket-format";
 
 
 async function loadDivision(divisionId: string) {
@@ -32,9 +32,15 @@ export async function updateDivisionFormatAction(divisionId: string, config: unk
   const parsed = bracketConfigSchema.safeParse(config);
   if (!parsed.success) return { error: "That format isn't valid." };
 
+  const prev = parseBracketConfig(division.bracket_config, division.capacity ?? 16);
+  const poolsChanged = JSON.stringify(prev.pools) !== JSON.stringify(parsed.data.pools);
+  const finalChanged = prev.final.type !== parsed.data.final.type;
+  const bracketConfig =
+    poolsChanged || finalChanged ? { ...parsed.data, seedingLayout: undefined } : parsed.data;
+
   const { error } = await createAdminClient()
     .from("tournament_divisions")
-    .update({ bracket_config: parsed.data })
+    .update({ bracket_config: bracketConfig })
     .eq("id", divisionId);
   if (error) return { error: error.message };
   revalidateEvent(division.tournament_id);

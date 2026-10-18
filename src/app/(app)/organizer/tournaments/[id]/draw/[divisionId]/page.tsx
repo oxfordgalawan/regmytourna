@@ -9,7 +9,7 @@ import { describeFormat, FINAL_TYPE_LABELS } from "@/lib/bracket-format";
 import { entrantNoun } from "@/lib/categories";
 import { NAV_BACK } from "@/lib/nav-transitions";
 import { DrawControls } from "@/components/draw/draw-controls";
-import { SeedingBoard } from "@/components/draw/seeding-board";
+import { SeedingWorkspace } from "@/components/draw/seeding-workspace";
 import { BracketView } from "@/components/draw/bracket-view";
 import { AutoRefresh } from "@/components/display/auto-refresh";
 
@@ -78,7 +78,7 @@ export default async function CategoryDrawPage({
           <BracketView mode="organizer" tournamentId={id} {...view} />
         </>
       ) : (
-        <SeedingBoard
+        <SeedingWorkspace
           divisionId={divisionId}
           config={ctx.config}
           entries={ctx.allEntries.map(({ id: entryId, name, withdrawn, createdAt }) => ({

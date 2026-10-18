@@ -51,6 +51,12 @@ const finalSchema = z.object({
 
 export const DEFAULT_GAMES_TO_WIN = 2;
 
+export const seedingLayoutSchema = z.object({
+  mode: z.enum(["standard", "manual"]).default("standard"),
+  poolGroups: z.array(z.object({ entryIds: z.array(z.string().uuid()) })).optional(),
+  knockoutSlots: z.array(z.string().uuid().nullable()).optional(),
+});
+
 export const bracketConfigSchema = z.object({
   preset: z.enum(PRESET_IDS),
   pools: poolsSchema.nullable(),
@@ -59,7 +65,11 @@ export const bracketConfigSchema = z.object({
   tiebreakers: z.array(z.enum(TIEBREAKERS)).min(1).default(DEFAULT_TIEBREAKERS),
   /** games a side must win to take the match (umpire scoring) */
   gamesToWin: z.number().int().min(1).max(3).default(DEFAULT_GAMES_TO_WIN),
+  /** pre-start manual pool / bracket placement (organizer seeding UI) */
+  seedingLayout: seedingLayoutSchema.optional(),
 });
+
+export type SeedingLayoutConfig = z.infer<typeof seedingLayoutSchema>;
 
 export function matchGamesToWinHint(gamesToWin: number): string {
   if (gamesToWin === 1) return "Single game — one game decides the match.";
