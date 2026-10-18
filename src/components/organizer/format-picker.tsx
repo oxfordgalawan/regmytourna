@@ -13,6 +13,8 @@ import {
   presetConfig,
   recommendedPreset,
   summarize,
+  bestOfFromGamesToWin,
+  gamesToWinFromBestOf,
   matchGamesToWinHint,
   type BracketConfig,
   type FinalConfig,
@@ -139,7 +141,7 @@ export function FormatPicker({
         role="radio"
         aria-checked={active}
         onClick={() =>
-          !active && set({ ...presetConfig(id, teams), gamesToWin: value.gamesToWin ?? 2 })
+          !active && set({ ...presetConfig(id, teams), gamesToWin: value.gamesToWin ?? 1 })
         }
         className={cn(
           "relative flex flex-col rounded-xl border p-4 text-left transition-all duration-200",
@@ -297,66 +299,26 @@ export function FormatPicker({
           </p>
         )}
 
-        <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center leading-normal">
-          {[
-            { k: "Matches", v: summary.totalMatches === summary.totalMatchesMax ? summary.totalMatches : `${summary.totalMatches}–${summary.totalMatchesMax}` },
-            { k: "Games guaranteed", v: summary.guaranteedGames },
-            {
-              k: value.pools ? "Schedule rounds (per pool)" : "Rounds",
-              v: value.pools
-                ? (summary.poolScheduleRoundsPerPool ?? "—")
-                : f.type === "swiss"
-                  ? f.rounds
-                  : "—",
-            },
-          ].map((stat) => (
-            <div key={stat.k} className="bg-surface px-3 py-3">
-              <p className="display text-3xl text-bone tabular-nums">{stat.v}</p>
-              <p className="eyebrow mt-1">{stat.k}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {summary.warnings.length > 0 && (
-        <ul className="space-y-2" aria-live="polite">
-          {summary.warnings.map((w) => (
-            <li key={w} className="flex gap-2 rounded-lg border border-brass/30 bg-brass/5 px-3 py-2 text-sm text-brass">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              {w}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {showPreview && <BracketPreview config={value} teams={teams} />}
-
-      {/* 3. Fine-tune */}
-      <details className="group rounded-xl border border-line">
-        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-bone">
-          Fine-tune
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="space-y-4 border-t border-line p-4">
+        <div className="space-y-4 border-t border-line pt-4 leading-normal">
           <div>
-            <p className="text-sm font-medium">Match scoring</p>
-            <p className="mb-3 text-xs text-muted-foreground">How many games a team must win to take the match.</p>
+            <p className="text-sm font-medium text-bone">Best of</p>
+            <p className="mb-3 text-xs text-muted-foreground">Maximum games in a match (winner takes the majority).</p>
             <Segmented
-              label="Games to win the match"
-              value={value.gamesToWin ?? 2}
+              label="Best of"
+              value={bestOfFromGamesToWin(value.gamesToWin ?? 1)}
               options={[
                 { value: 1, label: "1" },
-                { value: 2, label: "2" },
                 { value: 3, label: "3" },
+                { value: 5, label: "5" },
               ]}
-              onChange={(gamesToWin) => set({ ...value, gamesToWin })}
+              onChange={(bestOf) => set({ ...value, gamesToWin: gamesToWinFromBestOf(bestOf) })}
             />
-            <p className="mt-2 text-xs text-muted-foreground">{matchGamesToWinHint(value.gamesToWin ?? 2)}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{matchGamesToWinHint(value.gamesToWin ?? 1)}</p>
           </div>
 
           {hasRanking && (
             <div>
-              <p className="text-sm font-medium">Breaking ties in the standings</p>
+              <p className="text-sm font-medium text-bone">Breaking ties in the standings</p>
               <p className="mb-3 text-xs text-muted-foreground">
                 Checked top to bottom until tied teams are separated. Use the arrows to reorder.
               </p>
@@ -407,49 +369,76 @@ export function FormatPicker({
           )}
 
           {f.type === "double_elimination" && (
-            <>
-              <div>
-                <p className="mb-2 text-sm font-medium">Grand final</p>
-                <div className="grid gap-2">
-                  {(
-                    [
-                      ["reset", "Fair final", "The losers'-side finalist must beat the champion twice (they've lost once already)."],
-                      ["single", "One final match", "Winner takes all, even if it's their first loss."],
-                      ["none", "No grand final", "The winners'-side finalist is champion."],
-                    ] as const
-                  ).map(([v, label, hint]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      aria-pressed={f.grandFinal === v}
-                      onClick={() => setFinal({ grandFinal: v })}
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-left transition-colors",
-                        f.grandFinal === v ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
-                      )}
-                    >
-                      <span className="block text-sm text-bone">{label}</span>
-                      <span className="block text-xs text-muted-foreground">{hint}</span>
-                    </button>
-                  ))}
-                </div>
+            <div>
+              <p className="mb-2 text-sm font-medium text-bone">Grand final</p>
+              <div className="grid gap-2">
+                {(
+                  [
+                    ["reset", "Fair final", "The losers'-side finalist must beat the champion twice (they've lost once already)."],
+                    ["single", "One final match", "Winner takes all, even if it's their first loss."],
+                    ["none", "No grand final", "The winners'-side finalist is champion."],
+                  ] as const
+                ).map(([v, label, hint]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={f.grandFinal === v}
+                    onClick={() => setFinal({ grandFinal: v })}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-left transition-colors",
+                      f.grandFinal === v ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
+                    )}
+                  >
+                    <span className="block text-sm text-bone">{label}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                  </button>
+                ))}
               </div>
-            </>
+            </div>
           )}
 
           {f.type === "swiss" && (
-            <p className="text-sm leading-[2.6] text-bone/85">
+            <p className="text-sm text-bone/85">
               A win is worth{" "}
               <Stepper compact label="points per win" min={0} max={10} value={f.matchWinPoints} onChange={(matchWinPoints) => setFinal({ matchWinPoints })} />{" "}
               point(s).
             </p>
           )}
-
-          {!hasRanking && !isKnockout && f.type !== "swiss" && (
-            <p className="text-sm text-muted-foreground">Nothing else to adjust for this format.</p>
-          )}
         </div>
-      </details>
+
+        <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center leading-normal">
+          {[
+            { k: "Matches", v: summary.totalMatches === summary.totalMatchesMax ? summary.totalMatches : `${summary.totalMatches}–${summary.totalMatchesMax}` },
+            { k: "Games guaranteed", v: summary.guaranteedGames },
+            {
+              k: value.pools ? "Schedule rounds (per pool)" : "Rounds",
+              v: value.pools
+                ? (summary.poolScheduleRoundsPerPool ?? "—")
+                : f.type === "swiss"
+                  ? f.rounds
+                  : "—",
+            },
+          ].map((stat) => (
+            <div key={stat.k} className="bg-surface px-3 py-3">
+              <p className="display text-3xl text-bone tabular-nums">{stat.v}</p>
+              <p className="eyebrow mt-1">{stat.k}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {summary.warnings.length > 0 && (
+        <ul className="space-y-2" aria-live="polite">
+          {summary.warnings.map((w) => (
+            <li key={w} className="flex gap-2 rounded-lg border border-brass/30 bg-brass/5 px-3 py-2 text-sm text-brass">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              {w}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showPreview && <BracketPreview config={value} teams={teams} />}
     </div>
   );
 }

@@ -15,7 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { LivePoolsPanel } from "@/components/draw/live-pools-panel";
 import { StandingsTable } from "@/components/draw/standings-table";
+import type { BracketConfig } from "@/lib/bracket-format";
 import type { EngineMatch, StandingRow } from "@/lib/bracket-engine";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { cn } from "@/lib/utils";
@@ -268,6 +270,9 @@ function championOf(matches: EngineMatch[]) {
 export function BracketView({
   mode,
   tournamentId,
+  divisionId,
+  bracketConfig,
+  poolsEditable = false,
   matches,
   pools,
   table,
@@ -276,6 +281,9 @@ export function BracketView({
 }: {
   mode: Mode;
   tournamentId: string;
+  divisionId?: string;
+  bracketConfig?: BracketConfig;
+  poolsEditable?: boolean;
   matches: EngineMatch[];
   pools: Array<{ letter: string; rows: StandingRow[] }> | null;
   table: StandingRow[] | null;
@@ -309,10 +317,23 @@ export function BracketView({
         {pools && pools.length > 0 && (
           <section className="space-y-4">
             <h3 className="eyebrow">Pools</h3>
+            {mode === "organizer" && divisionId && bracketConfig && (
+              <LivePoolsPanel
+                divisionId={divisionId}
+                config={bracketConfig}
+                pools={pools}
+                editable={poolsEditable}
+              />
+            )}
             <div className="grid gap-4 lg:grid-cols-2">
               {pools.map((p) => (
                 <div key={p.letter} className="space-y-2">
-                  <StandingsTable title={`Pool ${p.letter}`} rows={p.rows} advance={advance} withdrawn={out} />
+                  {mode !== "organizer" && (
+                    <StandingsTable title={`Pool ${p.letter}`} rows={p.rows} advance={advance} withdrawn={out} />
+                  )}
+                  {mode === "organizer" && (
+                    <StandingsTable title={`Pool ${p.letter} · standings`} rows={p.rows} advance={advance} withdrawn={out} />
+                  )}
                   <details className="group rounded-xl border border-line">
                     <summary className="cursor-pointer list-none px-4 py-2.5 text-sm text-muted-foreground hover:text-bone">
                       Matches · {pool.filter((m) => m.pool === p.letter && DONE.has(m.status)).length}/

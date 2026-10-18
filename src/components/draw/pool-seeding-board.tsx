@@ -3,70 +3,69 @@
 import { useMemo, useRef, useState } from "react";
 import { GripVertical, Plus, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  initPoolGroupsFromSnake,
-  POOL_LETTERS,
-  type PoolGroup,
-} from "@/lib/bracket-engine";
+import { initPoolGroupsFromSnake, POOL_LETTERS } from "@/lib/bracket-engine";
 import type { BracketConfig } from "@/lib/bracket-format";
 import { cn } from "@/lib/utils";
 
 type Entry = { id: string; name: string };
 
+export type PoolColumnDef = { letter: string; entryIds: string[] };
+
 export function PoolSeedingBoard({
   entries,
   config,
-  poolGroups,
+  columns,
   onChange,
   readOnly = false,
+  allowUnassigned = true,
+  showToolbar = true,
 }: {
   entries: Entry[];
   config: BracketConfig;
-  poolGroups: PoolGroup[];
-  onChange: (groups: PoolGroup[]) => void;
+  columns: PoolColumnDef[];
+  onChange: (columns: PoolColumnDef[]) => void;
   readOnly?: boolean;
+  allowUnassigned?: boolean;
+  showToolbar?: boolean;
 }) {
   const maxSize = config.pools?.size ?? 4;
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const inPools = useMemo(() => {
     const s = new Set<string>();
-    for (const g of poolGroups) for (const id of g.entryIds) s.add(id);
+    for (const g of columns) for (const id of g.entryIds) s.add(id);
     return s;
-  }, [poolGroups]);
+  }, [columns]);
   const unassigned = entries.filter((e) => !inPools.has(e.id));
 
   const [dragging, setDragging] = useState<string | null>(null);
   const columnRefs = useRef(new Map<string, HTMLDivElement>());
   const unassignedRef = useRef<HTMLDivElement>(null);
 
-  function moveEntry(entryId: string, toColumn: "unassigned" | number, insertBefore?: string) {
+  function moveEntry(entryId: string, toColumn: "unassigned" | number) {
     if (readOnly) return;
-    const next = poolGroups.map((g) => ({ entryIds: [...g.entryIds] }));
+    const next = columns.map((g) => ({ ...g, entryIds: [...g.entryIds] }));
     for (const g of next) {
       g.entryIds = g.entryIds.filter((id) => id !== entryId);
     }
     if (toColumn === "unassigned") {
-      onChange(next);
+      if (allowUnassigned) onChange(next);
       return;
     }
     const col = next[toColumn];
     if (!col) return;
     if (col.entryIds.length >= maxSize) return;
-    if (insertBefore) {
-      const idx = col.entryIds.indexOf(insertBefore);
-      col.entryIds.splice(idx >= 0 ? idx : col.entryIds.length, 0, entryId);
-    } else {
-      col.entryIds.push(entryId);
-    }
+    col.entryIds.push(entryId);
     onChange(next);
   }
 
   function hitColumn(clientX: number, clientY: number): "unassigned" | number | null {
-    const u = unassignedRef.current?.getBoundingClientRect();
-    if (u && clientX >= u.left && clientX <= u.right && clientY >= u.top && clientY <= u.bottom) {
-      return "unassigned";
+    if (allowUnassigned) {
+      const u = unassignedRef.current?.getBoundingClientRect();
+      if (u && clientX >= u.left && clientX <= u.right && clientY >= u.top && clientY <= u.bottom) {
+        return "unassigned";
+      }
     }
-    for (let i = 0; i < poolGroups.length; i++) {
+    for (let i = 0; i < columns.length; i++) {
       const key = `pool-${i}`;
       const el = columnRefs.current.get(key);
       if (!el) continue;
@@ -86,7 +85,7 @@ export function PoolSeedingBoard({
     if (!dragging) return;
     const target = hitColumn(e.clientX, e.clientY);
     if (target === null) return;
-    const currentCol = poolGroups.findIndex((g) => g.entryIds.includes(dragging));
+    const currentCol = columns.findIndex((g) => g.entryIds.includes(dragging));
     if (target === "unassigned") {
       if (currentCol >= 0 || inPools.has(dragging)) moveEntry(dragging, "unassigned");
       return;
@@ -98,21 +97,25 @@ export function PoolSeedingBoard({
   }
 
   function addPool() {
-    if (readOnly || poolGroups.length >= POOL_LETTERS.length) return;
-    onChange([...poolGroups, { entryIds: [] }]);
+    if (readOnly) return;
+    const used = new Set(columns.map((c) => c.letter));
+    const letter = [...POOL_LETTERS].find((l) => !used.has(l));
+    if (!letter) return;
+    onChange([...columns, { letter, entryIds: [] }]);
   }
 
   function removePool(index: number) {
-    if (readOnly || poolGroups.length <= 1) return;
-    const g = poolGroups[index];
+    if (readOnly || columns.length <= 1) return;
+    const g = columns[index];
     if (g.entryIds.length > 0) return;
-    onChange(poolGroups.filter((_, i) => i !== index));
+    onChange(columns.filter((_, i) => i !== index));
   }
 
   function autoBalance() {
     if (readOnly) return;
     const ordered = entries.map((e) => ({ id: e.id, name: e.name }));
-    onChange(initPoolGroupsFromSnake(ordered, config));
+    const groups = initPoolGroupsFromSnake(ordered, config);
+    onChange(groups.map((g, i) => ({ letter: columns[i]?.letter ?? POOL_LETTERS[i], entryIds: g.entryIds })));
   }
 
   function Row({ id, name }: { id: string; name: string }) {
@@ -145,13 +148,13 @@ export function PoolSeedingBoard({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {!readOnly && (
+      {!readOnly && showToolbar && (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={autoBalance}>
             <Wand2 />
             Auto-balance (snake)
           </Button>
-          <Button size="sm" variant="outline" onClick={addPool} disabled={poolGroups.length >= 26}>
+          <Button size="sm" variant="outline" onClick={addPool} disabled={columns.length >= POOL_LETTERS.length}>
             <Plus />
             Add pool
           </Button>
@@ -159,9 +162,9 @@ export function PoolSeedingBoard({
       )}
 
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {poolGroups.map((group, i) => (
+        {columns.map((group, i) => (
           <div
-            key={i}
+            key={group.letter}
             ref={(el) => {
               const key = `pool-${i}`;
               if (el) columnRefs.current.set(key, el);
@@ -171,19 +174,19 @@ export function PoolSeedingBoard({
           >
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>
-                <p className="font-semibold text-bone">Pool {POOL_LETTERS[i]}</p>
+                <p className="font-semibold text-bone">Pool {group.letter}</p>
                 <p className="font-mono text-[0.65rem] text-muted-foreground">
                   {group.entryIds.length} / {maxSize}
                 </p>
               </div>
-              {!readOnly && (
+              {!readOnly && showToolbar && (
                 <button
                   type="button"
-                  disabled={group.entryIds.length > 0 || poolGroups.length <= 1}
+                  disabled={group.entryIds.length > 0 || columns.length <= 1}
                   onClick={() => removePool(i)}
                   className="rounded-md p-1.5 text-muted-foreground hover:bg-rust/15 hover:text-[#e58a72] disabled:opacity-25"
                   title="Delete empty pool"
-                  aria-label={`Delete pool ${POOL_LETTERS[i]}`}
+                  aria-label={`Delete pool ${group.letter}`}
                 >
                   <Trash2 className="size-3.5" />
                 </button>
@@ -201,21 +204,23 @@ export function PoolSeedingBoard({
           </div>
         ))}
 
-        <div
-          ref={unassignedRef}
-          className="flex w-52 shrink-0 flex-col rounded-xl border border-dashed border-line bg-espresso/20 p-3"
-        >
-          <p className="mb-2 font-semibold text-bone">Unassigned</p>
-          <p className="mb-2 font-mono text-[0.65rem] text-muted-foreground">{unassigned.length} teams</p>
-          <div className="flex min-h-24 flex-col gap-1.5">
-            {unassigned.map((e) => (
-              <Row key={e.id} id={e.id} name={e.name} />
-            ))}
-            {unassigned.length === 0 && (
-              <p className="py-6 text-center text-xs text-muted-foreground">All teams placed</p>
-            )}
+        {allowUnassigned && (
+          <div
+            ref={unassignedRef}
+            className="flex w-52 shrink-0 flex-col rounded-xl border border-dashed border-line bg-espresso/20 p-3"
+          >
+            <p className="mb-2 font-semibold text-bone">Unassigned</p>
+            <p className="mb-2 font-mono text-[0.65rem] text-muted-foreground">{unassigned.length} teams</p>
+            <div className="flex min-h-24 flex-col gap-1.5">
+              {unassigned.map((e) => (
+                <Row key={e.id} id={e.id} name={e.name} />
+              ))}
+              {unassigned.length === 0 && (
+                <p className="py-6 text-center text-xs text-muted-foreground">All teams placed</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

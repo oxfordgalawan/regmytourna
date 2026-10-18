@@ -149,6 +149,32 @@ export function generateFirstStage(
   return { matches: settle(matches, { names: namesOf(entries), withdrawn: opts.withdrawn }), state };
 }
 
+export type PoolColumnLayout = { pool: string; entryIds: string[] };
+
+/** Rebuild pool-stage matches from organizer pool columns (letters preserved). */
+export function buildPoolStageMatches(
+  config: BracketConfig,
+  columns: PoolColumnLayout[],
+  entries: Entry[],
+  opts: { newId?: IdFactory; withdrawn?: Set<string> } = {}
+): EngineMatch[] {
+  if (!config.pools) throw new Error("This category has no pool stage.");
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const newId = opts.newId ?? randomId;
+  let matches = columns.flatMap(({ pool, entryIds }) => {
+    const members = entryIds.map((id) => byId.get(id)).filter((e): e is Entry => Boolean(e));
+    if (members.length < 2) return [];
+    return roundRobinMatches(members, {
+      stage: "pool",
+      pool,
+      iterations: config.pools!.playEachOther,
+      newId,
+    });
+  });
+  numberAndLabel(matches, 1);
+  return settle(matches, { names: namesOf(entries), withdrawn: opts.withdrawn });
+}
+
 /** Pool membership as stored on matches (pool letter → entries in seed order). */
 export function poolsFromMatches(entries: Entry[], matches: EngineMatch[]): Map<string, Entry[]> {
   const pools = new Map<string, Entry[]>();

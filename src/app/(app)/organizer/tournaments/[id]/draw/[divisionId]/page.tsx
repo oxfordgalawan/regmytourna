@@ -4,7 +4,7 @@ import { ArrowLeft, Users } from "lucide-react";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { loadDivisionContext } from "@/lib/draw/server";
 import { buildDrawView } from "@/lib/draw/view";
-import { currentSwissRound, stageDone } from "@/lib/bracket-engine";
+import { currentSwissRound, poolStageEditable, stageDone } from "@/lib/bracket-engine";
 import { describeFormat, FINAL_TYPE_LABELS } from "@/lib/bracket-format";
 import { entrantNoun } from "@/lib/categories";
 import { NAV_BACK } from "@/lib/nav-transitions";
@@ -75,7 +75,14 @@ export default async function CategoryDrawPage({
       {started ? (
         <>
           <AutoRefresh seconds={20} clock={false} />
-          <BracketView mode="organizer" tournamentId={id} {...view} />
+          <BracketView
+            mode="organizer"
+            tournamentId={id}
+            divisionId={divisionId}
+            bracketConfig={ctx.config}
+            poolsEditable={ctx.division.bracket_state === "pools" && poolStageEditable(ctx.matches)}
+            {...view}
+          />
         </>
       ) : (
         <SeedingWorkspace

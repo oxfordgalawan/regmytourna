@@ -1,6 +1,21 @@
 import { poolSizes, type BracketConfig } from "../bracket-format";
 import { nextPowerOfTwo, snakePools } from "./seeding";
-import type { Entry } from "./types";
+import type { EngineMatch, Entry } from "./types";
+
+/** True when every pool match is still unscored — safe to rebuild pool groups. */
+export function poolStageEditable(matches: EngineMatch[]): boolean {
+  const pool = matches.filter((m) => m.stage === "pool" && m.status !== "cancelled");
+  if (!pool.length) return false;
+  return pool.every(
+    (m) =>
+      m.status === "scheduled" &&
+      !m.winner &&
+      (m.scoreA ?? 0) === 0 &&
+      (m.scoreB ?? 0) === 0 &&
+      (m.gamesA ?? 0) === 0 &&
+      (m.gamesB ?? 0) === 0
+  );
+}
 
 export type PoolGroup = { entryIds: string[] };
 export type SeedingLayout = {

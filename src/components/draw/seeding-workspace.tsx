@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { saveSeedingLayoutAction, saveSeedsAction, withdrawEntryAction } from "@/app/actions/draw";
 import { Button } from "@/components/ui/button";
 import { KnockoutSeedingBracket } from "@/components/draw/knockout-seeding-bracket";
-import { PoolSeedingBoard } from "@/components/draw/pool-seeding-board";
+import { PoolSeedingBoard, type PoolColumnDef } from "@/components/draw/pool-seeding-board";
 import {
   initKnockoutSlotsFromOrder,
   initPoolGroupsFromSnake,
@@ -74,7 +74,9 @@ export function SeedingWorkspace({
       config.seedingLayout ?? null
     )
   );
-  const [tab, setTab] = useState<Tab>("list");
+  const showPoolsTab = usesMultiPool(config, order.length);
+  const showBracketTab = usesKnockoutSlotSeeding(config, order.length);
+  const [tab, setTab] = useState<Tab>(() => (showPoolsTab ? "pools" : showBracketTab ? "bracket" : "list"));
   const [dragging, setDragging] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -82,8 +84,8 @@ export function SeedingWorkspace({
   const layoutTimer = useRef<number | undefined>(undefined);
   const withdrawn = entries.filter((e) => e.withdrawn);
   const activeEntries = order.map(({ id, name }) => ({ id, name }));
-  const showPools = usesMultiPool(config, order.length);
-  const showBracket = usesKnockoutSlotSeeding(config, order.length);
+  const showPools = showPoolsTab;
+  const showBracket = showBracketTab;
   const where = useMemo(() => landing(order, config, layout), [order, config, layout]);
   const readOnlyPools = layout.mode !== "manual";
   const readOnlyBracket = layout.mode !== "manual";
@@ -252,9 +254,9 @@ export function SeedingWorkspace({
     persistLayout(next, order);
   }
 
-  const poolGroups =
-    layout.poolGroups ??
-    initPoolGroupsFromSnake(activeEntries, config);
+  const poolGroups = layout.poolGroups ?? initPoolGroupsFromSnake(activeEntries, config);
+  const poolColumns = (groups: PoolGroup[]): PoolColumnDef[] =>
+    groups.map((g, i) => ({ letter: POOL_LETTERS[i], entryIds: g.entryIds }));
   const knockoutSlots =
     layout.knockoutSlots ?? initKnockoutSlotsFromOrder(activeEntries);
 
@@ -429,8 +431,12 @@ export function SeedingWorkspace({
           <PoolSeedingBoard
             entries={activeEntries}
             config={config}
-            poolGroups={readOnlyPools ? initPoolGroupsFromSnake(activeEntries, config) : poolGroups}
-            onChange={onPoolGroupsChange}
+            columns={
+              readOnlyPools
+                ? poolColumns(initPoolGroupsFromSnake(activeEntries, config))
+                : poolColumns(poolGroups)
+            }
+            onChange={(columns) => onPoolGroupsChange(columns.map((c) => ({ entryIds: c.entryIds })))}
             readOnly={readOnlyPools}
           />
         </>

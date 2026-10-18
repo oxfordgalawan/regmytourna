@@ -49,7 +49,22 @@ const finalSchema = z.object({
   matchTiePoints: z.number().min(0).max(10),
 });
 
-export const DEFAULT_GAMES_TO_WIN = 2;
+/** Stored value: games a side must win (1, 2, or 3). UI shows best-of 1, 3, or 5. */
+export const DEFAULT_GAMES_TO_WIN = 1;
+
+export const BEST_OF_GAME_COUNTS = [1, 3, 5] as const;
+
+export function bestOfFromGamesToWin(gamesToWin: number): (typeof BEST_OF_GAME_COUNTS)[number] {
+  if (gamesToWin >= 3) return 5;
+  if (gamesToWin >= 2) return 3;
+  return 1;
+}
+
+export function gamesToWinFromBestOf(bestOf: number): number {
+  if (bestOf >= 5) return 3;
+  if (bestOf >= 3) return 2;
+  return 1;
+}
 
 export const seedingLayoutSchema = z.object({
   mode: z.enum(["standard", "manual"]).default("standard"),
@@ -72,9 +87,9 @@ export const bracketConfigSchema = z.object({
 export type SeedingLayoutConfig = z.infer<typeof seedingLayoutSchema>;
 
 export function matchGamesToWinHint(gamesToWin: number): string {
-  if (gamesToWin === 1) return "Single game — one game decides the match.";
-  if (gamesToWin === 2) return "Best of 3 — first to 2 games wins.";
-  return "Best of 5 — first to 3 games wins.";
+  const bestOf = bestOfFromGamesToWin(gamesToWin);
+  if (bestOf === 1) return "One game — winner takes the match.";
+  return `Best of ${bestOf} — first to ${gamesToWin} games wins.`;
 }
 
 export function gamesToWinFromDivisionConfig(config: BracketConfig): number {
@@ -351,7 +366,7 @@ export function describeFormat(config: BracketConfig, teams: number) {
     name: config.preset === "custom" ? customName(config) : PRESETS[config.preset].label,
     matches: `${matches} matches`,
     guaranteed: `${s.guaranteedGames} ${s.guaranteedGames === 1 ? "game" : "games"} guaranteed`,
-    scoring: gamesToWin === 1 ? "First to 1 game" : `First to ${gamesToWin} games`,
+    scoring: `Best of ${bestOfFromGamesToWin(gamesToWin)}`,
   };
 }
 

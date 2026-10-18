@@ -3,11 +3,13 @@
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  buildPoolStageMatches,
   currentSwissRound,
   flattenSeedsFromLayout,
   generateFirstStage,
   knockoutFromPools,
   nextSwissRound,
+  poolStageEditable,
   poolStandings,
   resolvePending,
   revertResult,
@@ -63,6 +65,71 @@ export async function saveSeedingLayoutAction(
     if (error) return { error: error.message };
 
     await persistSeedOrder(divisionId, [...ordered, ...ctx.allEntries.filter((e) => e.withdrawn).map((e) => e.id)]);
+    await revalidateDraw(ctx.division.tournament_id, divisionId);
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Reassigns teams to pools during the pool stage and rebuilds pool matches (no results yet). */
+export async function saveLivePoolLayoutAction(
+  divisionId: string,
+  columns: { pool: string; entryIds: string[] }[]
+): Promise<Result> {
+  try {
+    const ctx = await contextFor(divisionId);
+    if (ctx.division.bracket_state !== "pools") {
+      return { error: "Pool groups can only be changed during the pool stage." };
+    }
+    if (!ctx.config.pools) return { error: "This category has no pools." };
+    if (!poolStageEditable(ctx.matches)) {
+      return {
+        error: "A pool match has already started or has a result. Reset the draw to rearrange pools.",
+      };
+    }
+
+    const max = ctx.config.pools.size;
+    const valid = new Set(ctx.entries.map((e) => e.id));
+    const assigned = new Set<string>();
+    for (const col of columns) {
+      if (col.entryIds.length > max) {
+        return { error: `Pool ${col.pool} has too many teams (max ${max}).` };
+      }
+      for (const id of col.entryIds) {
+        if (!valid.has(id)) return { error: "Unknown team in pool layout." };
+        if (assigned.has(id)) return { error: "A team appears in more than one pool." };
+        assigned.add(id);
+      }
+    }
+    for (const id of valid) {
+      if (!assigned.has(id)) return { error: "Every team must stay in a pool." };
+    }
+
+    const poolGroups = columns.map((c) => ({ entryIds: c.entryIds }));
+    const config = {
+      ...ctx.config,
+      seedingLayout: { mode: "manual" as const, poolGroups },
+    };
+
+    const admin = createAdminClient();
+    const newMatches = buildPoolStageMatches(
+      config,
+      columns.map((c) => ({ pool: c.pool, entryIds: c.entryIds })),
+      ctx.entries,
+      { withdrawn: ctx.withdrawn }
+    );
+
+    const { error: delErr } = await admin.from("matches").delete().eq("division_id", divisionId).eq("stage", "pool");
+    if (delErr) return { error: delErr.message };
+
+    await insertMatches(newMatches, ctx.division.tournament_id, divisionId);
+    const { error: cfgErr } = await admin
+      .from("tournament_divisions")
+      .update({ bracket_config: config })
+      .eq("id", divisionId);
+    if (cfgErr) return { error: cfgErr.message };
+
     await revalidateDraw(ctx.division.tournament_id, divisionId);
     return { ok: true };
   } catch (e) {

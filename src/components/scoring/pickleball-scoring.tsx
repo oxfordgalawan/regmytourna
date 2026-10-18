@@ -17,6 +17,7 @@ import { type CoreSnapshot, type Op, type OpInput } from "@/lib/scoring/match-en
 import { isServeState, other, rally, type MatchSetup } from "@/lib/scoring/pickleball";
 import type { CourtPlayer } from "@/lib/scoring/officiating";
 import type { Match } from "@/types/database";
+import { bestOfFromGamesToWin } from "@/lib/bracket-format";
 import { NAV_BACK } from "@/lib/nav-transitions";
 import { cn } from "@/lib/utils";
 
@@ -172,7 +173,10 @@ export function PickleballScoring({
             {divisionName ? ` · ${divisionName}` : ""}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {gamesToWin === 1 ? "First to 1 game" : `First to ${gamesToWin} games`}
+            {(() => {
+              const bestOf = bestOfFromGamesToWin(gamesToWin);
+              return bestOf === 1 ? "Best of 1" : `Best of ${bestOf} · first to ${gamesToWin}`;
+            })()}
           </p>
         </div>
         <div className="text-right">

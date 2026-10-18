@@ -7,7 +7,7 @@ import {
 
 type TournamentScoringConfig = { games_to_win?: number };
 
-/** Games to win for a match: category format, then event default, then 2. */
+/** Games to win for a match: category format, then event default, then 1. */
 export async function gamesToWinForMatch(admin: SupabaseClient, matchId: string): Promise<number> {
   const { data: match } = await admin
     .from("matches")
