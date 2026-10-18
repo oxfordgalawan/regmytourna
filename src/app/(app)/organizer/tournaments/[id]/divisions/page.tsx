@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { formatPhp } from "@/lib/format";
 import {
   Table,
@@ -17,7 +17,7 @@ import { DivisionFormatButton } from "@/components/organizer/division-format-but
 
 export default async function DivisionsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireOrganizerSession();
   const { data: divisions } = await supabase
     .from("tournament_divisions")
     .select("*")

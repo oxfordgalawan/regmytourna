@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
-import { createClient } from "@/lib/supabase/server";
+import { createOrganizerDataClient } from "@/lib/auth/organizer-act-as";
 
 function revalidateCourts(tournamentId: string) {
   revalidatePath(`/organizer/tournaments/${tournamentId}/courts`);
@@ -13,18 +13,18 @@ function revalidateCourts(tournamentId: string) {
 
 async function requireOrganizer(tournamentId: string) {
   const user = await requireUser();
-  if (!(await isOrganizerForTournament(user.id, tournamentId))) {
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
     throw new Error("Unauthorized");
   }
   return user;
 }
 
 export async function addCourtAction(tournamentId: string, name: string) {
-  await requireOrganizer(tournamentId);
+  const user = await requireOrganizer(tournamentId);
   const trimmed = name.trim();
   if (!trimmed) return { error: "Court name is required." };
 
-  const supabase = await createClient();
+  const supabase = await createOrganizerDataClient(user);
   const { count } = await supabase
     .from("courts")
     .select("id", { count: "exact", head: true })
@@ -51,11 +51,11 @@ export async function addCourtFormAction(tournamentId: string, formData: FormDat
 }
 
 export async function updateCourtAction(tournamentId: string, courtId: string, name: string) {
-  await requireOrganizer(tournamentId);
+  const user = await requireOrganizer(tournamentId);
   const trimmed = name.trim();
   if (!trimmed) return { error: "Court name is required." };
 
-  const supabase = await createClient();
+  const supabase = await createOrganizerDataClient(user);
   const { error } = await supabase
     .from("courts")
     .update({ name: trimmed })
@@ -71,8 +71,8 @@ export async function updateCourtAction(tournamentId: string, courtId: string, n
 }
 
 export async function setCourtActiveAction(tournamentId: string, courtId: string, active: boolean) {
-  await requireOrganizer(tournamentId);
-  const supabase = await createClient();
+  const user = await requireOrganizer(tournamentId);
+  const supabase = await createOrganizerDataClient(user);
   const { error } = await supabase
     .from("courts")
     .update({ active })
@@ -85,8 +85,8 @@ export async function setCourtActiveAction(tournamentId: string, courtId: string
 }
 
 export async function deleteCourtAction(tournamentId: string, courtId: string) {
-  await requireOrganizer(tournamentId);
-  const supabase = await createClient();
+  const user = await requireOrganizer(tournamentId);
+  const supabase = await createOrganizerDataClient(user);
   const { error } = await supabase
     .from("courts")
     .delete()

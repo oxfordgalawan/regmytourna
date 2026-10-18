@@ -5,6 +5,7 @@ import Form from "next/form";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { ChevronRight, Plus, Search, Trophy } from "lucide-react";
 import { requireUser } from "@/lib/auth/require-user";
+import { getEffectiveOrganizerId, getOrganizerActAsContext } from "@/lib/auth/organizer-act-as";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -29,20 +30,28 @@ export default async function OrganizerTournamentsPage({
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const user = await requireUser();
+  const actAs = await getOrganizerActAsContext(user);
+  const organizerId = await getEffectiveOrganizerId(user);
   const { q, status } = await searchParams;
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Organizer"
-        title="My events"
-        description="Everything you’re running, from first draft to final results."
+        title={actAs ? `${actAs.fullName}'s events` : "My events"}
+        description={
+          actAs
+            ? "Events this organizer owns or co-manages."
+            : "Everything you’re running, from first draft to final results."
+        }
         actions={
-          <Button asChild>
-            <Link href="/organizer/tournaments/new">
-              <Plus />
-              New tournament
-            </Link>
-          </Button>
+          actAs ? undefined : (
+            <Button asChild>
+              <Link href="/organizer/tournaments/new">
+                <Plus />
+                New tournament
+              </Link>
+            </Button>
+          )
         }
       />
 
@@ -79,14 +88,24 @@ export default async function OrganizerTournamentsPage({
       </div>
 
       <Suspense key={`${q ?? ""}|${status ?? ""}`} fallback={<SkeletonList rows={5} />}>
-        <EventList userId={user.id} q={q} status={status} />
+        <EventList userId={organizerId} q={q} status={status} allowCreate={!actAs} />
       </Suspense>
     </div>
   );
 }
 
 
-async function EventList({ userId, q, status }: { userId: string; q?: string; status?: string }) {
+async function EventList({
+  userId,
+  q,
+  status,
+  allowCreate = true,
+}: {
+  userId: string;
+  q?: string;
+  status?: string;
+  allowCreate?: boolean;
+}) {
   // events I own, plus ones I co-organize
   const { data: memberships } = await createAdminClient()
     .from("tournament_organizers")
@@ -121,14 +140,14 @@ async function EventList({ userId, q, status }: { userId: string; q?: string; st
             <Button variant="outline" asChild>
               <Link href="/organizer/tournaments">Clear filters</Link>
             </Button>
-          ) : (
+          ) : allowCreate ? (
             <Button asChild>
               <Link href="/organizer/tournaments/new">
                 <Plus />
                 Create tournament
               </Link>
             </Button>
-          )
+          ) : undefined
         }
       />
     ) : (

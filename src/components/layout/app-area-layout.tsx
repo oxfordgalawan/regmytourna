@@ -11,6 +11,7 @@ export function AppAreaLayout({
   hasPlayer,
   hasOrganizer,
   superAdmin = false,
+  organizerActAs = false,
   children,
 }: {
   /** the experience to show */
@@ -20,6 +21,8 @@ export function AppAreaLayout({
   hasOrganizer: boolean;
   /** super admins also get a way back to the admin console */
   superAdmin?: boolean;
+  /** super admin viewing as another organizer — hide create-event shortcuts */
+  organizerActAs?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -52,7 +55,11 @@ export function AppAreaLayout({
         <AppShell
           links={organizerLinks}
           label="Main"
-          primaryAction={{ href: "/organizer/tournaments/new", label: "New tournament" }}
+          primaryAction={
+            organizerActAs
+              ? undefined
+              : { href: "/organizer/tournaments/new", label: "New tournament" }
+          }
           sidebarExtra={sidebarExtra}
           mobileExtra={mobileExtra}
         >

@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/require-user";
 import { tournamentFormSchema, divisionSchema } from "@/lib/validations/tournament";
@@ -10,6 +9,7 @@ import { categoriesPayloadSchema, categoryName, categoryType } from "@/lib/categ
 import { defaultConfigFor } from "@/lib/bracket-format";
 import { validateSchedule } from "@/lib/validations/schedule";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
+import { createOrganizerDataClient, getOrganizerActAsContext } from "@/lib/auth/organizer-act-as";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
 import type { TournamentStatus } from "@/types/database";
 
@@ -21,7 +21,7 @@ export async function updateTournamentStatusAction(
 ): Promise<{ ok?: true; error?: string }> {
   if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
   const user = await requireUser();
-  if (!(await isOrganizerForTournament(user.id, tournamentId))) {
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
     return { error: "You don't have permission to change this event." };
   }
   if (!PUBLISH_STATUSES.includes(status) && status !== "registration_closed") {
@@ -31,7 +31,7 @@ export async function updateTournamentStatusAction(
     return { error: "Bracket-only events don't take online registration." };
   }
 
-  const supabase = await createClient();
+  const supabase = await createOrganizerDataClient(user);
   const { data: row, error } = await supabase
     .from("tournaments")
     .update({ status })
@@ -49,6 +49,9 @@ export async function updateTournamentStatusAction(
 export async function createTournamentAction(formData: FormData) {
   if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
   const user = await requireUser();
+  if (await getOrganizerActAsContext(user)) {
+    return { error: "Exit view-as mode before creating a new tournament." };
+  }
 
   const parsed = tournamentFormSchema.safeParse({
     name: formData.get("name"),
@@ -176,7 +179,10 @@ export async function createTournamentAction(formData: FormData) {
 }
 
 export async function addDivisionAction(tournamentId: string, formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
   const parsed = divisionSchema.safeParse({
     name: formData.get("name"),
     format: formData.get("format"),
@@ -186,7 +192,7 @@ export async function addDivisionAction(tournamentId: string, formData: FormData
   });
   if (!parsed.success) return { error: "Invalid division" };
 
-  const supabase = await createClient();
+  const supabase = await createOrganizerDataClient(user);
   const { error } = await supabase.from("tournament_divisions").insert({
     tournament_id: tournamentId,
     name: parsed.data.name,

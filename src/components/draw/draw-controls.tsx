@@ -8,9 +8,11 @@ import {
   closePoolsAction,
   exportToChallongeAction,
   nextSwissRoundAction,
+  regenerateKnockoutFromPoolsAction,
   resetBracketAction,
   startBracketAction,
 } from "@/app/actions/draw";
+import type { PoolKnockoutPreview } from "@/lib/bracket-engine";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +28,8 @@ export type DrawControlsProps = {
   swissRoundDone: boolean;
   entries: number;
   challongeUrl: string | null;
+  poolKnockoutPreview: PoolKnockoutPreview | null;
+  canRegenerateKnockout: boolean;
 };
 
 export function DrawControls(p: DrawControlsProps) {
@@ -169,6 +173,26 @@ export function DrawControls(p: DrawControlsProps) {
         ))}
       </ol>
 
+      {p.poolKnockoutPreview && p.poolKnockoutPreview.pairs.length > 0 && (
+        <div className="rounded-xl border border-line bg-ink/40 px-4 py-3 text-sm">
+          <p className="font-medium text-bone">
+            {p.poolKnockoutPreview.mode === "challonge_cross"
+              ? "Planned first-round pairings (Challonge cross-seed)"
+              : "Planned first-round pairings (ranked seeding)"}
+          </p>
+          {p.poolKnockoutPreview.reason && (
+            <p className="mt-1 text-muted-foreground">{p.poolKnockoutPreview.reason}</p>
+          )}
+          <ul className="mt-2 space-y-1 text-muted-foreground">
+            {p.poolKnockoutPreview.pairs.map((pair, i) => (
+              <li key={i}>
+                {pair.aName} vs {pair.bName}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {primary}
@@ -188,6 +212,25 @@ export function DrawControls(p: DrawControlsProps) {
             <Button size="sm" variant="ghost" onClick={exportChallonge} disabled={busy !== null || p.entries < 1}>
               {busy === "export" ? <Loader2 className="animate-spin" /> : <Share2 />}
               Export to Challonge
+            </Button>
+          )}
+          {p.canRegenerateKnockout && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy !== null}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Replace the knockout bracket with pairings from the current pool standings? No knockout match may have been played yet."
+                  )
+                ) {
+                  run("rebuild-ko", () => regenerateKnockoutFromPoolsAction(p.divisionId), "Knockout rebuilt");
+                }
+              }}
+            >
+              {busy === "rebuild-ko" ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+              Rebuild knockout from pools
             </Button>
           )}
           {p.state !== "not_started" && (

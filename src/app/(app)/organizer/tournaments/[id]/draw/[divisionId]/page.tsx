@@ -70,6 +70,8 @@ export default async function CategoryDrawPage({
         swissRoundDone={stageDone(swiss)}
         entries={ctx.entries.length}
         challongeUrl={ctx.division.challonge_url}
+        poolKnockoutPreview={view.poolKnockoutPreview}
+        canRegenerateKnockout={view.canRegenerateKnockout}
       />
 
       {started ? (

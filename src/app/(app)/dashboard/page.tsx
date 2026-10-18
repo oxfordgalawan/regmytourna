@@ -12,6 +12,7 @@ import { PageHeader, SectionHeading, StatTile } from "@/components/layout/page-h
 import { ArrowUpRight, ChevronRight, Database, Plus, Trophy } from "lucide-react";
 import { getViewRole } from "@/lib/auth/role";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
+import { getEffectiveOrganizerId, getOrganizerActAsContext, createOrganizerDataClient } from "@/lib/auth/organizer-act-as";
 import { loadPlayerEntries } from "@/lib/player/entries";
 import { listPublicTournaments } from "@/lib/tournaments/queries";
 import { PlayerHome } from "@/components/player/player-home";
@@ -62,19 +63,22 @@ export default async function DashboardPage() {
   }
 
   // organizer overview: only their events — their own entries live in the player view
+  const actAs = await getOrganizerActAsContext(user);
+  const organizerId = await getEffectiveOrganizerId(user);
+  const orgDb = actAs ? await createOrganizerDataClient(user) : supabase;
   const [{ data: orgTournaments }, { data: orgRegs }, { data: wallet }, { data: challonge }, invites] =
     await Promise.all([
-      supabase
+      orgDb
         .from("tournaments")
         .select("id, name, slug, status, start_date")
-        .eq("owner_id", user.id)
+        .eq("owner_id", organizerId)
         .order("created_at", { ascending: false })
         .limit(6),
-      supabase
+      orgDb
         .from("registrations")
         .select("id, status, payment_status, tournaments!inner(owner_id)")
-        .eq("tournaments.owner_id", user.id),
-      supabase.from("organizer_wallets").select("available_balance_cents").eq("user_id", user.id).maybeSingle(),
+        .eq("tournaments.owner_id", organizerId),
+      orgDb.from("organizer_wallets").select("available_balance_cents").eq("user_id", organizerId).maybeSingle(),
       supabase
         .from("challonge_accounts")
         .select("username, connected_at")
@@ -88,25 +92,33 @@ export default async function DashboardPage() {
   const paidCount = activeRegs.filter((r) => r.payment_status === "paid").length;
   const unpaidCount = activeRegs.length - paidCount;
   const walletBalanceCents = wallet?.available_balance_cents ?? 0;
-  const firstName = (profile?.full_name || user.email || "").split(/[\s@]/)[0];
+  const firstName = actAs
+    ? actAs.fullName.split(/[\s@]/)[0]
+    : (profile?.full_name || user.email || "").split(/[\s@]/)[0];
 
   return (
     <div className="space-y-12">
       <PageHeader
         eyebrow="Organizer"
-        title={<>Hi, {firstName}</>}
+        title={actAs ? <>Viewing {actAs.fullName}</> : <>Hi, {firstName}</>}
         description={
           orgTournaments?.length
-            ? "Here’s how your events are doing."
-            : "Create your first event — categories, registration and payments in one place."
+            ? actAs
+              ? "Latest events for this organizer."
+              : "Here’s how your events are doing."
+            : actAs
+              ? "This organizer has no events yet."
+              : "Create your first event — categories, registration and payments in one place."
         }
         actions={
-          <Button asChild>
-            <Link href="/organizer/tournaments/new">
-              <Plus />
-              New tournament
-            </Link>
-          </Button>
+          actAs ? undefined : (
+            <Button asChild>
+              <Link href="/organizer/tournaments/new">
+                <Plus />
+                New tournament
+              </Link>
+            </Button>
+          )
         }
       />
 

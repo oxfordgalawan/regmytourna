@@ -76,7 +76,7 @@ export async function getTournamentBySlug(slug: string) {
     } = await supabase.auth.getUser();
     if (!user) return { data: null, error: null };
     const allowed =
-      row.owner_id === user.id || (await isOrganizerForTournament(user.id, row.id));
+      row.owner_id === user.id || (await isOrganizerForTournament(user.id, row.id, user));
     if (!allowed) return { data: null, error: null };
   }
 

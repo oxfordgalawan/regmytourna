@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, Check, ChevronRight, Circle } from "lucide-react";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
-import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { StatTile } from "@/components/layout/page-header";
 import { formatDateRange, formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -26,10 +26,10 @@ export default async function OrganizerTournamentOverviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireOrganizerSession();
   const { data: t } = await supabase.from("tournaments").select("*").eq("id", id).single();
 
-  if (!t) return null;
+  if (!t) notFound();
 
   const bracketOnly = (await getRegistrationMode(id)) === "bracket_only";
 
@@ -43,7 +43,7 @@ export default async function OrganizerTournamentOverviewPage({
     supabase.from("courts").select("id", { count: "exact", head: true }).eq("tournament_id", id),
   ]);
   const divisionCount = divisions?.length ?? 0;
-  const { count: umpireCount } = await createAdminClient()
+  const { count: umpireCount } = await supabase
     .from("tournament_umpires")
     .select("id", { count: "exact", head: true })
     .eq("tournament_id", id)

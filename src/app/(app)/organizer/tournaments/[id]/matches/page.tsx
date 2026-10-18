@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
 import { Swords } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { relationOne } from "@/lib/supabase/relations";
@@ -25,8 +24,8 @@ import { cn } from "@/lib/utils";
 
 export default async function MatchesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const admin = createAdminClient();
+  const { supabase } = await requireOrganizerSession();
+  const admin = supabase;
 
   const [{ data: matches }, { data: umpires }, { data: courtRows }, { data: divisions }] = await Promise.all([
     supabase

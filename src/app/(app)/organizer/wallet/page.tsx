@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
+import { getEffectiveOrganizerId } from "@/lib/auth/organizer-act-as";
 import { getMinWithdrawalCents, getPlatformFeePercent } from "@/lib/env/server";
 import { PageHeader, SectionHeading } from "@/components/layout/page-header";
 import { loadWalletOverview } from "@/lib/wallet/overview";
@@ -17,9 +18,10 @@ export const metadata = { title: "Wallet" };
 export default async function OrganizerWalletPage() {
   await connection();
   const user = await requireUser();
+  const walletUserId = await getEffectiveOrganizerId(user);
   // make sure every paid entry has reached the wallet before showing it
-  await reconcileOrganizerWallet(user.id).catch(() => undefined);
-  const o = await loadWalletOverview(user.id);
+  await reconcileOrganizerWallet(walletUserId).catch(() => undefined);
+  const o = await loadWalletOverview(walletUserId);
   const feePercent = getPlatformFeePercent();
 
   return (

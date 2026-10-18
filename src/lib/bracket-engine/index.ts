@@ -1,6 +1,9 @@
 import { poolSizes, type BracketConfig } from "../bracket-format";
 import { settle } from "./advance";
-import { challongeAdvanceTwoSupported, challongePoolKnockoutPairs } from "./challonge-pool-knockout";
+import {
+  challongeAdvanceTwoSupported,
+  challongePoolKnockoutPairs,
+} from "./challonge-pool-knockout";
 import { buildDoubleElimination, buildSingleElimination, seededPairs, type Pair } from "./elimination";
 import {
   entriesFromKnockoutSlots,
@@ -25,7 +28,128 @@ export {
 } from "./standings";
 export { seedOrder, shuffle, snakePools, POOL_LETTERS } from "./seeding";
 export { seededPairs } from "./elimination";
+export {
+  challongeAdvanceTwoSupported,
+  challongePoolKnockoutPairs,
+} from "./challonge-pool-knockout";
 export * from "./layout";
+
+function poolLetterSort(a: string, b: string): number {
+  const ia = POOL_LETTERS.indexOf(a);
+  const ib = POOL_LETTERS.indexOf(b);
+  if (ia >= 0 && ib >= 0) return ia - ib;
+  if (ia >= 0) return -1;
+  if (ib >= 0) return 1;
+  return a.localeCompare(b);
+}
+
+/**
+ * Canonical group order for Challonge cross-seeding: seeding column order first,
+ * then POOL_LETTERS order (not localeCompare on arbitrary labels).
+ */
+export function orderedPoolKeys(
+  standings: Map<string, StandingRow[]>,
+  config?: BracketConfig,
+  poolMatches?: EngineMatch[]
+): string[] {
+  const keys = [...standings.keys()];
+  const groups = config?.seedingLayout?.poolGroups;
+  if (groups?.length && poolMatches?.length) {
+    const order: string[] = [];
+    const used = new Set<string>();
+    for (const group of groups) {
+      const ids = new Set(group.entryIds);
+      const letter = poolMatches.find(
+        (m) =>
+          m.stage === "pool" &&
+          m.pool &&
+          !used.has(m.pool) &&
+          ((m.a && ids.has(m.a)) || (m.b && ids.has(m.b)))
+      )?.pool;
+      if (letter && standings.has(letter)) {
+        order.push(letter);
+        used.add(letter);
+      }
+    }
+    for (const k of keys.sort(poolLetterSort)) {
+      if (!used.has(k)) order.push(k);
+    }
+    return order;
+  }
+  return keys.sort(poolLetterSort);
+}
+
+export type PoolKnockoutPreviewPair = { a: string; b: string; aName: string; bName: string };
+
+export type PoolKnockoutPreview = {
+  pairs: PoolKnockoutPreviewPair[];
+  mode: "challonge_cross" | "ranked_seeding";
+  reason?: string;
+};
+
+/** Planned first-round knockout pairs from current pool standings (organizer preview). */
+export function previewPoolKnockout(
+  config: BracketConfig,
+  standings: Map<string, StandingRow[]>,
+  entries: Entry[],
+  opts?: { poolOrder?: string[]; poolMatches?: EngineMatch[] }
+): PoolKnockoutPreview {
+  const advance = config.pools?.advance ?? 2;
+  const order = opts?.poolOrder ?? orderedPoolKeys(standings, config, opts?.poolMatches);
+  const pools = order.filter((k) => standings.has(k)).map((k) => standings.get(k)!.slice(0, advance));
+  const byId = new Map(entries.map((e) => [e.id, e.name]));
+  const name = (id: string | null | undefined) => (id ? (byId.get(id) ?? id) : "TBD");
+
+  const isBracket = config.final.type === "single_elimination" || config.final.type === "double_elimination";
+  if (isBracket && advance === 2 && challongeAdvanceTwoSupported(pools.length)) {
+    const entry = (r: StandingRow | undefined) =>
+      r ? (byId.has(r.id) ? { id: r.id, name: byId.get(r.id)! } : { id: r.id, name: r.name }) : null;
+    const pairs = challongePoolKnockoutPairs(
+      pools.map((rows) => [entry(rows[0]), entry(rows[1])])
+    );
+    return {
+      mode: "challonge_cross",
+      pairs: pairs.map(([a, b]) => ({
+        a: a?.id ?? "",
+        b: b?.id ?? "",
+        aName: name(a?.id),
+        bName: name(b?.id),
+      })),
+    };
+  }
+
+  let reason: string | undefined;
+  if (!isBracket) reason = "Final stage is not single or double elimination.";
+  else if (advance !== 2) reason = "Challonge cross-seeding uses 2 advancers per group.";
+  else if (!challongeAdvanceTwoSupported(pools.length)) {
+    reason = `Challonge cross-seeding applies to 2, 4, or 8 groups (this draw has ${pools.length}).`;
+  }
+
+  const byPlace: Entry[] = [];
+  for (let place = 0; place < advance; place++) {
+    const atPlace = pools
+      .map((rows) => rows[place])
+      .filter(Boolean)
+      .sort(
+        (x, y) =>
+          y.wins - x.wins ||
+          y.gamesFor - y.gamesAgainst - (x.gamesFor - x.gamesAgainst) ||
+          y.pointsFor - y.pointsAgainst - (x.pointsFor - x.pointsAgainst)
+      );
+    byPlace.push(...atPlace.map((r) => ({ id: r!.id, name: r!.name })));
+  }
+  const pairs = seededPairs(byPlace);
+  return {
+    mode: "ranked_seeding",
+    reason,
+    pairs: pairs.map(([a, b]) => ({
+      a: a?.id ?? "",
+      b: b?.id ?? "",
+      aName: name(a?.id),
+      bName: name(b?.id),
+    })),
+  };
+}
 
 /** Rough play order so match numbers read naturally: earlier rounds first. */
 function playOrder(m: EngineMatch, finalRound: number): number {
@@ -198,7 +322,7 @@ export function poolsFromMatches(entries: Entry[], matches: EngineMatch[]): Map<
   for (const [k, list] of pools) {
     pools.set(k, entries.filter((e) => list.some((x) => x.id === e.id)));
   }
-  return new Map([...pools.entries()].sort(([x], [y]) => x.localeCompare(y)));
+  return new Map([...pools.entries()].sort(([x], [y]) => poolLetterSort(x, y)));
 }
 
 export function poolStandings(config: BracketConfig, entries: Entry[], matches: EngineMatch[]) {
@@ -225,11 +349,18 @@ export function knockoutFromPools(
   config: BracketConfig,
   standings: Map<string, StandingRow[]>,
   entries: Entry[],
-  opts: { newId?: IdFactory; startAt: number; withdrawn?: Set<string> }
+  opts: {
+    newId?: IdFactory;
+    startAt: number;
+    withdrawn?: Set<string>;
+    poolOrder?: string[];
+    poolMatches?: EngineMatch[];
+  }
 ): EngineMatch[] {
   const newId = opts.newId ?? randomId;
   const advance = config.pools?.advance ?? 2;
-  const pools = [...standings.values()].map((rows) => rows.slice(0, advance));
+  const order = opts.poolOrder ?? orderedPoolKeys(standings, config, opts.poolMatches);
+  const pools = order.filter((k) => standings.has(k)).map((k) => standings.get(k)!.slice(0, advance));
   const byId = new Map(entries.map((e) => [e.id, e]));
   const entry = (r: StandingRow | undefined): Entry | null => (r ? (byId.get(r.id) ?? { id: r.id, name: r.name }) : null);
 

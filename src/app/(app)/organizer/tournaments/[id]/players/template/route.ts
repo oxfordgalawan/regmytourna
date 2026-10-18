@@ -7,7 +7,7 @@ import { buildPlayersTemplate } from "@/lib/import/xlsx";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getOptionalUser();
-  if (!user || !(await isOrganizerForTournament(user.id, id))) {
+  if (!user || !(await isOrganizerForTournament(user.id, id, user))) {
     return new Response("Not found", { status: 404 });
   }
   const { tournament, categories } = await loadImportContext(id);

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { ArrowUpRight, Smartphone } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 export default async function ScoringPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireOrganizerSession();
   const { data: courts } = await supabase
     .from("courts")
     .select("id, name")

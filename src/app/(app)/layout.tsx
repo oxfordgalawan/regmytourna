@@ -1,5 +1,6 @@
 import { AppAreaLayout } from "@/components/layout/app-area-layout";
 import { getOptionalUser } from "@/lib/auth/require-user";
+import { getOrganizerActAsContext } from "@/lib/auth/organizer-act-as";
 import { getViewRole } from "@/lib/auth/role";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 
@@ -7,11 +8,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // pages below enforce login themselves; the shell only needs the roles
   const user = await getOptionalUser();
   const superAdmin = isSuperAdmin(user);
+  const organizerActAs = user ? await getOrganizerActAsContext(user) : null;
   const { view, roles } = user
     ? await getViewRole(user.id, { superAdmin })
     : { view: "player" as const, roles: { player: true, organizer: false } };
   return (
-    <AppAreaLayout role={view} hasPlayer={roles.player} hasOrganizer={roles.organizer} superAdmin={superAdmin}>
+    <AppAreaLayout
+      role={view}
+      hasPlayer={roles.player}
+      hasOrganizer={roles.organizer}
+      superAdmin={superAdmin}
+      organizerActAs={Boolean(organizerActAs)}
+    >
       {children}
     </AppAreaLayout>
   );

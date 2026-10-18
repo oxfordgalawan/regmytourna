@@ -1,9 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { CourtsPanel, type CourtRow } from "@/components/organizer/courts-panel";
 
 export default async function CourtsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireOrganizerSession();
   const { data: courts } = await supabase
     .from("courts")
     .select("id, name, sort_order, active")

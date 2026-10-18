@@ -7,11 +7,14 @@ import assert from "node:assert/strict";
 import { presetConfig, type BracketConfig } from "../src/lib/bracket-format";
 import {
   applyResult,
+  buildPoolStageMatches,
   computeStandings,
   generateFirstStage,
   knockoutFromPools,
   nextSwissRound,
+  orderedPoolKeys,
   poolStandings,
+  previewPoolKnockout,
   revertResult,
   type EngineMatch,
   type Entry,
@@ -98,6 +101,39 @@ check("pools → knockout: 16 teams, Challonge cross-seed QFs, bronze", () => {
   assert.ok(qfHasPair(qf, id("D", 0), id("A", 1)), "D1 vs A2");
   assert.notEqual(qfHalfIndex(qf, id("A", 0), 2), qfHalfIndex(qf, id("A", 1), 2), "A1 and A2 in opposite halves");
   assert.equal(Math.min(...ko.map((m) => m.matchNumber)), 25);
+});
+
+check("pools → knockout: manual column order sets Challonge group index", () => {
+  const entries = teams(8);
+  const config = {
+    ...presetConfig("pools_knockout", 8),
+    seedingLayout: {
+      mode: "manual" as const,
+      poolGroups: [
+        { entryIds: ["t5", "t6", "t7", "t8"] },
+        { entryIds: ["t1", "t2", "t3", "t4"] },
+      ],
+    },
+  };
+  const poolMatches = buildPoolStageMatches(
+    config,
+    [
+      { pool: "C", entryIds: ["t5", "t6", "t7", "t8"] },
+      { pool: "A", entryIds: ["t1", "t2", "t3", "t4"] },
+    ],
+    entries
+  );
+  playAll(poolMatches, entries);
+  const standings = poolStandings(config, entries, poolMatches);
+  const order = orderedPoolKeys(standings, config, poolMatches);
+  assert.deepEqual(order, ["C", "A"]);
+  const preview = previewPoolKnockout(config, standings, entries, { poolMatches });
+  assert.equal(preview.mode, "challonge_cross");
+  const ko = knockoutFromPools(config, standings, entries, { newId, startAt: 10, poolMatches });
+  const qf = ko.filter((m) => m.stage === "winners" && m.round === 1);
+  const id = (pool: string, place: number) => standings.get(pool)![place].id;
+  assert.ok(qfHasPair(qf, id("C", 0), id("A", 1)), "group1 (C) winner vs group2 (A) runner-up");
+  assert.ok(qfHasPair(qf, id("A", 0), id("C", 1)), "group2 (A) winner vs group1 (C) runner-up");
 });
 
 check("pools → knockout: 8 teams, 2 pools, A1–B2 / B1–A2", () => {

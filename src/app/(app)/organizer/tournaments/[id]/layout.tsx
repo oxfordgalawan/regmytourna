@@ -2,9 +2,8 @@ import Link from "next/link";
 import { NAV_BACK } from "@/lib/nav-transitions";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, MonitorPlay } from "lucide-react";
-import { requireUser } from "@/lib/auth/require-user";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
-import { createClient } from "@/lib/supabase/server";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { TournamentNav } from "@/components/organizer/tournament-nav";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
 import { RouteTransition } from "@/components/motion/route-transition";
@@ -20,12 +19,10 @@ export default async function TournamentManageLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  const user = await requireUser();
   const { id } = await params;
-  const allowed = await isOrganizerForTournament(user.id, id);
+  const { user, supabase } = await requireOrganizerSession();
+  const allowed = await isOrganizerForTournament(user.id, id, user);
   if (!allowed) notFound();
-
-  const supabase = await createClient();
   const { data: tournament } = await supabase
     .from("tournaments")
     .select("name, slug, status")

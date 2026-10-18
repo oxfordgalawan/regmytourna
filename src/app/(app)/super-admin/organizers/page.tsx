@@ -1,6 +1,6 @@
 import { connection } from "next/server";
-import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/auth/require-super-admin";
+import { ViewAsOrganizerButton } from "@/components/super-admin/view-as-organizer-button";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listPlatformOrganizers } from "@/lib/super-admin/queries";
 import { PageHeader } from "@/components/layout/page-header";
@@ -40,12 +40,13 @@ export default async function SuperAdminOrganizersPage() {
               <TableHead>Account</TableHead>
               <TableHead className="text-right">Events</TableHead>
               <TableHead>Last activity</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   No organizers yet.
                 </TableCell>
               </TableRow>
@@ -59,6 +60,9 @@ export default async function SuperAdminOrganizersPage() {
                   <TableCell className="text-muted-foreground">
                     {row.lastActivity ? formatDateTime(row.lastActivity) : "—"}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <ViewAsOrganizerButton organizerId={row.id} />
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -67,11 +71,8 @@ export default async function SuperAdminOrganizersPage() {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Open the{" "}
-        <Link href="/organizer/tournaments" className="text-bone underline decoration-umber underline-offset-4">
-          organizer console
-        </Link>{" "}
-        to manage events as this signed-in user.
+        Use <span className="text-bone">View as</span> to open the organizer console with that account&apos;s events
+        and tools. Your admin session stays the same — exit from the banner when you&apos;re done.
       </p>
     </div>
   );

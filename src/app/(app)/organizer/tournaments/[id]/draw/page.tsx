@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, Layers } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { EmptyState } from "@/components/ui/empty-state";
 import { describeFormat, parseBracketConfig } from "@/lib/bracket-format";
 import { entrantNoun } from "@/lib/categories";
@@ -17,7 +17,7 @@ const STATE: Record<string, { label: string; tone: string }> = {
 
 export default async function DrawPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireOrganizerSession();
   const [{ data: divisions }, { data: regs }, { data: matches }] = await Promise.all([
     supabase
       .from("tournament_divisions")

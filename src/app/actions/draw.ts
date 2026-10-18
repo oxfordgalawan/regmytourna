@@ -9,6 +9,7 @@ import {
   generateFirstStage,
   knockoutFromPools,
   nextSwissRound,
+  orderedPoolKeys,
   poolStageEditable,
   poolStandings,
   resolvePending,
@@ -195,20 +196,67 @@ export async function closePoolsAction(divisionId: string, force = false): Promi
       unfinished.forEach((m) => (m.status = "cancelled"));
     }
 
-    // withdrawn teams stay in the table (their walkovers count for opponents) but can't advance
-    const everyone = ctx.allEntries.map(({ id, name }) => ({ id, name }));
-    const standings = new Map(
-      [...poolStandings(ctx.config, everyone, pool).entries()].map(([k, rows]) => [
-        k,
-        rows.filter((r) => !ctx.withdrawn.has(r.id)),
-      ])
-    );
+    const { standings, poolOrder } = poolStandingsForKnockout(ctx);
     const knockout = knockoutFromPools(ctx.config, standings, ctx.entries, {
       startAt: nextMatchNumber(ctx.matches),
       withdrawn: ctx.withdrawn,
+      poolOrder,
+      poolMatches: pool,
     });
     await insertMatches(knockout, ctx.division.tournament_id, divisionId);
     await setDivisionState(divisionId, "final");
+    await revalidateDraw(ctx.division.tournament_id, divisionId);
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+function poolStandingsForKnockout(ctx: Awaited<ReturnType<typeof contextFor>>) {
+  const pool = ctx.matches.filter((m) => m.stage === "pool");
+  const everyone = ctx.allEntries.map(({ id, name }) => ({ id, name }));
+  const standings = new Map(
+    [...poolStandings(ctx.config, everyone, pool).entries()].map(([k, rows]) => [
+      k,
+      rows.filter((r) => !ctx.withdrawn.has(r.id)),
+    ])
+  );
+  const poolOrder = orderedPoolKeys(standings, ctx.config, pool);
+  return { pool, standings, poolOrder };
+}
+
+/** Rebuilds knockout from current pool standings (only if no knockout match has been played). */
+export async function regenerateKnockoutFromPoolsAction(divisionId: string): Promise<Result> {
+  try {
+    const ctx = await contextFor(divisionId);
+    if (ctx.division.bracket_state !== "final") {
+      return { error: "Knockout can only be rebuilt after pools are closed." };
+    }
+    if (!ctx.config.pools) return { error: "This category has no pool stage." };
+    const ko = ctx.matches.filter((m) => m.stage !== "pool");
+    const played = ko.some(
+      (m) =>
+        !m.isBye &&
+        (m.status === "completed" ||
+          m.status === "in_progress" ||
+          m.status === "walkover" ||
+          (m.scoreA ?? 0) > 0 ||
+          (m.scoreB ?? 0) > 0)
+    );
+    if (played) return { error: "Knockout matches have already started or have results." };
+
+    const { pool, standings, poolOrder } = poolStandingsForKnockout(ctx);
+    const admin = createAdminClient();
+    const { error: delErr } = await admin.from("matches").delete().eq("division_id", divisionId).neq("stage", "pool");
+    if (delErr) return { error: delErr.message };
+
+    const knockout = knockoutFromPools(ctx.config, standings, ctx.entries, {
+      startAt: nextMatchNumber(pool),
+      withdrawn: ctx.withdrawn,
+      poolOrder,
+      poolMatches: pool,
+    });
+    await insertMatches(knockout, ctx.division.tournament_id, divisionId);
     await revalidateDraw(ctx.division.tournament_id, divisionId);
     return { ok: true };
   } catch (e) {

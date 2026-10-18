@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function checkInAction(tournamentId: string, registrationId: string) {
   const user = await requireUser();
-  const allowed = await isOrganizerForTournament(user.id, tournamentId);
+  const allowed = await isOrganizerForTournament(user.id, tournamentId, user);
   if (!allowed) throw new Error("Unauthorized");
 
   const admin = createAdminClient();

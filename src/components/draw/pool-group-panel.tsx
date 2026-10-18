@@ -10,6 +10,7 @@ type Tab = "standings" | "matches";
 
 export function PoolGroupPanel({
   letter,
+  groupNumber,
   rows,
   matches,
   advance = 0,
@@ -20,6 +21,8 @@ export function PoolGroupPanel({
   gamesToWin = 1,
 }: {
   letter: string;
+  /** Challonge-style group index (1-based), from pool column order */
+  groupNumber: number;
   rows: StandingRow[];
   matches: EngineMatch[];
   advance?: number;
@@ -35,7 +38,10 @@ export function PoolGroupPanel({
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <p className="display text-2xl text-bone">Group {letter}</p>
+        <p className="display text-2xl text-bone">
+          Group {groupNumber}
+          <span className="ml-2 text-base font-normal text-muted-foreground">({letter})</span>
+        </p>
         <div className="flex items-center gap-3">
           {advance > 0 && (
             <p className="font-mono text-[0.65rem] text-muted-foreground">Top {advance} go through</p>

@@ -224,7 +224,7 @@ export function BracketView({
   bracketConfig?: BracketConfig;
   poolsEditable?: boolean;
   matches: EngineMatch[];
-  pools: Array<{ letter: string; rows: StandingRow[] }> | null;
+  pools: Array<{ letter: string; groupNumber: number; rows: StandingRow[] }> | null;
   table: StandingRow[] | null;
   advance?: number;
   withdrawn?: string[];
@@ -281,6 +281,7 @@ export function BracketView({
                   <PoolGroupPanel
                     key={p.letter}
                     letter={p.letter}
+                    groupNumber={p.groupNumber}
                     rows={p.rows}
                     matches={letterMatches}
                     advance={advance}
