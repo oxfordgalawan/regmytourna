@@ -31,6 +31,7 @@ export type OpInput =
   | { type: "game_started"; payload: { tossWinner: Side; firstServe: Side; base: { a: number; b: number } } }
   | { type: "rally"; payload: { winner: Side } }
   | { type: "undo"; payload: Record<string, never> }
+  | { type: "reopen_setup"; payload: Record<string, never> }
   | { type: "end_game"; payload: Record<string, never> }
   | { type: "timer"; payload: { event: TimerEventKind; seconds: number; elapsed?: number } };
 
@@ -61,17 +62,13 @@ export function core(s: Snapshot): CoreSnapshot {
   };
 }
 
-/** At 0–0 with no rallies, umpire may reopen toss / serve / base setup. */
-export function canReopenSetup(s: Snapshot): boolean {
-  return (
-    s.status !== "completed" &&
-    s.serve !== null &&
-    s.serve.game === s.game &&
-    s.scoreA === 0 &&
-    s.scoreB === 0 &&
-    s.history.length === 0
-  );
+/** Active game with setup confirmed — umpire may reopen toss / serve / base. */
+export function canReopenGameSetup(s: Snapshot): boolean {
+  return s.status !== "completed" && s.serve !== null && s.serve.game === s.game;
 }
+
+/** @deprecated Use canReopenGameSetup */
+export const canReopenSetup = canReopenGameSetup;
 
 /** Why an op can't be applied right now, or null. */
 export function rejectReason(s: Snapshot, op: OpInput): string | null {
@@ -80,9 +77,9 @@ export function rejectReason(s: Snapshot, op: OpInput): string | null {
     case "rally":
       return s.serve && s.serve.game === s.game ? null : "Start the game first.";
     case "undo":
-      if (s.history.length) return null;
-      if (canReopenSetup(s)) return null;
-      return "Nothing to undo in this game.";
+      return s.history.length ? null : "Nothing to undo in this game.";
+    case "reopen_setup":
+      return canReopenGameSetup(s) ? null : "Start the game first.";
     case "end_game":
       if (!s.serve) return "Start the game first.";
       return s.scoreA === s.scoreB ? "A game can't end on a tied score." : null;
@@ -127,20 +124,22 @@ export function applyOp(s: Snapshot, op: Op, ctx: EngineContext): { snapshot: Sn
       break;
     }
     case "undo": {
-      if (canReopenSetup(s)) {
-        next = {
-          ...next,
-          serve: null,
-          setup: s.game === 1 && s.gamesA === 0 && s.gamesB === 0 ? null : s.setup,
-          history: [],
-        };
-        meta.game = s.game;
-        break;
-      }
       const last = s.history[s.history.length - 1];
       if (!last) break;
       next = { ...next, scoreA: last.scoreA, scoreB: last.scoreB, serve: last.serve, history: s.history.slice(0, -1) };
       meta.undoes = last.opId;
+      meta.game = s.game;
+      break;
+    }
+    case "reopen_setup": {
+      next = {
+        ...next,
+        scoreA: 0,
+        scoreB: 0,
+        serve: null,
+        setup: s.game === 1 && s.gamesA === 0 && s.gamesB === 0 ? null : s.setup,
+        history: [],
+      };
       meta.game = s.game;
       break;
     }

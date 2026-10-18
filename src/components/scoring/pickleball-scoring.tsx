@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, CloudOff, Flag, Loader2, RefreshCw, Timer, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, CloudOff, Flag, Loader2, RefreshCw, Settings2, Timer, TriangleAlert, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { umpireSignInAction } from "@/app/actions/umpire";
 import { GameSetup } from "@/components/scoring/game-setup";
@@ -13,7 +13,7 @@ import { PinEntry } from "@/components/umpire/pin-entry";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getMatchStore, type StoreState } from "@/lib/scoring/offline-store";
-import { canReopenSetup, type CoreSnapshot, type Op, type OpInput } from "@/lib/scoring/match-engine";
+import { canReopenGameSetup, type CoreSnapshot, type Op, type OpInput } from "@/lib/scoring/match-engine";
 import { isServeState, other, rally, type MatchSetup } from "@/lib/scoring/pickleball";
 import type { CourtPlayer } from "@/lib/scoring/officiating";
 import type { Match } from "@/types/database";
@@ -85,6 +85,7 @@ export function PickleballScoring({
   const snap = st.snapshot;
 
   const [endOpen, setEndOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [timersOpen, setTimersOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
@@ -137,8 +138,23 @@ export function PickleballScoring({
     if (!dispatch({ type: "end_game", payload: {} })) setEndOpen(false);
   }
 
+  function confirmReopenSetup() {
+    if (snap.scoreA + snap.scoreB > 0 || snap.history.length > 0) {
+      setSetupOpen(true);
+      return;
+    }
+    reopenSetupNow();
+  }
+
+  function reopenSetupNow() {
+    if (!dispatch({ type: "reopen_setup", payload: {} })) {
+      toast.success("Setup reopened — fix toss, serve, or base players, then start again.");
+      setSetupOpen(false);
+    }
+  }
+
   const serve = snap.serve;
-  const reopenSetup = canReopenSetup(snap);
+  const canChangeSetup = canReopenGameSetup(snap);
   const servingTeam = serve ? teams[serve.serving] : null;
   const faultResult = serve ? (serve.doubles && serve.server === 1 ? "2nd server" : "Side out") : "";
   const pending = st.pending.length;
@@ -257,34 +273,46 @@ export function PickleballScoring({
             </Button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <Button
-              variant="outline"
-              disabled={!snap.history.length && !reopenSetup}
-              onClick={() => {
-                const fixingSetup = reopenSetup;
-                if (!dispatch({ type: "undo", payload: {} })) return;
-                if (fixingSetup) {
-                  toast.success("Setup reopened — fix toss, serve, or base players, then start again.");
-                } else {
-                  setLastCall("Undone");
-                }
-              }}
-            >
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="text-sm" disabled={!snap.history.length} onClick={() => {
+              if (!dispatch({ type: "undo", payload: {} })) setLastCall("Undone");
+            }}>
               <Undo2 />
-              {reopenSetup ? "Change setup" : "Undo"}
+              Undo
             </Button>
-            <Button variant="outline" onClick={() => setTimersOpen(true)}>
+            <Button variant="outline" className="text-sm" disabled={!canChangeSetup} onClick={confirmReopenSetup}>
+              <Settings2 />
+              Change setup
+            </Button>
+            <Button variant="outline" className="text-sm" onClick={() => setTimersOpen(true)}>
               <Timer />
               Timer
             </Button>
-            <Button variant="umber" onClick={() => setEndOpen(true)}>
+            <Button variant="umber" className="text-sm" onClick={() => setEndOpen(true)}>
               <Flag />
               End game
             </Button>
           </div>
         </div>
       )}
+
+      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reopen game setup?</DialogTitle>
+            <DialogDescription>
+              This clears the current game score ({snap.scoreA}–{snap.scoreB}) and all rallies for game {snap.game}, then
+              lets you fix the coin toss, first serve, or base players.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSetupOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={reopenSetupNow}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={timersOpen} onOpenChange={setTimersOpen}>
         <DialogContent className="max-w-md">

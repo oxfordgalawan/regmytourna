@@ -105,8 +105,8 @@ export function GameSetup({
       {doubles && (
         <Section step={firstGame ? 4 : 3} title="Base players" hint="The player who starts in the right (even) court for each team.">
           <p className="mb-2 text-xs text-muted-foreground">
-            Wrong base player? Tap another before you start — or use <strong className="text-bone">Change setup</strong> at
-            0–0 after starting.
+            Wrong base player? Tap another before you start — or use <strong className="text-bone">Change setup</strong>{" "}
+            anytime during the game (resets the score to 0–0).
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {teams.map((t) => (

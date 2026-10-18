@@ -84,6 +84,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (error && !isDup(error)) return fail(error.message, "db", 500);
     } else if (op.type === "undo" && op.meta?.undoes) {
       await admin.from("match_scores").delete().eq("match_id", matchId).eq("client_op_id", op.meta.undoes);
+    } else if (op.type === "reopen_setup") {
+      await admin.from("match_scores").delete().eq("match_id", matchId).eq("game_number", game);
+      const { error } = await admin.from("match_events").insert({
+        match_id: matchId,
+        tournament_id: match.tournament_id,
+        kind: "game_setup_reset",
+        payload: { game },
+        client_op_id: op.id,
+        occurred_at: at,
+        ...who,
+      });
+      if (error && !isDup(error)) return fail(error.message, "db", 500);
     } else if (op.type === "game_started" || op.type === "timer" || op.type === "end_game") {
       const kind = op.type === "timer" ? `timer_${op.payload.event}` : op.type === "end_game" ? "game_ended" : "game_started";
       const payload =
