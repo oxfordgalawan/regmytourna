@@ -68,6 +68,7 @@ export function GameSetup({
 
       {firstGame && (
         <Section step={2} title="Coin toss" hint="Who won the toss?">
+          <p className="mb-2 text-xs text-muted-foreground">Wrong team? Tap the other side before you start the game.</p>
           <div className="grid grid-cols-2 gap-2">
             {teams.map((t) => (
               <Choice
@@ -103,6 +104,10 @@ export function GameSetup({
 
       {doubles && (
         <Section step={firstGame ? 4 : 3} title="Base players" hint="The player who starts in the right (even) court for each team.">
+          <p className="mb-2 text-xs text-muted-foreground">
+            Wrong base player? Tap another before you start — or use <strong className="text-bone">Change setup</strong> at
+            0–0 after starting.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {teams.map((t) => (
               <div key={t.side} className="min-w-0">

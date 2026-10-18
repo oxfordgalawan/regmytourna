@@ -13,7 +13,7 @@ import { PinEntry } from "@/components/umpire/pin-entry";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getMatchStore, type StoreState } from "@/lib/scoring/offline-store";
-import { type CoreSnapshot, type Op, type OpInput } from "@/lib/scoring/match-engine";
+import { canReopenSetup, type CoreSnapshot, type Op, type OpInput } from "@/lib/scoring/match-engine";
 import { isServeState, other, rally, type MatchSetup } from "@/lib/scoring/pickleball";
 import type { CourtPlayer } from "@/lib/scoring/officiating";
 import type { Match } from "@/types/database";
@@ -138,6 +138,7 @@ export function PickleballScoring({
   }
 
   const serve = snap.serve;
+  const reopenSetup = canReopenSetup(snap);
   const servingTeam = serve ? teams[serve.serving] : null;
   const faultResult = serve ? (serve.doubles && serve.server === 1 ? "2nd server" : "Side out") : "";
   const pending = st.pending.length;
@@ -259,13 +260,19 @@ export function PickleballScoring({
           <div className="grid grid-cols-3 gap-2">
             <Button
               variant="outline"
-              disabled={!snap.history.length}
+              disabled={!snap.history.length && !reopenSetup}
               onClick={() => {
-                if (!dispatch({ type: "undo", payload: {} })) setLastCall("Undone");
+                const fixingSetup = reopenSetup;
+                if (!dispatch({ type: "undo", payload: {} })) return;
+                if (fixingSetup) {
+                  toast.success("Setup reopened — fix toss, serve, or base players, then start again.");
+                } else {
+                  setLastCall("Undone");
+                }
               }}
             >
               <Undo2 />
-              Undo
+              {reopenSetup ? "Change setup" : "Undo"}
             </Button>
             <Button variant="outline" onClick={() => setTimersOpen(true)}>
               <Timer />
