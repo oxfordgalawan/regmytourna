@@ -16,7 +16,7 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { requestWalletWithdrawal } from "@/app/actions/withdrawals";
 import { deletePayoutMethod, setDefaultPayoutMethod } from "@/app/actions/payout-methods";
 import { Button } from "@/components/ui/button";

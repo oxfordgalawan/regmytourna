@@ -14,7 +14,7 @@ import {
   Loader2,
   Upload,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { commitPlayerImportAction, previewPlayerImportAction } from "@/app/actions/player-import";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";

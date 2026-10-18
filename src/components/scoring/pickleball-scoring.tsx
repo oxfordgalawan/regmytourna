@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, CloudOff, Flag, Loader2, RefreshCw, Settings2, Timer, TriangleAlert, Undo2 } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, CloudOff, Flag, Loader2, RefreshCw, Settings2, Timer, TriangleAlert, Undo2 } from "lucide-react";
+import { toast } from "@/lib/ui/app-toast";
 import { umpireSignInAction } from "@/app/actions/umpire";
 import { GameSetup } from "@/components/scoring/game-setup";
-import { MatchTimers, TimerLog, timerRuns, type TimerEvent, type TimerLogFn } from "@/components/scoring/match-timers";
+import { MatchTimers, type TimerEvent, type TimerLogFn } from "@/components/scoring/match-timers";
 import { PickleballBoard } from "@/components/scoring/pickleball-board";
 import { PinEntry } from "@/components/umpire/pin-entry";
 import { Button } from "@/components/ui/button";
@@ -134,9 +134,20 @@ export function PickleballScoring({
     }
   }
 
+  const returnToQueue = useCallback(() => {
+    router.replace(backHref);
+    router.refresh();
+  }, [backHref, router]);
+
   function endGame() {
-    if (!dispatch({ type: "end_game", payload: {} })) setEndOpen(false);
+    if (dispatch({ type: "end_game", payload: {} })) return;
+    setEndOpen(false);
+    if (store.getState().snapshot.status === "completed") returnToQueue();
   }
+
+  useEffect(() => {
+    if (snap.status === "completed") returnToQueue();
+  }, [snap.status, returnToQueue]);
 
   function confirmReopenSetup() {
     if (snap.scoreA + snap.scoreB > 0 || snap.history.length > 0) {
@@ -212,31 +223,9 @@ export function PickleballScoring({
       )}
 
       {snap.status === "completed" ? (
-        <div className="mt-5 flex flex-1 flex-col items-center justify-center rounded-3xl border border-umber bg-espresso p-8 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-bone text-ink">
-            <Check className="size-6" strokeWidth={3} />
-          </span>
-          <p className="display mt-5 text-4xl text-bone">Match finished</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {pending ? "Result saved on this phone — it posts as soon as you're online." : "Result posted."}
-          </p>
-          <div className="mt-4 grid w-full max-w-xs grid-cols-2 gap-3">
-            {[teams.a, teams.b].map((t) => (
-              <div key={t.side} className="rounded-xl border border-line bg-surface p-3">
-                <p className="truncate text-sm text-bone/80">{t.label}</p>
-                <p className="display text-5xl text-bone">{t.games}</p>
-              </div>
-            ))}
-          </div>
-          {snap.gameScores.length > 0 && (
-            <p className="mt-3 font-mono text-xs text-muted-foreground">{snap.gameScores.map(([a, b]) => `${a}–${b}`).join(" · ")}</p>
-          )}
-          <div className="mt-6 w-full max-w-sm text-left">
-            <TimerLog runs={timerRuns(timerEvents)} />
-          </div>
-          <Button size="lg" className="mt-8" onClick={() => (pending ? setLeaveOpen(true) : router.push(backHref))}>
-            Next match
-          </Button>
+        <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border border-line bg-surface/50 p-8 text-center">
+          <Loader2 className="size-8 animate-spin text-brass" />
+          <p className="text-sm text-muted-foreground">Back to the queue…</p>
         </div>
       ) : !serve ? (
         <GameSetup

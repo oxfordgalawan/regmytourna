@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { savePayoutMethod } from "@/app/actions/payout-methods";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

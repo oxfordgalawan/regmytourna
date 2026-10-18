@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Pencil, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { updatePlayerEmailAction } from "@/app/actions/organizer-players";
 import { cn } from "@/lib/utils";
 

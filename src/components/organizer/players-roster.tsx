@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileSpreadsheet, Loader2, Plus, Upload, UserRoundPen, Users, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { addImportedPlayerAction } from "@/app/actions/player-import";
 import { cancelEntryAction } from "@/app/actions/walk-in";
 import { Button } from "@/components/ui/button";

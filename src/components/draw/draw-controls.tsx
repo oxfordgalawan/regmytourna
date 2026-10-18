@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, Loader2, Play, RotateCcw, Share2, SkipForward } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   closePoolsAction,
   exportToChallongeAction,

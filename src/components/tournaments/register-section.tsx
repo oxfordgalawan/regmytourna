@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Clock, CreditCard, Info, Loader2, Lock, Swords, Ticket, UserRound } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   cancelMyRegistrationAction,
   createRegistrationAction,

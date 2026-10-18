@@ -3,7 +3,7 @@
 import { startTransition, useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banknote, Search, UserPlus, UserRoundPen, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
 import { cancelEntryAction, setWalkInPaymentAction } from "@/app/actions/walk-in";
 import { StatusBadge } from "@/components/ui/status-badge";

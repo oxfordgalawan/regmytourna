@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { assignMatchUmpireAction, bumpMatchQueueAction } from "@/app/actions/umpire";
 import { Button } from "@/components/ui/button";
 import {

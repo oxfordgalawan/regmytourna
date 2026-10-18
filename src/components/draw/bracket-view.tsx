@@ -4,7 +4,7 @@ import { useState, ViewTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, PenLine, RotateCcw, Timer, Trophy } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { correctResultAction, enterResultAction } from "@/app/actions/draw";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,90 +15,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DrawMatchCard } from "@/components/draw/draw-match-card";
 import { LivePoolsPanel } from "@/components/draw/live-pools-panel";
+import { PoolGroupPanel } from "@/components/draw/pool-group-panel";
 import { StandingsTable } from "@/components/draw/standings-table";
-import type { BracketConfig } from "@/lib/bracket-format";
+import { bestOfFromGamesToWin, gamesToWinFromDivisionConfig, type BracketConfig } from "@/lib/bracket-format";
 import type { EngineMatch, StandingRow } from "@/lib/bracket-engine";
 import { NAV_FORWARD } from "@/lib/nav-transitions";
+import { formatCompletedMatchScoreLine } from "@/lib/scoring/match-display-score";
 import { cn } from "@/lib/utils";
 
 type Mode = "organizer" | "public";
 
 const DONE = new Set(["completed", "walkover"]);
-
-function MatchCard({
-  m,
-  onOpen,
-  compact = false,
-}: {
-  m: EngineMatch;
-  onOpen?: (m: EngineMatch) => void;
-  compact?: boolean;
-}) {
-  const live = m.status === "in_progress";
-  const done = DONE.has(m.status);
-  const hidden = m.isBye || m.status === "cancelled";
-  const sides = [
-    { id: m.a, label: m.aLabel, games: m.gamesA ?? 0, score: m.scoreA ?? 0 },
-    { id: m.b, label: m.bLabel, games: m.gamesB ?? 0, score: m.scoreB ?? 0 },
-  ];
-  const clickable = Boolean(onOpen) && !hidden && !(m.isConditional && !m.a);
-
-  const body = (
-    <>
-      <div className="flex items-center justify-between gap-2 border-b border-line px-2.5 py-1 font-mono text-[0.6rem] text-muted-foreground">
-        <span>M{m.matchNumber}</span>
-        {live ? (
-          <span className="flex items-center gap-1 text-rust">
-            <span className="size-1.5 animate-pulse-dot rounded-full bg-current" /> Live
-          </span>
-        ) : m.status === "walkover" ? (
-          <span>W/O</span>
-        ) : m.isBye ? (
-          <span>Bye</span>
-        ) : null}
-      </div>
-      {sides.map((s, i) => {
-        const won = done && m.winner && s.id === m.winner;
-        const lost = done && m.winner && s.id && s.id !== m.winner;
-        const placeholder = !s.id;
-        return (
-          <div key={i} className={cn("flex items-center justify-between gap-2 px-2.5 py-1.5", i === 0 && "border-b border-line")}>
-            <span
-              className={cn(
-                "truncate text-xs",
-                won ? "font-semibold text-bone" : lost ? "text-muted-foreground" : "text-bone/85",
-                placeholder && "font-mono text-[0.65rem] text-muted-foreground/70"
-              )}
-            >
-              {s.label}
-            </span>
-            {(done || live) && !m.isBye && (
-              <span className={cn("shrink-0 font-mono text-xs", won ? "text-brass" : "text-muted-foreground")}>
-                {live ? `${s.games}·${s.score}` : s.games}
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-
-  const cls = cn(
-    "block overflow-hidden rounded-lg border text-left transition-all",
-    compact ? "w-full" : "w-44",
-    hidden ? "border-dashed border-line opacity-40" : live ? "border-rust/60 bg-espresso" : done ? "border-line bg-surface" : "border-line bg-ink/60",
-    clickable && "cursor-pointer hover:-translate-y-0.5 hover:border-umber"
-  );
-
-  return clickable ? (
-    <button type="button" className={cls} onClick={() => onOpen!(m)}>
-      {body}
-    </button>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
 
 function Column({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -117,22 +46,30 @@ function byRound(matches: EngineMatch[]) {
     .map(([round, list]) => ({ round, list: list.sort((x, y) => x.position - y.position) }));
 }
 
+function emptyGameRows(count: number) {
+  return Array.from({ length: count }, () => ["", ""]);
+}
+
 function MatchDialog({
   match,
   tournamentId,
+  gamesToWin,
   onClose,
 }: {
   match: EngineMatch | null;
   tournamentId: string;
+  gamesToWin: number;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [games, setGames] = useState<string[][]>([["", ""], ["", ""], ["", ""]]);
+  const gameRowCount = bestOfFromGamesToWin(gamesToWin);
+  const [games, setGames] = useState<string[][]>(() => emptyGameRows(gameRowCount));
   const [busy, setBusy] = useState(false);
   const [entering, setEntering] = useState(false);
   if (!match) return null;
   const done = DONE.has(match.status);
   const ready = Boolean(match.a && match.b);
+  const resultLine = done ? formatCompletedMatchScoreLine(match, gamesToWin) : null;
 
   async function save() {
     setBusy(true);
@@ -168,11 +105,7 @@ function MatchDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {done && match.gameScores?.length ? (
-          <p className="font-mono text-sm text-bone">
-            {match.gameScores.map(([a, b]) => `${a}–${b}`).join(", ")}
-          </p>
-        ) : null}
+        {resultLine ? <p className="font-mono text-sm text-bone">{resultLine}</p> : null}
 
         {entering && (
           <div className="space-y-2 rounded-xl border border-line bg-ink/30 p-3">
@@ -209,7 +142,13 @@ function MatchDialog({
         <DialogFooter className="flex-wrap">
           {!done && ready && !entering && (
             <>
-              <Button variant="outline" onClick={() => setEntering(true)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setGames(emptyGameRows(gameRowCount));
+                  setEntering(true);
+                }}
+              >
                 <PenLine />
                 Enter result
               </Button>
@@ -293,6 +232,7 @@ export function BracketView({
   const [open, setOpen] = useState<EngineMatch | null>(null);
   const onOpen = mode === "organizer" ? setOpen : undefined;
   const out = new Set(withdrawn);
+  const gamesToWin = bracketConfig ? gamesToWinFromDivisionConfig(bracketConfig) : 1;
 
   const pool = matches.filter((m) => m.stage === "pool");
   const winners = matches.filter((m) => m.stage === "winners");
@@ -315,41 +255,44 @@ export function BracketView({
         )}
 
         {pools && pools.length > 0 && (
-          <section className="space-y-4">
-            <h3 className="eyebrow">Pools</h3>
+          <section className="space-y-6">
             {mode === "organizer" && divisionId && bracketConfig && (
-              <LivePoolsPanel
-                divisionId={divisionId}
-                config={bracketConfig}
-                pools={pools}
-                editable={poolsEditable}
-              />
+              <div
+                className={cn(
+                  "rounded-2xl border border-line bg-surface p-4",
+                  poolsEditable && "sticky top-3 z-20 shadow-md ring-1 ring-brass/20"
+                )}
+              >
+                <h3 className="eyebrow mb-3">Manage pools</h3>
+                <LivePoolsPanel
+                  divisionId={divisionId}
+                  config={bracketConfig}
+                  pools={pools}
+                  editable={poolsEditable}
+                />
+              </div>
             )}
-            <div className="grid gap-4 lg:grid-cols-2">
-              {pools.map((p) => (
-                <div key={p.letter} className="space-y-2">
-                  {mode !== "organizer" && (
-                    <StandingsTable title={`Pool ${p.letter}`} rows={p.rows} advance={advance} withdrawn={out} />
-                  )}
-                  {mode === "organizer" && (
-                    <StandingsTable title={`Pool ${p.letter} · standings`} rows={p.rows} advance={advance} withdrawn={out} />
-                  )}
-                  <details className="group rounded-xl border border-line">
-                    <summary className="cursor-pointer list-none px-4 py-2.5 text-sm text-muted-foreground hover:text-bone">
-                      Matches · {pool.filter((m) => m.pool === p.letter && DONE.has(m.status)).length}/
-                      {pool.filter((m) => m.pool === p.letter && m.status !== "cancelled").length} played
-                    </summary>
-                    <div className="grid gap-2 border-t border-line p-3 sm:grid-cols-2">
-                      {pool
-                        .filter((m) => m.pool === p.letter)
-                        .sort((x, y) => x.matchNumber - y.matchNumber)
-                        .map((m) => (
-                          <MatchCard key={m.id} m={m} onOpen={onOpen} compact />
-                        ))}
-                    </div>
-                  </details>
-                </div>
-              ))}
+            <div className="space-y-4">
+              <h3 className="eyebrow">Pool standings &amp; matches</h3>
+              <div className="flex flex-col gap-6">
+              {pools.map((p) => {
+                const letterMatches = pool.filter((m) => m.pool === p.letter);
+                return (
+                  <PoolGroupPanel
+                    key={p.letter}
+                    letter={p.letter}
+                    rows={p.rows}
+                    matches={letterMatches}
+                    advance={advance}
+                    withdrawn={out}
+                    onOpenMatch={onOpen}
+                    playedCount={letterMatches.filter((m) => DONE.has(m.status)).length}
+                    totalCount={letterMatches.filter((m) => m.status !== "cancelled").length}
+                    gamesToWin={gamesToWin}
+                  />
+                );
+              })}
+              </div>
             </div>
           </section>
         )}
@@ -361,7 +304,7 @@ export function BracketView({
               {byRound(winners).map(({ round, list }) => (
                 <Column key={round} title={list[0].roundLabel}>
                   {list.map((m) => (
-                    <MatchCard key={m.id} m={m} onOpen={onOpen} />
+                    <DrawMatchCard key={m.id} m={m} onOpen={onOpen} gamesToWin={gamesToWin} />
                   ))}
                 </Column>
               ))}
@@ -372,7 +315,7 @@ export function BracketView({
                     .map((m) => (
                       <div key={m.id}>
                         <p className="mb-1 font-mono text-[0.6rem] text-muted-foreground">{m.roundLabel}</p>
-                        <MatchCard m={m} onOpen={onOpen} />
+                        <DrawMatchCard m={m} onOpen={onOpen} gamesToWin={gamesToWin} />
                       </div>
                     ))}
                 </Column>
@@ -388,7 +331,7 @@ export function BracketView({
               {byRound(losers).map(({ round, list }) => (
                 <Column key={round} title={list[0].roundLabel}>
                   {list.map((m) => (
-                    <MatchCard key={m.id} m={m} onOpen={onOpen} />
+                    <DrawMatchCard key={m.id} m={m} onOpen={onOpen} gamesToWin={gamesToWin} />
                   ))}
                 </Column>
               ))}
@@ -405,7 +348,7 @@ export function BracketView({
                   <p className="eyebrow mb-2">{list[0].roundLabel}</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {list.map((m) => (
-                      <MatchCard key={m.id} m={m} onOpen={onOpen} compact />
+                      <DrawMatchCard key={m.id} m={m} onOpen={onOpen} compact gamesToWin={gamesToWin} />
                     ))}
                   </div>
                 </div>
@@ -415,7 +358,14 @@ export function BracketView({
         )}
       </div>
 
-      {open && <MatchDialog match={open} tournamentId={tournamentId} onClose={() => setOpen(null)} />}
+      {open && (
+        <MatchDialog
+          match={open}
+          tournamentId={tournamentId}
+          gamesToWin={gamesToWin}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </ViewTransition>
   );
 }

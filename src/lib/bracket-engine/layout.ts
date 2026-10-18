@@ -1,5 +1,5 @@
 import { poolSizes, type BracketConfig } from "../bracket-format";
-import { nextPowerOfTwo, snakePools } from "./seeding";
+import { nextPowerOfTwo, POOL_LETTERS, snakePools } from "./seeding";
 import type { EngineMatch, Entry } from "./types";
 
 /** True when every pool match is still unscored — safe to rebuild pool groups. */
@@ -26,6 +26,20 @@ export type SeedingLayout = {
 
 export function usesMultiPool(config: BracketConfig, teamCount: number): boolean {
   return Boolean(config.pools && teamCount > config.pools.size);
+}
+
+/** Show pool / group management UI (including a single pool when the field is small). */
+export function usesPoolSeedingUI(config: BracketConfig, teamCount: number): boolean {
+  return Boolean(config.pools && teamCount >= 3);
+}
+
+function usesManualPoolLayout(config: BracketConfig, teamCount: number): boolean {
+  return usesMultiPool(config, teamCount) || usesPoolSeedingUI(config, teamCount);
+}
+
+/** Manual pool layout may exceed nominal size by one (e.g. 5 teams in a 4-wide pool). */
+export function manualPoolCapacity(nominalSize: number): number {
+  return nominalSize + 1;
 }
 
 export function usesKnockoutSlotSeeding(config: BracketConfig, teamCount: number): boolean {
@@ -88,13 +102,19 @@ export function validateSeedingLayout(
   const assigned = new Set<string>();
   const n = entryIds.length;
 
-  if (usesMultiPool(config, n)) {
-    const max = config.pools!.size;
+  if (usesManualPoolLayout(config, n)) {
+    const nominal = config.pools!.size;
+    const cap = manualPoolCapacity(nominal);
     const groups = layout.poolGroups ?? [];
     if (groups.length < 1) errors.push("Add at least one pool.");
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
-      if (g.entryIds.length > max) errors.push(`Pool ${gi + 1} has more than ${max} teams.`);
+      const label = POOL_LETTERS[gi] ?? String(gi + 1);
+      if (g.entryIds.length > cap) {
+        errors.push(
+          `Pool ${label} has more than ${cap} teams (manual max is one above target size ${nominal}).`
+        );
+      }
       for (const id of g.entryIds) {
         if (!valid.has(id)) errors.push("Pool layout includes an entry that isn't in this category.");
         if (assigned.has(id)) errors.push("The same team appears in more than one pool.");
@@ -181,7 +201,7 @@ export function mergeLayoutWithEntries(
 ): SeedingLayout {
   const mode = existing?.mode ?? "standard";
   const n = entries.length;
-  if (usesMultiPool(config, n)) {
+  if (usesManualPoolLayout(config, n)) {
     let poolGroups = existing?.poolGroups;
     if (!poolGroups?.length) poolGroups = initPoolGroupsFromSnake(entries, config);
     else {

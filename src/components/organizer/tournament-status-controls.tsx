@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { updateTournamentStatusAction } from "@/app/actions/tournaments";
 import { Button } from "@/components/ui/button";
 import type { TournamentStatus } from "@/types/database";

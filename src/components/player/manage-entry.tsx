@@ -17,7 +17,7 @@ import {
   UserX,
   XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   cancelOurEntryAction,
   changeMyPartnerAction,

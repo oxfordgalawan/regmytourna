@@ -15,7 +15,13 @@ import { BYE, randomId, type EngineMatch, type Entry, type IdFactory } from "./t
 
 export * from "./types";
 export { applyResult, resolvePending, revertResult, settle, stageDone } from "./advance";
-export { computeStandings, type StandingRow } from "./standings";
+export {
+  computeStandings,
+  poolMatchHistory,
+  poolMatchHistoryEntries,
+  type PoolMatchHistoryEntry,
+  type StandingRow,
+} from "./standings";
 export { seedOrder, shuffle, snakePools, POOL_LETTERS } from "./seeding";
 export { seededPairs } from "./elimination";
 export * from "./layout";

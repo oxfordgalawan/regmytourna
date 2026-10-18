@@ -1,6 +1,43 @@
 import type { Tiebreaker } from "../bracket-format";
 import type { EngineMatch, Entry } from "./types";
 
+export type PoolMatchHistoryEntry = { outcome: "W" | "L"; tooltip: string };
+
+const DECIDED = new Set(["completed", "walkover"]);
+
+function poolMatchesForEntry(entryId: string, poolMatches: EngineMatch[]): EngineMatch[] {
+  return poolMatches
+    .filter(
+      (m) =>
+        m.stage === "pool" &&
+        DECIDED.has(m.status) &&
+        m.winner &&
+        !m.isBye &&
+        m.a &&
+        m.b &&
+        (m.a === entryId || m.b === entryId)
+    )
+    .sort((x, y) => x.round - y.round || x.position - y.position || x.matchNumber - y.matchNumber);
+}
+
+function scoreLine(m: EngineMatch, entryId: string): string {
+  const opp = m.a === entryId ? m.bLabel : m.aLabel;
+  const scores = m.gameScores?.map(([a, b]) => `${a}–${b}`).join(", ");
+  return scores ? `${opp} (${scores})` : opp;
+}
+
+/** W/L in pool schedule order for match-history badges. */
+export function poolMatchHistory(entryId: string, poolMatches: EngineMatch[]): Array<"W" | "L"> {
+  return poolMatchHistoryEntries(entryId, poolMatches).map((e) => e.outcome);
+}
+
+export function poolMatchHistoryEntries(entryId: string, poolMatches: EngineMatch[]): PoolMatchHistoryEntry[] {
+  return poolMatchesForEntry(entryId, poolMatches).map((m) => ({
+    outcome: m.winner === entryId ? "W" : "L",
+    tooltip: scoreLine(m, entryId),
+  }));
+}
+
 export type StandingRow = {
   id: string;
   name: string;
@@ -16,8 +53,6 @@ export type StandingRow = {
   /** the tiebreaker that separated this row from a team on equal record, if any */
   decidedBy: Tiebreaker | "seed" | null;
 };
-
-const DECIDED = new Set(["completed", "walkover"]);
 
 /**
  * Standings for a set of entries from their decided matches. Byes count as a

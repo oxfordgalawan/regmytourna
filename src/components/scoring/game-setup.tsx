@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Coins, Play } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { PlayerAvatar } from "@/components/players/player-avatar";
 import { MatchTimers, type TimerEvent, type TimerLogFn } from "@/components/scoring/match-timers";
 import { Button } from "@/components/ui/button";

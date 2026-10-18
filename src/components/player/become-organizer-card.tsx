@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { ClipboardList, Loader2, Trophy, Wallet } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { becomeOrganizerAction } from "@/app/actions/role";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";

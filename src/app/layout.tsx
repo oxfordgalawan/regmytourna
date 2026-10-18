@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Big_Shoulders, Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { ErrorDialogProvider } from "@/lib/ui/error-dialog";
 import { NavigationProgress } from "@/components/motion/navigation-progress";
 import { RouteTransition } from "@/components/motion/route-transition";
 import { ViewTransitionGuard } from "@/components/motion/view-transition-guard";
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </RouteTransition>
         <Toaster richColors closeButton theme="dark" mobileOffset={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }} />
+        <ErrorDialogProvider />
       </body>
     </html>
   );

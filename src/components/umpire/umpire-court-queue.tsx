@@ -189,7 +189,7 @@ export function UmpireMatchAction({
     return (
       <Button size="sm" variant="umber" className="h-9 shrink-0" onClick={() => onClaim(m)}>
         <Hand />
-        Claim
+        Grab
       </Button>
     );
   }

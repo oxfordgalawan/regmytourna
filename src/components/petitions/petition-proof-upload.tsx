@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { createClient } from "@/lib/supabase/client";
 import { formatBytes, optimizePetitionProof } from "@/lib/images/optimize";
 import { Button } from "@/components/ui/button";

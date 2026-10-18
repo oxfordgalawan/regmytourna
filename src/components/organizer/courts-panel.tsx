@@ -11,7 +11,7 @@ import {
   Power,
   Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   addCourtAction,
   deleteCourtAction,

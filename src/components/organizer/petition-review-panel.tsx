@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Eye, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   getPetitionProofSignedUrlsAction,
   reviewPetitionAction,

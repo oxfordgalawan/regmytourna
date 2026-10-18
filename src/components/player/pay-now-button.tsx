@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { Button } from "@/components/ui/button";
 
 /** Opens a fresh PayMongo checkout for an unpaid entry. */

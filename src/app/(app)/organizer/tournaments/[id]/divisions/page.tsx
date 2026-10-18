@@ -69,7 +69,8 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
                       teams={d.capacity ?? 16}
                       noun={entrantNoun(d.format)}
                       config={parseBracketConfig(d.bracket_config, d.capacity ?? 16)}
-                      locked={LOCKED_BRACKET_STATES.has(d.challonge_state ?? "")}
+                      bracketState={d.bracket_state ?? "not_started"}
+                      challongeLocked={LOCKED_BRACKET_STATES.has(d.challonge_state ?? "")}
                     />
                   </TableCell>
                   {!bracketOnly && (

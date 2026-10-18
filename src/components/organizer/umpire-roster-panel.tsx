@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { Check, Copy, Download, Eye, EyeOff, Loader2, Plus, RefreshCw, RotateCcw, Trash2, UserMinus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   createUmpireAction,
   regenerateUmpirePinAction,

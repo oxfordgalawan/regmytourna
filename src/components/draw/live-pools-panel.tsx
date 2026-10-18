@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { saveLivePoolLayoutAction } from "@/app/actions/draw";
 import { PoolSeedingBoard, type PoolColumnDef } from "@/components/draw/pool-seeding-board";
 import type { BracketConfig } from "@/lib/bracket-format";
@@ -38,6 +38,17 @@ export function LivePoolsPanel({
     const map = new Map<string, string>();
     for (const p of pools) for (const r of p.rows) map.set(r.id, r.name);
     return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [pools]);
+
+  const seedOf = useMemo(() => {
+    const m = new Map<string, number>();
+    let seed = 1;
+    for (const p of pools) {
+      for (const r of p.rows) {
+        if (!m.has(r.id)) m.set(r.id, seed++);
+      }
+    }
+    return m;
   }, [pools]);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -92,6 +103,7 @@ export function LivePoolsPanel({
         readOnly={!editable}
         allowUnassigned={false}
         showToolbar={editable}
+        seedOf={seedOf}
       />
     </div>
   );

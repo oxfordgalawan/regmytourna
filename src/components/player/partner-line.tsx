@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { CheckCircle2, Mail, UserRound, UserX } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { resendPartnerInviteAction } from "@/app/actions/partner-invites";
 import type { PlayerEntry } from "@/lib/player/entries";
 import { cn } from "@/lib/utils";

@@ -14,6 +14,7 @@ import {
   resolvePending,
   revertResult,
   stageDone,
+  manualPoolCapacity,
   validateSeedingLayout,
   type GameScore,
 } from "@/lib/bracket-engine";
@@ -89,12 +90,15 @@ export async function saveLivePoolLayoutAction(
       };
     }
 
-    const max = ctx.config.pools.size;
+    const nominal = ctx.config.pools.size;
+    const cap = manualPoolCapacity(nominal);
     const valid = new Set(ctx.entries.map((e) => e.id));
     const assigned = new Set<string>();
     for (const col of columns) {
-      if (col.entryIds.length > max) {
-        return { error: `Pool ${col.pool} has too many teams (max ${max}).` };
+      if (col.entryIds.length > cap) {
+        return {
+          error: `Pool ${col.pool} has more than ${cap} teams (manual max is one above target size ${nominal}).`,
+        };
       }
       for (const id of col.entryIds) {
         if (!valid.has(id)) return { error: "Unknown team in pool layout." };

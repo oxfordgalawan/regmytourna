@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Hand, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { claimMatchAction, claimMatchAsSignedInAction } from "@/app/actions/umpire";
 import { PinEntry } from "@/components/umpire/pin-entry";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-const CLAIMED = "Match claimed — tap Start match when the players are on court.";
+const GRABBED = "Match grabbed — tap Start match when the players are on court.";
 
 export function ClaimMatchDialog({
   open,
@@ -40,7 +40,7 @@ export function ClaimMatchDialog({
   // claiming only reserves the match; the umpire starts it when players are on court
   function claimed() {
     onOpenChange(false);
-    toast.success(CLAIMED);
+    toast.success(GRABBED);
     router.refresh();
   }
 
@@ -61,7 +61,7 @@ export function ClaimMatchDialog({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Claim match</DialogTitle>
+          <DialogTitle>Grab match</DialogTitle>
           <DialogDescription>{matchLabel}</DialogDescription>
         </DialogHeader>
         {matchId &&
@@ -72,7 +72,7 @@ export function ClaimMatchDialog({
               </Button>
               <Button onClick={confirm} disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : <Hand />}
-                Claim match
+                Grab match
               </Button>
             </DialogFooter>
           ) : (

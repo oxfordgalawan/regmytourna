@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState, ViewTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Check, GripVertical, ListRestart, Loader2, Shuffle, UserMinus, UserPlus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { saveSeedsAction, withdrawEntryAction } from "@/app/actions/draw";
 import { Button } from "@/components/ui/button";
 import { poolSizes, type BracketConfig } from "@/lib/bracket-format";

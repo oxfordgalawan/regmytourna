@@ -14,7 +14,7 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { enableRoleAction } from "@/app/actions/role";
 import { Button } from "@/components/ui/button";
 import {

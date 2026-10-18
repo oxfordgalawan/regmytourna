@@ -13,7 +13,7 @@ import {
   UserMinus,
   UserPlus,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import { saveSeedingLayoutAction, saveSeedsAction, withdrawEntryAction } from "@/app/actions/draw";
 import { Button } from "@/components/ui/button";
 import { KnockoutSeedingBracket } from "@/components/draw/knockout-seeding-bracket";
@@ -26,7 +26,7 @@ import {
   seededPairs,
   shuffle,
   usesKnockoutSlotSeeding,
-  usesMultiPool,
+  usesPoolSeedingUI,
   type PoolGroup,
   type SeedingLayout,
 } from "@/lib/bracket-engine";
@@ -40,7 +40,7 @@ type Tab = "list" | "pools" | "bracket";
 function landing(order: SeedEntry[], config: BracketConfig, layout: SeedingLayout) {
   const where = new Map<string, string>();
   const entries = order.map(({ id, name }) => ({ id, name }));
-  if (usesMultiPool(config, entries.length)) {
+  if (usesPoolSeedingUI(config, entries.length)) {
     const groups =
       layout.mode === "manual" && layout.poolGroups?.length
         ? layout.poolGroups
@@ -74,9 +74,14 @@ export function SeedingWorkspace({
       config.seedingLayout ?? null
     )
   );
-  const showPoolsTab = usesMultiPool(config, order.length);
+  const showPoolsTab = usesPoolSeedingUI(config, order.length);
   const showBracketTab = usesKnockoutSlotSeeding(config, order.length);
-  const [tab, setTab] = useState<Tab>(() => (showPoolsTab ? "pools" : showBracketTab ? "bracket" : "list"));
+  const [tab, setTab] = useState<Tab>(() => {
+    if (showPoolsTab && config.seedingLayout?.mode === "manual") return "pools";
+    if (showBracketTab && config.seedingLayout?.mode === "manual") return "bracket";
+    return "list";
+  });
+  const poolsAutoManual = useRef(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -89,6 +94,7 @@ export function SeedingWorkspace({
   const where = useMemo(() => landing(order, config, layout), [order, config, layout]);
   const readOnlyPools = layout.mode !== "manual";
   const readOnlyBracket = layout.mode !== "manual";
+  const seedOf = useMemo(() => new Map(order.map((e, i) => [e.id, i + 1])), [order]);
 
   const serverKey = entries.map((e) => `${e.id}:${e.withdrawn}`).join(",");
   const [seenKey, setSeenKey] = useState(serverKey);
@@ -260,9 +266,17 @@ export function SeedingWorkspace({
   const knockoutSlots =
     layout.knockoutSlots ?? initKnockoutSlotsFromOrder(activeEntries);
 
+  function selectTab(next: Tab) {
+    if (next === "pools" && showPools && layout.mode === "standard" && !poolsAutoManual.current) {
+      poolsAutoManual.current = true;
+      setMode("manual");
+    }
+    setTab(next);
+  }
+
   const tabs: { id: Tab; label: string; show: boolean }[] = [
     { id: "list", label: "Seed list", show: true },
-    { id: "pools", label: "Pools", show: showPools },
+    { id: "pools", label: "Manage pools", show: showPools },
     { id: "bracket", label: "Bracket slots", show: showBracket },
   ];
 
@@ -272,7 +286,7 @@ export function SeedingWorkspace({
         <div>
           <h3 className="font-semibold text-bone">Seeding</h3>
           <p className="text-sm text-muted-foreground">
-            Set seed order, then use Pools or Bracket tabs to place teams manually (Challonge-style).
+            Set seed order, then use Manage pools or Bracket slots to place teams manually (Challonge-style).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -306,7 +320,7 @@ export function SeedingWorkspace({
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={cn(
                 "border-b-2 px-4 py-2 text-sm transition-colors",
                 tab === t.id ? "border-brass text-bone" : "border-transparent text-muted-foreground hover:text-bone"
@@ -423,10 +437,14 @@ export function SeedingWorkspace({
       {tab === "pools" && showPools && (
         <>
           {readOnlyPools && (
-            <p className="text-sm text-muted-foreground">
-              Preview from seed list (standard). Switch to <strong className="text-bone">manual</strong> to drag teams
-              between pools.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brass/30 bg-brass/5 px-4 py-3">
+              <p className="text-sm text-muted-foreground">
+                Teams are placed by snake seeding from the seed list. Enable manual mode to drag teams between pools.
+              </p>
+              <Button size="sm" onClick={() => setMode("manual")}>
+                Enable manual pools
+              </Button>
+            </div>
           )}
           <PoolSeedingBoard
             entries={activeEntries}
@@ -438,6 +456,7 @@ export function SeedingWorkspace({
             }
             onChange={(columns) => onPoolGroupsChange(columns.map((c) => ({ entryIds: c.entryIds })))}
             readOnly={readOnlyPools}
+            seedOf={seedOf}
           />
         </>
       )}

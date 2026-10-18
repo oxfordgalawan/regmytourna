@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Crown, Link2, Loader2, LogOut, Mail, MoreHorizontal, RefreshCw, Send, UserPlus, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/ui/app-toast";
 import {
   cancelCoOrganizerInviteAction,
   inviteCoOrganizerAction,

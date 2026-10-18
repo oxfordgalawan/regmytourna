@@ -73,7 +73,7 @@ export function UmpireHub({
                 Signed in as <span className="text-bone">{sessionUmpire.name}</span>
               </>
             ) : (
-              "Anyone can view. Your PIN is needed to claim or score."
+              "Anyone can view. Your PIN is needed to grab or score."
             )}
           </p>
         </div>
@@ -155,7 +155,7 @@ export function UmpireHub({
           (mineActive.length === 0 && mineDone.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line px-6 py-10 text-center">
               <p className="font-semibold text-bone">No matches yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">Claim one from the Queue tab.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Grab one from the Queue tab.</p>
               <Button className="mt-4" variant="outline" onClick={() => setTab("queue")}>
                 Open the queue
               </Button>
