@@ -49,6 +49,10 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
           <input
             id="explore-q"
             name="q"
+            type="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             defaultValue={params.q}
             placeholder="City, venue or tournament name"
             className="h-12 w-full rounded-full border border-input bg-ink/40 pr-4 pl-11 text-base text-bone outline-none placeholder:text-muted-foreground hover:border-bone/30 focus-visible:border-brass"

@@ -14,10 +14,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { showError } from "@/lib/ui/error-dialog";
+
+/** Supabase's sign-in messages, in plain words. */
+function friendlyAuthError(message: string) {
+  if (/invalid login credentials/i.test(message)) {
+    return "That email and password don't match. Check them and try again, or reset your password.";
+  }
+  if (/email not confirmed/i.test(message)) {
+    return "Please confirm your email first — open the link we sent you, then log in.";
+  }
+  return message;
+}
 
 export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?: string }) {
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const form = useForm<LoginInput>({
@@ -27,7 +38,6 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
   const errors = form.formState.errors;
 
   async function onSubmit(values: LoginInput) {
-    setServerError(null);
     setLoading(true);
     try {
       const fd = new FormData();
@@ -36,31 +46,26 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
       if (next) fd.set("next", next);
       const result = await signInWithPassword(fd);
       if (result?.error) {
-        setServerError(result.error);
+        showError(friendlyAuthError(result.error), { title: "Couldn't log you in" });
         setLoading(false);
       }
     } catch (err) {
       if (isRedirectError(err)) throw err;
       setLoading(false);
-      throw err;
+      showError("We couldn't reach the server. Check your connection and try again.", { title: "Couldn't log you in" });
     }
   }
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      {flashMessage && !serverError && (
+      {flashMessage && (
         <Alert>
           <AlertDescription>{flashMessage}</AlertDescription>
         </Alert>
       )}
-      {next?.includes("#register") && !serverError && !flashMessage && (
+      {next?.includes("#register") && !flashMessage && (
         <Alert>
           <AlertDescription>Log in and we&apos;ll take you straight back to registration.</AlertDescription>
-        </Alert>
-      )}
-      {serverError && (
-        <Alert variant="destructive">
-          <AlertDescription>{serverError}</AlertDescription>
         </Alert>
       )}
       <div className="space-y-2">

@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { showError } from "@/lib/ui/error-dialog";
 
 type Division = {
   id: string;
@@ -62,7 +63,6 @@ export function RegisterSection({
   const [divisionId, setDivisionId] = useState(divisions[0]?.id ?? "");
   const [partnerName, setPartnerName] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [partnerWarnings, setPartnerWarnings] = useState<string[]>([]);
@@ -105,11 +105,10 @@ export function RegisterSection({
     });
     if ("error" in res && res.error) return;
     if ("blocked" in res && res.blocked) {
-      setError(res.blocked);
+      showError(res.blocked, { title: "Couldn't register" });
       setPartnerWarnings([]);
       return;
     }
-    setError(null);
     setPartnerWarnings("warnings" in res ? (res.warnings ?? []) : []);
   }, [slug, divisionId, partnerEmail, isDoubles]);
 
@@ -120,7 +119,6 @@ export function RegisterSection({
 
   async function submitRegistration() {
     setLoading(true);
-    setError(null);
     setMessage(null);
     const result = await createRegistrationAction({
       tournamentSlug: slug,
@@ -131,7 +129,7 @@ export function RegisterSection({
     });
     if ("error" in result && result.error) {
       setLoading(false);
-      setError(typeof result.error === "string" ? result.error : "Registration failed");
+      showError(typeof result.error === "string" ? result.error : "Registration failed", { title: "Couldn't register" });
       return;
     }
     if ("warnings" in result && Array.isArray(result.warnings) && result.warnings.length) {
@@ -161,7 +159,7 @@ export function RegisterSection({
   async function handleRegister() {
     if (!divisionId) return;
     if (isDoubles && !partnerName.trim()) {
-      setError("Partner's full name is required for doubles.");
+      showError("Partner's full name is required for doubles.", { title: "Couldn't register" });
       return;
     }
     if (needsPlayerRole && !playerRoleReady) {
@@ -191,10 +189,9 @@ export function RegisterSection({
     const res = await cancelMyRegistrationAction(registrationId);
     setCancellingId(null);
     if ("error" in res && res.error) {
-      setError(res.error);
+      showError(res.error, { title: "Couldn't register" });
       return;
     }
-    setError(null);
     const next = await listMyRegistrationsForTournamentAction(slug);
     setMyEntries(next.entries ?? []);
   }
@@ -211,12 +208,7 @@ export function RegisterSection({
 
   return (
     <div className="space-y-5">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {partnerWarnings.length > 0 && !error && (
+      {partnerWarnings.length > 0 && (
         <Alert>
           <AlertDescription>
             <ul className="list-inside list-disc space-y-1">

@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
+import { showError } from "@/lib/ui/error-dialog";
 
 function PaddleIcon({ className }: { className?: string }) {
   return (
@@ -55,7 +56,6 @@ export function SignupForm({
   substituteToken?: string;
 }) {
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [place, setPlace] = useState<PlaceSelection | null>(null);
@@ -76,7 +76,6 @@ export function SignupForm({
   const errors = form.formState.errors;
 
   async function onSubmit(values: SignupInput) {
-    setServerError(null);
     setLoading(true);
     const fd = new FormData();
     fd.set("fullName", values.fullName);
@@ -93,7 +92,7 @@ export function SignupForm({
     try {
       const result = await signUp(fd);
       if (result?.error) {
-        setServerError(result.error);
+        showError(result.error, { title: "Couldn't create your account" });
         setLoading(false);
       }
     } catch (err) {
@@ -105,7 +104,7 @@ export function SignupForm({
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      {(inviteToken || substituteToken) && !serverError && (
+      {(inviteToken || substituteToken) && (
         <Alert>
           <AlertDescription>
             {substituteToken
@@ -114,14 +113,9 @@ export function SignupForm({
           </AlertDescription>
         </Alert>
       )}
-      {next?.includes("#register") && !serverError && (
+      {next?.includes("#register") && (
         <Alert>
           <AlertDescription>After you sign up, we&apos;ll bring you back to finish registration.</AlertDescription>
-        </Alert>
-      )}
-      {serverError && (
-        <Alert variant="destructive">
-          <AlertDescription>{serverError}</AlertDescription>
         </Alert>
       )}
 

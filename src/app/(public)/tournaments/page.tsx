@@ -2,13 +2,14 @@ import { Suspense } from "react";
 import Link from "next/link";
 import Form from "next/form";
 import { FilterChips } from "@/components/ui/filter-chips";
-import { ArrowLeft, ArrowRight, MapPin, Search, SearchX, X } from "lucide-react";
-import { listPublicTournaments } from "@/lib/tournaments/queries";
+import { ArrowLeft, ArrowRight, Search, SearchX, X } from "lucide-react";
+import { closeMatchTournaments, listPublicTournaments } from "@/lib/tournaments/queries";
 import { isSupabaseConfigured } from "@/lib/env/server";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { TournamentCard } from "@/components/tournaments/tournament-card";
+import { CityFilterInput } from "@/components/tournaments/city-filter-input";
 import { SkeletonCards } from "@/components/ui/skeleton";
 
 export const metadata = { title: "Tournaments" };
@@ -77,21 +78,16 @@ export default async function TournamentsPage({
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
               name="q"
+              type="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               defaultValue={params.q}
               placeholder="Search by name or venue"
               className="h-11 w-full rounded-lg border border-input bg-ink/40 pr-3 pl-10 text-base text-bone outline-none placeholder:text-muted-foreground hover:border-bone/30 focus-visible:border-brass md:text-sm"
             />
           </label>
-          <label className="relative">
-            <span className="sr-only">City</span>
-            <MapPin className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              name="city"
-              defaultValue={params.city}
-              placeholder="Any city"
-              className="h-11 w-full rounded-lg border border-input bg-ink/40 pr-3 pl-10 text-base text-bone outline-none placeholder:text-muted-foreground hover:border-bone/30 focus-visible:border-brass md:text-sm"
-            />
-          </label>
+          <CityFilterInput key={params.city ?? ""} defaultValue={params.city} />
           <Button type="submit" className="h-11">
             Search
           </Button>
@@ -149,6 +145,24 @@ async function Results({
 
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 12));
+
+  // nothing exact (often a typo): offer the closest events instead of a dead end
+  const close = !data.length && params.q ? await closeMatchTournaments(params.q) : [];
+  if (close.length) {
+    return (
+      <div className="mt-8 animate-in fade-in-0 duration-500">
+        <p className="mb-5 text-sm text-muted-foreground" aria-live="polite">
+          No exact matches for <span className="text-bone">&ldquo;{params.q}&rdquo;</span> — showing the closest{" "}
+          {close.length === 1 ? "event" : `${close.length} events`}.
+        </p>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {close.map((t) => (
+            <TournamentCard key={t.id} tournament={t} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8 animate-in fade-in-0 duration-500">

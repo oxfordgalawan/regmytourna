@@ -4,7 +4,35 @@ import { getPostLoginPath } from "@/lib/auth/get-post-login-path";
 import { sanitizeNext } from "@/lib/auth/safe-next";
 import { isSuperAdmin } from "@/lib/auth/is-super-admin";
 
+/** Supabase project ref of this app, e.g. "abcd1234" from https://abcd1234.supabase.co */
+function projectRef() {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname.split(".")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sign-in cookies from other Supabase projects (on a shared host like
+ * localhost, every local app's cookies are sent here) only bloat the request
+ * header until the server rejects it with 431. Expire them.
+ */
+function dropForeignAuthCookies(request: NextRequest, response: NextResponse) {
+  const ref = projectRef();
+  if (!ref) return response;
+  for (const { name } of request.cookies.getAll()) {
+    const m = name.match(/^sb-([a-z0-9]+)-auth-token/);
+    if (m && m[1] !== ref) response.cookies.set(name, "", { path: "/", maxAge: 0 });
+  }
+  return response;
+}
+
 export async function updateSession(request: NextRequest) {
+  return dropForeignAuthCookies(request, await handleSession(request));
+}
+
+async function handleSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

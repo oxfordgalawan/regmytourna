@@ -9,21 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { showError } from "@/lib/ui/error-dialog";
 
 export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
     setMessage(null);
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     const result = await requestPasswordReset(fd);
     setLoading(false);
-    if (result?.error) setError(result.error);
+    if (result?.error) showError(result.error, { title: "Couldn't send the reset link" });
     else if (result?.message) setMessage(result.message);
     else setMessage("If an account exists, a reset link has been sent.");
   }
@@ -37,11 +36,6 @@ export default function ForgotPasswordPage() {
         {message && (
           <Alert>
             <AlertDescription>{message}</AlertDescription>
-          </Alert>
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
         <div className="space-y-2">

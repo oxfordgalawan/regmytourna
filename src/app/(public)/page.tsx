@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Form from "next/form";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -9,7 +8,6 @@ import {
   GitBranch,
   LayoutGrid,
   MonitorPlay,
-  Search,
   Smartphone,
   Trophy,
 } from "lucide-react";
@@ -19,6 +17,7 @@ import { LiveScoreboard } from "@/components/marketing/live-scoreboard";
 import { Marquee } from "@/components/marketing/marquee";
 import { Reveal } from "@/components/motion/reveal";
 import { TournamentCard } from "@/components/tournaments/tournament-card";
+import { TournamentSearch } from "@/components/tournaments/tournament-search";
 import { listPublicTournaments } from "@/lib/tournaments/queries";
 import { isSupabaseConfigured } from "@/lib/env/server";
 
@@ -74,7 +73,7 @@ export default async function HomePage() {
   let upcoming: Awaited<ReturnType<typeof listPublicTournaments>>["data"] = [];
   if (isSupabaseConfigured()) {
     try {
-      const result = await listPublicTournaments({ pageSize: 3 });
+      const result = await listPublicTournaments({ pageSize: 3, upcoming: true });
       upcoming = result.data;
     } catch {
       upcoming = [];
@@ -84,11 +83,11 @@ export default async function HomePage() {
   return (
     <>
       {/* HERO */}
-      <section className="grain relative -mt-16 overflow-hidden pt-16">
+      <section className="grain relative z-20 -mt-16 overflow-x-clip pt-16">
         <div className="court-grid pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_at_top_right,black,transparent_70%)]" />
         <div className="pointer-events-none absolute -top-40 right-0 h-[38rem] w-[38rem] rounded-full bg-umber/40 blur-[140px]" />
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:pt-24 lg:pb-28">
+        <div className="relative mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] items-center gap-14 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:pt-24 lg:pb-28">
           <div>
             <p className="eyebrow flex items-center gap-3 animate-rise">
               <span className="h-px w-8 bg-brass" />
@@ -110,26 +109,7 @@ export default async function HomePage() {
               get the whole desk: entries, payments, brackets and live scores.
             </p>
 
-            <Form
-              action="/tournaments"
-              role="search"
-              className="mt-9 flex max-w-xl items-center gap-2 rounded-full border border-line bg-espresso/80 p-1.5 pl-5 backdrop-blur focus-within:border-brass animate-rise"
-              style={{ animationDelay: "240ms" }}
-            >
-              <Search className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-              <label htmlFor="hero-search" className="sr-only">
-                Search tournaments
-              </label>
-              <input
-                id="hero-search"
-                name="q"
-                placeholder="City, venue or tournament name"
-                className="h-11 min-w-0 flex-1 bg-transparent text-base text-bone outline-none placeholder:text-muted-foreground"
-              />
-              <Button type="submit" className="rounded-full px-5">
-                Find events
-              </Button>
-            </Form>
+            <TournamentSearch className="mt-9 animate-rise" style={{ animationDelay: "240ms" }} />
 
             <div
               className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm animate-rise"

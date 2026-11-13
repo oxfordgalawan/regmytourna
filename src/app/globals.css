@@ -129,6 +129,12 @@
 }
 
 @layer base {
+  /* search boxes use our own styling: no native clear button or magnifier */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
   * {
     @apply border-border outline-ring/50;
   }

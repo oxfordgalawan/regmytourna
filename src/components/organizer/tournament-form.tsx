@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CategoryBuilder } from "@/components/organizer/category-builder";
 import { FormSection } from "@/components/organizer/form-section";
 import { SPORTS } from "@/lib/categories";
@@ -17,6 +16,7 @@ import { registrationDeadline, validateSchedule } from "@/lib/validations/schedu
 import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 import { cn } from "@/lib/utils";
 import { RegistrationDateTimeInput } from "@/components/organizer/registration-datetime-input";
+import { showError } from "@/lib/ui/error-dialog";
 
 const publishOptions = [
   { value: "draft", label: "Save as draft", hint: "Only you can see it" },
@@ -105,7 +105,6 @@ export function TournamentForm() {
   const router = useRouter();
   const [mode, setMode] = useState<"open" | "bracket_only">("open");
   const bracketOnly = mode === "bracket_only";
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("draft");
   const [name, setName] = useState("");
@@ -132,22 +131,22 @@ export function TournamentForm() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (Object.keys(scheduleErrors).length) {
-      setError("Please fix the dates in step 2.");
+      showError("Please fix the dates in step 2.", { title: "Couldn't save the tournament" });
       document.getElementById("startDate")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     setLoading(true);
-    setError(null);
     const fd = new FormData(e.currentTarget);
     const result = await createTournamentAction(fd);
     setLoading(false);
     if (result.error) {
-      setError(
+      showError(
         typeof result.error === "string"
           ? result.error
           : Object.entries(result.error)
               .map(([field, msgs]) => `${field}: ${(msgs as string[] | undefined)?.join(", ")}`)
-              .join(" · ") || "Please check the form and try again."
+              .join(" · ") || "Please check the form and try again.",
+        { title: "Couldn't save the tournament" }
       );
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -160,11 +159,6 @@ export function TournamentForm() {
 
   return (
     <form onSubmit={onSubmit} className="max-w-5xl">
-      {error && (
-        <Alert variant="destructive" className="mb-8">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
 
       <section className="mb-10 space-y-3">
         <h2 className="eyebrow">How will players get in?</h2>

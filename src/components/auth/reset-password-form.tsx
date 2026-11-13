@@ -13,12 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { showError } from "@/lib/ui/error-dialog";
 
 export function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [sessionReady, setSessionReady] = useState<boolean | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const form = useForm<ResetPasswordInput>({
@@ -35,7 +35,6 @@ export function ResetPasswordForm() {
   }, []);
 
   async function onSubmit(values: ResetPasswordInput) {
-    setServerError(null);
     setLoading(true);
     try {
       const fd = new FormData();
@@ -43,7 +42,7 @@ export function ResetPasswordForm() {
       fd.set("confirmPassword", values.confirmPassword);
       const result = await updatePassword(fd);
       if (result?.error) {
-        setServerError(result.error);
+        showError(result.error, { title: "Couldn't update your password" });
         setLoading(false);
       }
     } catch (err) {
@@ -84,11 +83,6 @@ export function ResetPasswordForm() {
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
-      {serverError && (
-        <Alert variant="destructive">
-          <AlertDescription>{serverError}</AlertDescription>
-        </Alert>
-      )}
       <div className="space-y-2">
         <Label htmlFor="password">New password</Label>
         <div className="relative">
