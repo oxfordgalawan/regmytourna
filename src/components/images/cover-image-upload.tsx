@@ -16,9 +16,16 @@ type Status = "idle" | "optimizing" | "uploading";
  * Cover image picker: optimizes in the browser, uploads to Supabase Storage
  * (`tournament-covers/<user id>/<uuid>.webp`), and submits the public URL as `name`.
  */
-export function CoverImageUpload({ name = "coverImageUrl" }: { name?: string }) {
+export function CoverImageUpload({
+  name = "coverImageUrl",
+  defaultUrl,
+}: {
+  name?: string;
+  /** the current cover when editing an event */
+  defaultUrl?: string | null;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(defaultUrl ?? null);
   const [status, setStatus] = useState<Status>("idle");
   const [dragging, setDragging] = useState(false);
   const [savings, setSavings] = useState<string | null>(null);
@@ -74,7 +81,7 @@ export function CoverImageUpload({ name = "coverImageUrl" }: { name?: string }) 
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={url} alt="Cover preview" className="aspect-video w-full object-cover animate-in fade-in-0" />
           <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-t from-ink/90 to-transparent p-3 pt-10">
-            <span className="font-mono text-[0.7rem] text-bone/80">{savings}</span>
+            <span className="font-mono text-[0.7rem] text-bone/80">{savings ?? "Current cover"}</span>
             <span className="flex gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => inputRef.current?.click()} disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}

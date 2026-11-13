@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { NAV_BACK } from "@/lib/nav-transitions";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, MonitorPlay } from "lucide-react";
+import { ArrowLeft, ExternalLink, MonitorPlay, Pencil } from "lucide-react";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { requireOrganizerSession } from "@/lib/auth/organizer-act-as";
 import { TournamentNav } from "@/components/organizer/tournament-nav";
@@ -56,6 +56,12 @@ export default async function TournamentManageLayout({
               status={tournament.status as TournamentStatus}
               bracketOnly={bracketOnly}
             />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/organizer/tournaments/${id}/edit`}>
+                <Pencil />
+                Edit event
+              </Link>
+            </Button>
             <Button variant="outline" size="sm" asChild>
               <Link href={`/tournaments/${tournament.slug}`} target="_blank">
                 <ExternalLink />

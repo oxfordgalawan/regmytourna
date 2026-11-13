@@ -178,6 +178,110 @@ export async function createTournamentAction(formData: FormData) {
   return { success: true, id: tournament.id, slug: tournament.slug };
 }
 
+/**
+ * Edit an existing event's details (name, dates, venue, rules, cover, toggles).
+ * Status, categories and brackets have their own controls and aren't touched here.
+ */
+export async function updateTournamentAction(
+  tournamentId: string,
+  formData: FormData
+): Promise<{ ok?: true; slug?: string; error?: string }> {
+  if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
+
+  const supabase = await createOrganizerDataClient(user);
+  const { data: current } = await supabase
+    .from("tournaments")
+    .select("slug, status, cover_image_url")
+    .eq("id", tournamentId)
+    .single();
+  if (!current) return { error: "Event not found." };
+
+  const parsed = tournamentFormSchema.safeParse({
+    name: formData.get("name"),
+    slug: formData.get("slug"),
+    description: formData.get("description") || undefined,
+    sport: "pickleball",
+    status: current.status,
+    startDate: formData.get("startDate") || undefined,
+    endDate: formData.get("endDate") || undefined,
+    registrationOpensAt: formData.get("registrationOpensAt") || undefined,
+    registrationClosesAt: formData.get("registrationClosesAt") || undefined,
+    venueName: formData.get("venueName") || undefined,
+    venueAddress: formData.get("venueAddress") || undefined,
+    city: formData.get("city") || undefined,
+    region: formData.get("region") || undefined,
+    entryFeeCents: 0,
+    rules: formData.get("rules") || undefined,
+    coverImageUrl: formData.get("coverImageUrl") || "",
+    isPublic: formData.get("isPublic") === "on",
+    waitlistEnabled: formData.get("waitlistEnabled") === "on",
+  });
+  if (!parsed.success) {
+    const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
+    return { error: first ? `${first[0]}: ${first[1]?.join(", ")}` : "Please check the form and try again." };
+  }
+  const v = parsed.data;
+
+  const bracketOnly = (await getRegistrationMode(tournamentId)) === "bracket_only";
+  if (bracketOnly) {
+    v.registrationOpensAt = undefined;
+    v.registrationClosesAt = undefined;
+    v.waitlistEnabled = false;
+  }
+  const scheduleError = Object.values(validateSchedule(v))[0];
+  if (scheduleError) return { error: scheduleError };
+
+  // a new cover must come from the uploader's own (optimized) folder; the current one may stay
+  const coverPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/tournament-covers/${user.id}/`;
+  if (v.coverImageUrl && v.coverImageUrl !== current.cover_image_url && !v.coverImageUrl.startsWith(coverPrefix)) {
+    return { error: "Please upload the cover photo again." };
+  }
+
+  const { error } = await supabase
+    .from("tournaments")
+    .update({
+      name: v.name,
+      slug: v.slug,
+      description: v.description ?? null,
+      start_date: v.startDate || null,
+      end_date: v.endDate || null,
+      registration_opens_at: v.registrationOpensAt || null,
+      registration_closes_at: v.registrationClosesAt || null,
+      venue_name: v.venueName ?? null,
+      venue_address: v.venueAddress ?? null,
+      city: v.city ?? null,
+      region: v.region ?? null,
+      rules: v.rules ?? null,
+      cover_image_url: v.coverImageUrl || null,
+      is_public: v.isPublic,
+      waitlist_enabled: v.waitlistEnabled,
+      ...(bracketOnly ? {} : { allow_walk_in_payment: formData.get("allowWalkInPayment") === "on" }),
+    })
+    .eq("id", tournamentId);
+  if (error) {
+    if (error.code === "23505") return { error: "That page address is already taken. Try another." };
+    return { error: error.message };
+  }
+
+  // clean up the replaced cover (best effort; only files in the uploader's folder)
+  const old = current.cover_image_url;
+  if (old && old !== v.coverImageUrl && old.startsWith(coverPrefix)) {
+    await supabase.storage.from("tournament-covers").remove([old.slice(coverPrefix.length - user.id.length - 1)]);
+  }
+
+  revalidatePath("/organizer/tournaments");
+  revalidatePath(`/organizer/tournaments/${tournamentId}`, "layout");
+  revalidatePath(`/tournaments/${current.slug}`);
+  if (v.slug !== current.slug) revalidatePath(`/tournaments/${v.slug}`);
+  revalidatePath("/tournaments");
+  revalidatePath("/");
+  return { ok: true, slug: v.slug };
+}
+
 export async function addDivisionAction(tournamentId: string, formData: FormData) {
   const user = await requireUser();
   if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {

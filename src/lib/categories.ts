@@ -11,6 +11,7 @@ export const CATEGORY_TYPES = [
   { value: "mens_doubles", label: "Men's Doubles", short: "MD", format: "doubles" },
   { value: "womens_doubles", label: "Women's Doubles", short: "WD", format: "doubles" },
   { value: "mixed_doubles", label: "Mixed Doubles", short: "XD", format: "doubles" },
+  { value: "open_gender", label: "Open Gender", short: "OG", format: "doubles" },
   { value: "mens_singles", label: "Men's Singles", short: "MS", format: "singles" },
   { value: "womens_singles", label: "Women's Singles", short: "WS", format: "singles" },
 ] as const;
