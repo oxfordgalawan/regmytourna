@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import { createClient } from "@/lib/supabase/client";
@@ -19,10 +19,16 @@ type Status = "idle" | "optimizing" | "uploading";
 export function CoverImageUpload({
   name = "coverImageUrl",
   defaultUrl,
+  onChange,
+  hideFormField,
 }: {
   name?: string;
   /** the current cover when editing an event */
   defaultUrl?: string | null;
+  /** When set (e.g. overview auto-save), called after upload or remove instead of relying on form submit only. */
+  onChange?: (url: string | null) => void | Promise<void>;
+  /** Skip the hidden input when saving via onChange */
+  hideFormField?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(defaultUrl ?? null);
@@ -30,6 +36,15 @@ export function CoverImageUpload({
   const [dragging, setDragging] = useState(false);
   const [savings, setSavings] = useState<string | null>(null);
   const busy = status !== "idle";
+
+  useEffect(() => {
+    setUrl(defaultUrl ?? null);
+  }, [defaultUrl]);
+
+  async function applyUrl(next: string | null) {
+    setUrl(next);
+    if (onChange) await onChange(next);
+  }
 
   async function handle(file: File | undefined) {
     if (!file || busy) return;
@@ -54,8 +69,9 @@ export function CoverImageUpload({
       if (error) throw new Error(error.message);
 
       const { data } = supabase.storage.from(COVER_BUCKET).getPublicUrl(path);
-      setUrl(data.publicUrl);
+      const publicUrl = data.publicUrl;
       setSavings(`${formatBytes(img.originalBytes)} → ${formatBytes(img.blob.size)} · ${img.width}×${img.height}`);
+      await applyUrl(publicUrl);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -66,7 +82,7 @@ export function CoverImageUpload({
 
   return (
     <div className="space-y-2">
-      <input type="hidden" name={name} value={url ?? ""} />
+      {!hideFormField && <input type="hidden" name={name} value={url ?? ""} />}
       <input
         ref={inputRef}
         type="file"
@@ -92,8 +108,8 @@ export function CoverImageUpload({
                 size="sm"
                 variant="destructive"
                 onClick={() => {
-                  setUrl(null);
                   setSavings(null);
+                  void applyUrl(null);
                 }}
                 disabled={busy}
               >

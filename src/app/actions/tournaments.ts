@@ -5,7 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/require-user";
 import { tournamentFormSchema, divisionSchema } from "@/lib/validations/tournament";
 import { isSupabaseConfigured } from "@/lib/env/server";
-import { categoriesPayloadSchema, categoryName, categoryType } from "@/lib/categories";
+import {
+  categoriesPayloadSchema,
+  categoryName,
+  categoryType,
+  divisionDetailsUpdateSchema,
+} from "@/lib/categories";
 import { defaultConfigFor } from "@/lib/bracket-format";
 import { validateSchedule } from "@/lib/validations/schedule";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
@@ -282,6 +287,59 @@ export async function updateTournamentAction(
   return { ok: true, slug: v.slug };
 }
 
+function tournamentCoverPrefix(userId: string) {
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/tournament-covers/${userId}/`;
+}
+
+function storagePathFromCoverUrl(userId: string, url: string): string | null {
+  const prefix = tournamentCoverPrefix(userId);
+  if (!url.startsWith(prefix)) return null;
+  return url.slice(prefix.length);
+}
+
+/** Updates only the event cover image (overview uploader). */
+export async function updateTournamentCoverAction(
+  tournamentId: string,
+  coverImageUrl: string | null
+): Promise<{ ok?: true; error?: string }> {
+  if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
+
+  const supabase = await createOrganizerDataClient(user);
+  const { data: current } = await supabase
+    .from("tournaments")
+    .select("slug, cover_image_url")
+    .eq("id", tournamentId)
+    .single();
+  if (!current) return { error: "Event not found." };
+
+  const next = coverImageUrl?.trim() || null;
+  const coverPrefix = tournamentCoverPrefix(user.id);
+  if (next && next !== current.cover_image_url && !next.startsWith(coverPrefix)) {
+    return { error: "Please upload the cover photo again." };
+  }
+
+  const { error } = await supabase.from("tournaments").update({ cover_image_url: next }).eq("id", tournamentId);
+  if (error) return { error: error.message };
+
+  const old = current.cover_image_url;
+  if (old && old !== next) {
+    const path = storagePathFromCoverUrl(user.id, old);
+    if (path) await supabase.storage.from("tournament-covers").remove([path]);
+  }
+
+  revalidatePath("/organizer/tournaments");
+  revalidatePath(`/organizer/tournaments/${tournamentId}`, "layout");
+  revalidatePath(`/organizer/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${current.slug}`);
+  revalidatePath("/tournaments");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function addDivisionAction(tournamentId: string, formData: FormData) {
   const user = await requireUser();
   if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
@@ -308,4 +366,95 @@ export async function addDivisionAction(tournamentId: string, formData: FormData
   if (error) return { error: error.message };
   revalidatePath(`/organizer/tournaments/${tournamentId}/divisions`);
   return { success: true };
+}
+
+async function revalidateDivisionPaths(tournamentId: string, slug: string | null) {
+  revalidatePath(`/organizer/tournaments/${tournamentId}/divisions`);
+  revalidatePath(`/organizer/tournaments/${tournamentId}/draw`);
+  if (slug) {
+    revalidatePath(`/tournaments/${slug}`);
+  }
+}
+
+export async function updateDivisionDetailsAction(
+  divisionId: string,
+  formData: FormData
+): Promise<{ ok?: true; error?: string }> {
+  const user = await requireUser();
+  const admin = createAdminClient();
+  const { data: division } = await admin
+    .from("tournament_divisions")
+    .select("id, tournament_id, name, format, bracket_state")
+    .eq("id", divisionId)
+    .maybeSingle();
+  if (!division) return { error: "Category not found" };
+  if (!(await isOrganizerForTournament(user.id, division.tournament_id, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
+
+  const bracketStarted = (division.bracket_state ?? "not_started") !== "not_started";
+  if (bracketStarted) {
+    return { error: "This category can't be edited after the bracket has started." };
+  }
+
+  const rawFee = formData.get("entryFeeCents");
+  const feeParsed =
+    rawFee === null || String(rawFee).trim() === ""
+      ? undefined
+      : Math.round(Number(rawFee));
+
+  const parsed = divisionDetailsUpdateSchema.safeParse({
+    type: formData.get("type"),
+    title: formData.get("title") ?? "",
+    capacity: formData.get("capacity"),
+    entryFeeCents: feeParsed,
+  });
+  if (!parsed.success) return { error: "Invalid category details." };
+
+  const name = categoryName(parsed.data.type, parsed.data.title);
+  const format = categoryType(parsed.data.type).format;
+
+  if (format !== division.format) {
+    const { count } = await admin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("division_id", divisionId)
+      .eq("status", "confirmed");
+    if ((count ?? 0) > 0) {
+      return {
+        error: "Can't switch between singles and doubles while players are registered in this category.",
+      };
+    }
+  }
+
+  if (name !== division.name) {
+    const { data: clash } = await admin
+      .from("tournament_divisions")
+      .select("id")
+      .eq("tournament_id", division.tournament_id)
+      .eq("name", name)
+      .neq("id", divisionId)
+      .maybeSingle();
+    if (clash) return { error: `"${name}" already exists in this event.` };
+  }
+
+  const supabase = await createOrganizerDataClient(user);
+  const { error } = await supabase
+    .from("tournament_divisions")
+    .update({
+      name,
+      format,
+      capacity: parsed.data.capacity,
+      entry_fee_cents: parsed.data.entryFeeCents ?? null,
+    })
+    .eq("id", divisionId);
+  if (error) {
+    return {
+      error: error.message.includes("duplicate") ? `"${name}" already exists in this event.` : error.message,
+    };
+  }
+
+  const { data: t } = await admin.from("tournaments").select("slug").eq("id", division.tournament_id).maybeSingle();
+  await revalidateDivisionPaths(division.tournament_id, t?.slug ?? null);
+  return { ok: true };
 }

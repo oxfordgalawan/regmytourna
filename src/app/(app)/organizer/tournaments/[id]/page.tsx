@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { getAppUrl } from "@/lib/env/server";
 import { RegistrationQrCard } from "@/components/tournaments/registration-qr-card";
 import { PublishChecklistAction } from "@/components/organizer/tournament-status-controls";
+import { TournamentCoverEditor } from "@/components/organizer/tournament-cover-editor";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
 
 const DRAW_STATE: Record<string, string> = {
@@ -78,6 +79,8 @@ export default async function OrganizerTournamentOverviewPage({
 
   return (
     <div className="space-y-10">
+      <TournamentCoverEditor tournamentId={id} defaultUrl={t.cover_image_url} />
+
       <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Entries" value={total} hint={`${paid} paid · ${total - paid} not yet`} />
         <StatTile label="Categories" value={divisionCount} />

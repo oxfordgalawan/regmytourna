@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/table";
 import { AddDivisionForm } from "@/components/organizer/add-division-form";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
-import { entrantNoun } from "@/lib/categories";
+import { categoryGenderLabel, entrantNoun } from "@/lib/categories";
+import { EditDivisionForm } from "@/components/organizer/edit-division-form";
 import { LOCKED_BRACKET_STATES, parseBracketConfig } from "@/lib/bracket-format";
 import { DivisionFormatButton } from "@/components/organizer/division-format-button";
 
@@ -32,6 +33,19 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
 
   const bracketOnly = (await getRegistrationMode(id)) === "bracket_only";
 
+  const { data: entryRows } = await supabase
+    .from("registrations")
+    .select("division_id")
+    .eq("tournament_id", id)
+    .eq("status", "confirmed");
+  const entriesByDivision = new Map<string, number>();
+  for (const row of entryRows ?? []) {
+    const key = row.division_id as string;
+    entriesByDivision.set(key, (entriesByDivision.get(key) ?? 0) + 1);
+  }
+
+  const defaultEventFeeCents = tournament?.entry_fee_cents ?? 0;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -52,13 +66,20 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
                 <TableHead>Size</TableHead>
                 <TableHead>Format</TableHead>
                 {!bracketOnly && <TableHead className="pr-5 text-right">Fee</TableHead>}
+                <TableHead className="w-[88px] pr-5" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {divisions.map((d) => (
+              {divisions.map((d) => {
+                const bracketStarted = (d.bracket_state ?? "not_started") !== "not_started";
+                const genderLabel = categoryGenderLabel(d.name);
+                return (
                 <TableRow key={d.id}>
                   <TableCell className="pl-5 font-medium text-bone">{d.name}</TableCell>
-                  <TableCell className="capitalize text-muted-foreground">{d.format}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <span className="text-bone/90">{genderLabel}</span>
+                    <span className="ml-1.5 text-xs capitalize opacity-70">({d.format})</span>
+                  </TableCell>
                   <TableCell className="font-mono">
                     {d.capacity ? `${d.capacity} ${entrantNoun(d.format, d.capacity)}` : "No cap"}
                   </TableCell>
@@ -81,8 +102,24 @@ export default async function DivisionsPage({ params }: { params: Promise<{ id: 
                       )}
                     </TableCell>
                   )}
+                  <TableCell className="pr-5 text-right">
+                    {!bracketStarted ? (
+                      <EditDivisionForm
+                        divisionId={d.id}
+                        divisionName={d.name}
+                        capacity={d.capacity}
+                        entryFeeCents={d.entry_fee_cents}
+                        defaultEventFeeCents={defaultEventFeeCents}
+                        confirmedEntries={entriesByDivision.get(d.id) ?? 0}
+                        format={d.format}
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Locked</span>
+                    )}
+                  </TableCell>
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </div>

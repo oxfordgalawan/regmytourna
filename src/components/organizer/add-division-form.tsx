@@ -6,17 +6,13 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import { addDivisionAction } from "@/app/actions/tournaments";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
-  CATEGORY_TYPES,
-  categoryName,
-  categoryType,
-  entrantNoun,
-  type CategoryType,
-} from "@/lib/categories";
-import { cn } from "@/lib/utils";
+  CategoryFields,
+  categoryFieldsReady,
+  type CategoryFieldsState,
+} from "@/components/organizer/category-fields";
+import { categoryName, categoryType, type CategoryType } from "@/lib/categories";
 
 /** "Add category" button + modal (same fields as the create form). */
 export function AddDivisionForm({
@@ -31,18 +27,18 @@ export function AddDivisionForm({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<CategoryType>("mens_doubles");
-  const [title, setTitle] = useState("");
-  const [capacity, setCapacity] = useState("16");
-  const [fee, setFee] = useState("");
+  const [fields, setFields] = useState<CategoryFieldsState>({
+    type: "mens_doubles",
+    title: "",
+    capacity: "16",
+    fee: "",
+  });
   const [loading, setLoading] = useState(false);
-  const format = categoryType(type).format;
-  const name = categoryName(type, title);
+  const format = categoryType(fields.type).format;
+  const name = categoryName(fields.type, fields.title);
 
   function reset() {
-    setTitle("");
-    setCapacity("16");
-    setFee("");
+    setFields({ type: "mens_doubles", title: "", capacity: "16", fee: "" });
   }
 
   async function save(keepOpen: boolean) {
@@ -50,8 +46,8 @@ export function AddDivisionForm({
     const fd = new FormData();
     fd.set("name", name);
     fd.set("format", format);
-    fd.set("capacity", capacity);
-    if (showFee && fee) fd.set("entryFeeCents", String(Math.round(Number(fee) * 100)));
+    fd.set("capacity", fields.capacity);
+    if (showFee && fields.fee) fd.set("entryFeeCents", String(Math.round(Number(fields.fee) * 100)));
     if (!showFee) fd.set("entryFeeCents", "0");
     const result = await addDivisionAction(tournamentId, fd);
     setLoading(false);
@@ -71,7 +67,7 @@ export function AddDivisionForm({
     if (!keepOpen) setOpen(false);
   }
 
-  const ready = Number(capacity) >= 2;
+  const ready = categoryFieldsReady(fields.capacity);
 
   return (
     <>
@@ -94,83 +90,18 @@ export function AddDivisionForm({
               if (ready) void save(false);
             }}
           >
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-bone">Type</span>
-              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category type">
-                {CATEGORY_TYPES.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={type === t.value}
-                    onClick={() => setType(t.value)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs transition-all duration-200",
-                      type === t.value
-                        ? "border-bone bg-bone text-ink"
-                        : "border-line text-muted-foreground hover:border-bone/40 hover:text-bone"
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category-title">Category title</Label>
-              <Input
-                id="category-title"
-                value={title}
-                maxLength={60}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Low Intermediate"
-                autoFocus
-              />
-            </div>
-
-            <div className={cn("grid gap-4", showFee && "grid-cols-2")}>
-              <div className="space-y-2">
-                <Label htmlFor="category-capacity">How many {entrantNoun(format)}?</Label>
-                <Input
-                  id="category-capacity"
-                  type="number"
-                  min={2}
-                  inputMode="numeric"
-                  value={capacity}
-                  onChange={(e) => setCapacity(e.target.value)}
-                  required
-                  className="font-mono"
-                />
-              </div>
-              {showFee && (
-                <div className="space-y-2">
-                  <Label htmlFor="category-fee">Fee (₱)</Label>
-                  <Input
-                    id="category-fee"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    value={fee}
-                    onChange={(e) => setFee(e.target.value)}
-                    placeholder="Event default"
-                    className="font-mono"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* live preview of what gets created */}
-            <div className="flex items-center gap-3 rounded-xl border border-line bg-ink/40 px-4 py-3">
-              <span className="rounded-md bg-umber px-1.5 py-0.5 font-mono text-[0.65rem] text-bone">
-                {categoryType(type).short}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-bone">{name}</span>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                {capacity || 0} {entrantNoun(format, Number(capacity) || 2)}
-              </span>
-            </div>
+            <CategoryFields
+              idPrefix="add-category"
+              showFee={showFee}
+              value={fields}
+              onChange={(patch) =>
+                setFields((f) => ({
+                  ...f,
+                  ...patch,
+                  ...(patch.type ? { type: patch.type as CategoryType } : {}),
+                }))
+              }
+            />
 
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="ghost" disabled={loading || !ready} onClick={() => void save(true)}>

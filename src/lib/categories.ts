@@ -24,9 +24,29 @@ export function categoryType(value: string) {
   return CATEGORY_TYPES.find((t) => t.value === value) ?? CATEGORY_TYPES[0];
 }
 
+const NAME_SEPARATOR = " · ";
+
 export function categoryName(type: string, title: string) {
   const t = title.trim();
-  return t ? `${categoryType(type).label} · ${t}` : categoryType(type).label;
+  return t ? `${categoryType(type).label}${NAME_SEPARATOR}${t}` : categoryType(type).label;
+}
+
+/** Inverse of categoryName for edit forms (longest label match first). */
+export function parseCategoryFromDivisionName(name: string): { type: CategoryType; title: string } {
+  const trimmed = name.trim();
+  const byLabel = [...CATEGORY_TYPES].sort((a, b) => b.label.length - a.label.length);
+  for (const t of byLabel) {
+    if (trimmed === t.label) return { type: t.value, title: "" };
+    const prefix = `${t.label}${NAME_SEPARATOR}`;
+    if (trimmed.startsWith(prefix)) {
+      return { type: t.value, title: trimmed.slice(prefix.length).trim() };
+    }
+  }
+  return { type: "mens_doubles", title: trimmed };
+}
+
+export function categoryGenderLabel(divisionName: string): string {
+  return categoryType(parseCategoryFromDivisionName(divisionName).type).label;
 }
 
 /** "teams" for doubles, "players" for singles. */
@@ -44,6 +64,15 @@ export const categoryInputSchema = z.object({
 });
 
 export type CategoryInput = z.infer<typeof categoryInputSchema>;
+
+export const divisionDetailsUpdateSchema = z.object({
+  type: categoryInputSchema.shape.type,
+  title: categoryInputSchema.shape.title,
+  capacity: z.coerce.number().int().positive().max(512),
+  entryFeeCents: z.coerce.number().int().min(0).optional(),
+});
+
+export type DivisionDetailsUpdate = z.infer<typeof divisionDetailsUpdateSchema>;
 
 export const categoriesPayloadSchema = z
   .array(categoryInputSchema)

@@ -289,8 +289,8 @@ export function CategoryBuilder({ bracketOnly = false }: { bracketOnly?: boolean
                   </div>
 
                   <div className="space-y-2">
-                    <span className="text-sm font-medium">Type</span>
-                    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category type">
+                    <span className="text-sm font-medium">Gender / format</span>
+                    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Category gender and format">
                       {CATEGORY_TYPES.map((t) => {
                         const active = d.type === t.value;
                         return (
