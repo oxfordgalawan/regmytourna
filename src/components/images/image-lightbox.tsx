@@ -36,18 +36,22 @@ export function ImageLightbox({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-h-[min(96vh,56rem)] max-w-[min(96vw,72rem)] gap-0 overflow-hidden border-line bg-ink p-0 sm:max-w-[min(96vw,72rem)]"
+        className="flex max-h-[96vh] w-[min(96vw,44rem)] max-w-[min(96vw,44rem)] flex-col gap-0 overflow-hidden border-line bg-ink p-0 sm:max-w-[min(96vw,44rem)]"
       >
-        <DialogHeader className="flex flex-row items-center justify-between gap-2 border-b border-line px-4 py-3">
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2 border-b border-line px-4 py-3">
           <DialogTitle className="truncate text-base">{title ?? alt}</DialogTitle>
           <Button type="button" size="icon-sm" variant="ghost" onClick={() => onOpenChange(false)}>
             <X className="size-4" />
             <span className="sr-only">Close</span>
           </Button>
         </DialogHeader>
-        <div className="flex max-h-[calc(96vh-4rem)] min-h-[40vh] items-center justify-center bg-black/60 p-2 sm:p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-black/70 p-2 sm:p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={alt} className="max-h-[calc(92vh-5rem)] w-full max-w-full object-contain" />
+          <img
+            src={src}
+            alt={alt}
+            className="mx-auto block h-auto w-full max-w-full rounded-sm"
+          />
         </div>
       </DialogContent>
     </Dialog>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ClipboardList, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -45,6 +46,10 @@ export function SignupForm({
   defaultName,
   inviteToken,
   substituteToken,
+  embedded,
+  onSwitchToLogin,
+  onAuthenticated,
+  idPrefix = "",
 }: {
   defaultAccountType?: string;
   next?: string;
@@ -54,7 +59,12 @@ export function SignupForm({
   inviteToken?: string;
   /** "take my place" invite — accepted right after signup */
   substituteToken?: string;
+  embedded?: boolean;
+  onSwitchToLogin?: () => void;
+  onAuthenticated?: () => void;
+  idPrefix?: string;
 }) {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -86,7 +96,8 @@ export function SignupForm({
       fd.set("placePsgcCode", place.psgcCode);
       fd.set("placeLabel", place.label);
     }
-    if (next) fd.set("next", next);
+    if (embedded) fd.set("embedded", "1");
+    else if (next) fd.set("next", next);
     if (inviteToken) fd.set("invite", inviteToken);
     if (substituteToken) fd.set("substitute", substituteToken);
     try {
@@ -94,6 +105,13 @@ export function SignupForm({
       if (result?.error) {
         showError(result.error, { title: "Couldn't create your account" });
         setLoading(false);
+        return;
+      }
+      if (embedded && result && "ok" in result && result.ok) {
+        setLoading(false);
+        router.refresh();
+        onAuthenticated?.();
+        return;
       }
     } catch (err) {
       if (isRedirectError(err)) throw err;
@@ -113,12 +131,13 @@ export function SignupForm({
           </AlertDescription>
         </Alert>
       )}
-      {next?.includes("#register") && (
+      {(next?.includes("#register") || next?.includes("drawer=register")) && (
         <Alert>
           <AlertDescription>After you sign up, we&apos;ll bring you back to finish registration.</AlertDescription>
         </Alert>
       )}
 
+      {!embedded && (
       <Controller
         control={form.control}
         name="accountType"
@@ -159,11 +178,12 @@ export function SignupForm({
           </fieldset>
         )}
       />
+      )}
 
       <div className="space-y-2">
-        <Label htmlFor="fullName">Full name</Label>
+        <Label htmlFor={`${idPrefix}fullName`}>Full name</Label>
         <Input
-          id="fullName"
+          id={`${idPrefix}fullName`}
           autoComplete="name"
           placeholder="Juan Dela Cruz"
           aria-invalid={Boolean(errors.fullName)}
@@ -172,9 +192,9 @@ export function SignupForm({
         <FieldError message={errors.fullName?.message} />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor={`${idPrefix}email`}>Email</Label>
         <Input
-          id="email"
+          id={`${idPrefix}email`}
           type="email"
           autoComplete="email"
           placeholder="you@email.com"
@@ -185,10 +205,10 @@ export function SignupForm({
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor={`${idPrefix}password`}>Password</Label>
           <div className="relative">
             <Input
-              id="password"
+              id={`${idPrefix}password`}
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               className="pr-11"
@@ -199,6 +219,7 @@ export function SignupForm({
               type="button"
               variant="ghost"
               size="icon"
+              tabIndex={-1}
               className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2"
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? "Hide password" : "Show password"}
@@ -209,14 +230,28 @@ export function SignupForm({
           <FieldError message={errors.password?.message} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="confirmPassword">Confirm password</Label>
-          <Input
-            id="confirmPassword"
-            type={showPassword ? "text" : "password"}
-            autoComplete="new-password"
-            aria-invalid={Boolean(errors.confirmPassword)}
-            {...form.register("confirmPassword")}
-          />
+          <Label htmlFor={`${idPrefix}confirmPassword`}>Confirm password</Label>
+          <div className="relative">
+            <Input
+              id={`${idPrefix}confirmPassword`}
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              className="pr-11"
+              aria-invalid={Boolean(errors.confirmPassword)}
+              {...form.register("confirmPassword")}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              tabIndex={-1}
+              className="absolute top-1/2 right-0.5 size-10 -translate-y-1/2"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff /> : <Eye />}
+            </Button>
+          </div>
           <FieldError message={errors.confirmPassword?.message} />
         </div>
       </div>
@@ -260,9 +295,19 @@ export function SignupForm({
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href={authHref("/login", next)} className="font-medium text-bone underline underline-offset-4">
-          Log in
-        </Link>
+        {embedded && onSwitchToLogin ? (
+          <button
+            type="button"
+            onClick={onSwitchToLogin}
+            className="font-medium text-bone underline underline-offset-4"
+          >
+            Log in
+          </button>
+        ) : (
+          <Link href={authHref("/login", next)} className="font-medium text-bone underline underline-offset-4">
+            Log in
+          </Link>
+        )}
       </p>
     </form>
   );

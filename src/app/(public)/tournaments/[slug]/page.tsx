@@ -224,6 +224,15 @@ export default async function TournamentDetailPage({
                         tournamentId={tournament.id}
                         divisionId={d.id}
                         format={d.format}
+                        registrationOpen={isOpen}
+                        isSignedIn={Boolean(user)}
+                        waitlistEnabled={waitlistOn}
+                        entryFeeCents={d.entry_fee_cents}
+                        defaultFeeCents={tournament.entry_fee_cents}
+                        currency={tournament.currency}
+                        allowPayAtVenue={Boolean(tournament.allow_walk_in_payment)}
+                        capacity={d.capacity}
+                        taken={counts[d.id]?.taken ?? 0}
                       />
                       {!bracketOnly && (
                         <span className="font-mono text-bone">

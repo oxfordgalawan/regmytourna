@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
@@ -27,7 +28,23 @@ function friendlyAuthError(message: string) {
   return message;
 }
 
-export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?: string }) {
+export function LoginForm({
+  next,
+  flashMessage,
+  embedded,
+  onSwitchToSignup,
+  onAuthenticated,
+  idPrefix = "",
+}: {
+  next?: string;
+  flashMessage?: string;
+  /** In a dialog: swap footer link to switch to sign-up instead of navigating away. */
+  embedded?: boolean;
+  onSwitchToSignup?: () => void;
+  onAuthenticated?: () => void;
+  idPrefix?: string;
+}) {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -43,11 +60,19 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
       const fd = new FormData();
       fd.set("email", values.email);
       fd.set("password", values.password);
-      if (next) fd.set("next", next);
+      if (embedded) fd.set("embedded", "1");
+      else if (next) fd.set("next", next);
       const result = await signInWithPassword(fd);
       if (result?.error) {
         showError(friendlyAuthError(result.error), { title: "Couldn't log you in" });
         setLoading(false);
+        return;
+      }
+      if (embedded && result && "ok" in result && result.ok) {
+        setLoading(false);
+        router.refresh();
+        onAuthenticated?.();
+        return;
       }
     } catch (err) {
       if (isRedirectError(err)) throw err;
@@ -63,15 +88,15 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
           <AlertDescription>{flashMessage}</AlertDescription>
         </Alert>
       )}
-      {next?.includes("#register") && !flashMessage && (
+      {(next?.includes("#register") || next?.includes("drawer=register")) && !flashMessage && (
         <Alert>
           <AlertDescription>Log in and we&apos;ll take you straight back to registration.</AlertDescription>
         </Alert>
       )}
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor={`${idPrefix}email`}>Email</Label>
         <Input
-          id="email"
+          id={`${idPrefix}email`}
           type="email"
           autoComplete="email"
           placeholder="you@email.com"
@@ -81,10 +106,10 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
         {errors.email && <p className="text-sm text-[#e58a72]">{errors.email.message}</p>}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor={`${idPrefix}password`}>Password</Label>
         <div className="relative">
           <Input
-            id="password"
+            id={`${idPrefix}password`}
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             className="pr-11"
@@ -126,9 +151,19 @@ export function LoginForm({ next, flashMessage }: { next?: string; flashMessage?
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         New to RegMyTourna?{" "}
-        <Link href={authHref("/signup", next)} className="font-medium text-bone underline underline-offset-4">
-          Create an account
-        </Link>
+        {embedded && onSwitchToSignup ? (
+          <button
+            type="button"
+            onClick={onSwitchToSignup}
+            className="font-medium text-bone underline underline-offset-4"
+          >
+            Create an account
+          </button>
+        ) : (
+          <Link href={authHref("/signup", next)} className="font-medium text-bone underline underline-offset-4">
+            Create an account
+          </Link>
+        )}
       </p>
     </form>
   );

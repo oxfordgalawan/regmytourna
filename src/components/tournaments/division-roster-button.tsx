@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useState } from "react";
-import { Clock, FileText, List, Lock, LogIn, Search, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useDeferredValue, useRef, useState } from "react";
+import { ArrowLeft, Check, Clock, FileText, List, Loader2, Lock, Search, Ticket, Users } from "lucide-react";
+import { RegistrationAuthPanel } from "@/components/auth/registration-auth-panel";
 import { getMyPetitionEligibilityAction } from "@/app/actions/petitions";
 import { getPublicDivisionRosterAction } from "@/app/actions/public-roster";
+import { listMyRegistrationsForTournamentAction } from "@/app/actions/registrations";
+import {
+  DivisionRegisterForm,
+  type DivisionRegisterComplete,
+} from "@/components/tournaments/division-register-form";
+import { CheckoutQrPanel } from "@/components/payments/checkout-qr-panel";
+import { DivisionSlotGrid } from "@/components/tournaments/division-slot-grid";
 import { PetitionSubmitDialog } from "@/components/petitions/petition-submit-dialog";
 import { PlayerAvatar } from "@/components/players/player-avatar";
 import { Button } from "@/components/ui/button";
@@ -12,6 +21,12 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { StatusBadge } from "@/components/ui/status-badge";
 import { entrantNoun } from "@/lib/categories";
 import type { PublicRosterEntry } from "@/lib/registrations/public-roster";
+import { cn } from "@/lib/utils";
+import { showError } from "@/lib/ui/error-dialog";
+
+type FlowStep = "roster" | "auth" | "register" | "pay" | "success";
+
+type MyEntry = { id: string; paymentStatus: string; status: string };
 
 type Eligibility = Awaited<ReturnType<typeof getMyPetitionEligibilityAction>>;
 type Roster = Awaited<ReturnType<typeof getPublicDivisionRosterAction>>;
@@ -69,28 +84,65 @@ export function DivisionRosterButton({
   tournamentId,
   divisionId,
   format,
+  registrationOpen = false,
+  isSignedIn = false,
+  waitlistEnabled = false,
+  entryFeeCents,
+  defaultFeeCents = 0,
+  currency = "PHP",
+  allowPayAtVenue = false,
+  capacity = null,
+  taken = 0,
 }: {
   tournamentSlug: string;
   tournamentId: string;
   divisionId: string;
   format: string;
+  registrationOpen?: boolean;
+  isSignedIn?: boolean;
+  waitlistEnabled?: boolean;
+  entryFeeCents?: number | null;
+  defaultFeeCents?: number;
+  currency?: string;
+  allowPayAtVenue?: boolean;
+  capacity?: number | null;
+  taken?: number;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const pendingRegisterAfterAuth = useRef(false);
+  const [guestSignedIn, setGuestSignedIn] = useState(false);
   const [petitionOpen, setPetitionOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Roster | null>(null);
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
+  const [myEntry, setMyEntry] = useState<MyEntry | null>(null);
   const [query, setQuery] = useState("");
+  const [flowStep, setFlowStep] = useState<FlowStep>("roster");
+  const [payState, setPayState] = useState<{ registrationId: string; checkoutUrl: string; amountCents: number } | null>(
+    null
+  );
+  const [payLoading, setPayLoading] = useState(false);
+  const [successKind, setSuccessKind] = useState<"waitlist" | "venue" | "free" | "paid" | null>(null);
+  const [waitlistPos, setWaitlistPos] = useState<number | null>(null);
   const q = useDeferredValue(query.trim().toLowerCase());
+  const feeCents = entryFeeCents ?? defaultFeeCents;
 
-  async function load() {
+  async function load(assumeSignedIn = false) {
     setLoading(true);
     setError(null);
     const [res, elig] = await Promise.all([
       getPublicDivisionRosterAction(tournamentSlug, divisionId),
       getMyPetitionEligibilityAction(tournamentSlug, divisionId),
     ]);
+    if (isSignedIn || guestSignedIn || assumeSignedIn) {
+      const mine = await listMyRegistrationsForTournamentAction(tournamentSlug);
+      const e = mine.entries?.find((x) => x.divisionId === divisionId);
+      setMyEntry(e ? { id: e.id, paymentStatus: e.paymentStatus, status: e.status } : null);
+    } else {
+      setMyEntry(null);
+    }
     setLoading(false);
     if ("error" in res && res.error) {
       setError(res.error);
@@ -106,6 +158,13 @@ export function DivisionRosterButton({
     if (next) {
       setQuery("");
       void load();
+    } else {
+      setFlowStep("roster");
+      setPayState(null);
+      setSuccessKind(null);
+      setWaitlistPos(null);
+      setGuestSignedIn(false);
+      pendingRegisterAfterAuth.current = false;
     }
   }
 
@@ -121,6 +180,146 @@ export function DivisionRosterButton({
   const matches = (e: PublicRosterEntry) => !q || e.players.some((p) => p.name.toLowerCase().includes(q));
   const slots = roster?.slots.filter(matches) ?? [];
   const fill = roster?.capacity ? Math.min(100, (roster.taken / roster.capacity) * 100) : null;
+  const sessionActive = isSignedIn || guestSignedIn;
+  const slotCapacity = roster?.capacity ?? capacity ?? 0;
+  const showSlotGrid = slotCapacity > 0;
+  const categoryFull = Boolean(showSlotGrid && roster && roster.slots.length >= slotCapacity);
+  const signedOut = !sessionActive;
+  const alreadyEntered = Boolean(sessionActive && elig && elig.reason !== "not_registered");
+  const invitePending = Boolean(elig?.reason === "invite_pending" && elig.inviteToken);
+  const needsUnpaidPay = Boolean(
+    myEntry &&
+      myEntry.paymentStatus === "pending" &&
+      myEntry.status !== "waitlisted" &&
+      feeCents > 0
+  );
+
+  async function beginPayFlow(registrationId: string, knownCheckout?: string, amountCents = feeCents) {
+    setFlowStep("pay");
+    setPayLoading(true);
+    let checkoutUrl = knownCheckout?.trim() || "";
+    if (!checkoutUrl) {
+      try {
+        const res = await fetch("/api/payments/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ registrationId }),
+        });
+        const json = (await res.json()) as { checkoutUrl?: string; error?: string };
+        if (!res.ok || !json.checkoutUrl) throw new Error(json.error ?? "Couldn't start checkout");
+        checkoutUrl = json.checkoutUrl;
+      } catch (e) {
+        setPayLoading(false);
+        setFlowStep("roster");
+        showError(e instanceof Error ? e.message : "Couldn't start checkout", { title: "Payment" });
+        return;
+      }
+    }
+    setPayState({ registrationId, checkoutUrl, amountCents });
+    setPayLoading(false);
+  }
+
+  async function handleRegisterComplete(result: DivisionRegisterComplete) {
+    if (result.kind === "pay") {
+      await beginPayFlow(result.registrationId, result.checkoutUrl || undefined, result.amountCents);
+      return;
+    }
+    if (result.kind === "payment_required") {
+      showError(result.message, { title: "Payment" });
+      return;
+    }
+    if (result.kind === "waitlist") {
+      setSuccessKind("waitlist");
+      setWaitlistPos(result.position ?? null);
+      setFlowStep("success");
+      void load();
+      router.refresh();
+      return;
+    }
+    if (result.kind === "venue") {
+      setSuccessKind("venue");
+      setFlowStep("success");
+      void load();
+      router.refresh();
+      return;
+    }
+    if (result.kind === "confirmed") {
+      setSuccessKind("free");
+      setFlowStep("success");
+      void load();
+      router.refresh();
+    }
+  }
+
+  function goBack() {
+    if (flowStep === "auth") {
+      setFlowStep("roster");
+      pendingRegisterAfterAuth.current = false;
+      return;
+    }
+    if (flowStep === "register") {
+      setFlowStep("roster");
+      return;
+    }
+    if (flowStep === "pay") {
+      setPayState(null);
+      setFlowStep("roster");
+      return;
+    }
+    if (flowStep === "success") {
+      setSuccessKind(null);
+      setFlowStep("roster");
+    }
+  }
+
+  function startRegistrationFlow() {
+    if (!registrationOpen) {
+      showError(
+        "Registration for this event isn't open yet. When the organizer opens entries, tap an available slot to sign up here.",
+        { title: "Registration not open" }
+      );
+      return;
+    }
+    if (categoryFull && !waitlistEnabled) {
+      showError("This category is full — no more slots.", { title: "Category full" });
+      return;
+    }
+    if (signedOut) {
+      pendingRegisterAfterAuth.current = true;
+      setFlowStep("auth");
+      return;
+    }
+    if (invitePending && elig?.inviteToken) return;
+    if (alreadyEntered) {
+      const regId = elig?.registrationId ?? myEntry?.id;
+      if (needsUnpaidPay && regId) {
+        void beginPayFlow(regId);
+        return;
+      }
+      if (myEntry?.paymentStatus === "paid") {
+        setSuccessKind("paid");
+        setFlowStep("success");
+        return;
+      }
+    }
+    setFlowStep("register");
+  }
+
+  function handleAuthenticated() {
+    setGuestSignedIn(true);
+    void load(true);
+    if (pendingRegisterAfterAuth.current) {
+      pendingRegisterAfterAuth.current = false;
+      setFlowStep("register");
+    } else {
+      setFlowStep("roster");
+    }
+  }
+
+  function openAuthForPetition() {
+    pendingRegisterAfterAuth.current = false;
+    setFlowStep("auth");
+  }
 
   return (
     <>
@@ -129,12 +328,27 @@ export function DivisionRosterButton({
         Entries
       </Button>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden border border-umber bg-espresso p-0 sm:max-w-3xl">
+        <DialogContent
+          className={cn(
+            "flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden border border-umber bg-espresso p-0",
+            flowStep === "roster" ? "sm:max-w-3xl" : "sm:max-w-lg"
+          )}
+        >
           {/* header */}
           <div className="grain relative shrink-0 overflow-hidden border-b border-line px-5 pt-6 pb-5 sm:px-8 sm:pt-8">
             <div className="court-grid pointer-events-none absolute inset-0 opacity-40" />
             <div className="relative">
-              <p className="eyebrow text-brass">Who&apos;s in</p>
+              <p className="eyebrow text-brass">
+                {flowStep === "auth"
+                  ? "Sign in to continue"
+                  : flowStep === "register"
+                    ? "Submit entry"
+                    : flowStep === "pay"
+                      ? "Pay online"
+                      : flowStep === "success"
+                        ? "Confirmed"
+                        : "Who's in"}
+              </p>
               <DialogTitle className="display mt-2 pr-8 text-3xl text-bone sm:text-4xl">
                 {roster?.divisionName ?? "Category entries"}
               </DialogTitle>
@@ -144,6 +358,16 @@ export function DivisionRosterButton({
                     ? `${roster.taken} of ${roster.capacity} ${noun(roster.capacity)} · ${Math.max(0, roster.capacity - roster.taken)} spots left`
                     : `${roster.taken} ${noun(roster.taken)} entered`
                   : "Everyone who has entered this category."}
+                {showSlotGrid && flowStep === "roster" && registrationOpen && !categoryFull && (
+                  <span className="mt-1 block text-bone/70">
+                    Tap an available slot to register and pay here.
+                  </span>
+                )}
+                {showSlotGrid && flowStep === "roster" && !registrationOpen && (
+                  <span className="mt-1 block text-bone/70">
+                    Registration isn&apos;t open yet — slots shown for reference.
+                  </span>
+                )}
               </DialogDescription>
               {fill !== null && (
                 <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-ink/60" aria-hidden>
@@ -158,9 +382,95 @@ export function DivisionRosterButton({
 
           {/* body */}
           <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-5 py-6 sm:px-8">
-            {error && <p className="text-sm text-[#e58a72]">{error}</p>}
+            {flowStep !== "roster" && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="-ml-1 w-fit text-muted-foreground"
+                onClick={goBack}
+              >
+                <ArrowLeft className="size-4" />
+                Back to entries
+              </Button>
+            )}
 
-            {loading && (
+            {flowStep === "auth" && (
+              <RegistrationAuthPanel onAuthenticated={handleAuthenticated} />
+            )}
+
+            {flowStep === "register" && registrationOpen && (
+              <DivisionRegisterForm
+                slug={tournamentSlug}
+                divisionId={divisionId}
+                divisionName={roster?.divisionName ?? "Category"}
+                format={format}
+                feeCents={feeCents}
+                currency={currency}
+                waitlistEnabled={waitlistEnabled}
+                allowPayAtVenue={allowPayAtVenue}
+                capacity={capacity ?? roster?.capacity ?? null}
+                taken={roster?.taken ?? taken}
+                blockNewRegistration={Boolean(alreadyEntered && !needsUnpaidPay)}
+                onComplete={handleRegisterComplete}
+              />
+            )}
+
+            {flowStep === "pay" && (
+              <>
+                {payLoading || !payState ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="size-8 animate-spin text-brass" />
+                  </div>
+                ) : (
+                  <CheckoutQrPanel
+                    checkoutUrl={payState.checkoutUrl}
+                    registrationId={payState.registrationId}
+                    amountCents={payState.amountCents}
+                    currency={currency}
+                    onPaid={() => {
+                      setSuccessKind("paid");
+                      setFlowStep("success");
+                      void load();
+                      router.refresh();
+                    }}
+                  />
+                )}
+              </>
+            )}
+
+            {flowStep === "success" && (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <span className="flex size-14 items-center justify-center rounded-full bg-bone text-ink">
+                  <Check className="size-7" strokeWidth={3} />
+                </span>
+                <p className="display text-3xl text-bone">
+                  {successKind === "waitlist"
+                    ? waitlistPos
+                      ? `Waitlist #${waitlistPos}`
+                      : "On the waitlist"
+                    : successKind === "venue"
+                      ? "Slot reserved"
+                      : successKind === "free" || successKind === "paid"
+                        ? "You're in"
+                        : "Done"}
+                </p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  {successKind === "waitlist"
+                    ? "No payment yet — we'll email you if a slot opens."
+                    : successKind === "venue"
+                      ? "Pay at the registration desk on the day."
+                      : "Your entry is recorded for this category."}
+                </p>
+                <Button type="button" className="mt-2" onClick={() => setFlowStep("roster")}>
+                  View who&apos;s in
+                </Button>
+              </div>
+            )}
+
+            {flowStep === "roster" && error && <p className="text-sm text-[#e58a72]">{error}</p>}
+
+            {flowStep === "roster" && loading && (
               <ul className="grid gap-3 sm:grid-cols-2" aria-label="Loading entries">
                 {Array.from({ length: 4 }, (_, i) => (
                   <CardSkeleton key={i} />
@@ -168,9 +478,9 @@ export function DivisionRosterButton({
               </ul>
             )}
 
-            {roster && !loading && (
+            {flowStep === "roster" && roster && !loading && (
               <>
-                {roster.slots.length > 6 && (
+                {(showSlotGrid ? roster.slots.length > 0 : roster.slots.length > 6) && (
                   <label className="relative block">
                     <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
                     <span className="sr-only">Find a player</span>
@@ -183,13 +493,39 @@ export function DivisionRosterButton({
                   </label>
                 )}
 
-                {roster.slots.length === 0 ? (
+                {showSlotGrid ? (
+                  <>
+                    <DivisionSlotGrid
+                      capacity={slotCapacity}
+                      entries={roster.slots}
+                      registrationOpen={registrationOpen}
+                      categoryFull={categoryFull}
+                      searchQuery={q}
+                      onClaimSlot={startRegistrationFlow}
+                    />
+                    {q && roster.slots.every((e) => !matches(e)) && (
+                      <p className="text-sm text-muted-foreground">No player matches &ldquo;{query}&rdquo;.</p>
+                    )}
+                    {categoryFull && registrationOpen && waitlistEnabled && (
+                      <Button type="button" className="w-full" variant="secondary" onClick={startRegistrationFlow}>
+                        <Ticket className="size-4" />
+                        Join the waitlist
+                      </Button>
+                    )}
+                  </>
+                ) : roster.slots.length === 0 ? (
                   <div className="flex flex-col items-center rounded-2xl border border-dashed border-line px-6 py-12 text-center">
                     <span className="flex size-12 items-center justify-center rounded-full bg-umber/40 text-brass">
                       <Users className="size-5" />
                     </span>
                     <p className="mt-4 font-semibold text-bone">No entries yet</p>
                     <p className="mt-1 text-sm text-muted-foreground">Be the first to sign up for this category.</p>
+                    {registrationOpen && (
+                      <Button type="button" className="mt-4" size="sm" onClick={startRegistrationFlow}>
+                        <Ticket className="size-4" />
+                        Submit entry
+                      </Button>
+                    )}
                   </div>
                 ) : slots.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No player matches &ldquo;{query}&rdquo;.</p>
@@ -201,6 +537,7 @@ export function DivisionRosterButton({
                   </ul>
                 )}
 
+                {waitlistEnabled && (
                 <section>
                   <h3 className="eyebrow flex items-center gap-2">
                     Waitlist
@@ -234,14 +571,64 @@ export function DivisionRosterButton({
                     </ul>
                   )}
                 </section>
+                )}
               </>
             )}
           </div>
 
-          {/* petitions: visible to everyone, only usable by teams entered in this category */}
-          {roster && !loading && (
-            <div className="shrink-0 border-t border-line bg-ink/40 px-5 py-4 sm:px-8">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* submit entry + petitions */}
+          {roster && !loading && flowStep === "roster" && (
+            <div className="shrink-0 space-y-0 border-t border-line bg-ink/40">
+              {registrationOpen && !showSlotGrid && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-8">
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-medium text-bone">Register for this category</p>
+                    <p className="text-muted-foreground">
+                      {signedOut
+                        ? "Log in or sign up to submit your entry."
+                        : invitePending
+                          ? "You were added as a partner here. Accept your invite before registering."
+                          : alreadyEntered
+                            ? needsUnpaidPay
+                              ? "Complete payment to confirm your slot."
+                              : "You're in this category."
+                            : "Register and pay with QR without leaving this page."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {invitePending && elig?.inviteToken ? (
+                      <Button size="sm" asChild>
+                        <Link href={`/invite/${elig.inviteToken}`}>Open invite</Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={startRegistrationFlow}
+                        disabled={!signedOut && invitePending}
+                      >
+                        <Ticket className="size-4" />
+                        {signedOut
+                          ? "Submit entry"
+                          : alreadyEntered
+                            ? needsUnpaidPay
+                              ? "Pay now"
+                              : "View entry"
+                            : "Submit entry"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {registrationOpen && showSlotGrid && needsUnpaidPay && (
+                <div className="flex justify-end border-b border-line px-5 py-3 sm:px-8">
+                  <Button type="button" size="sm" onClick={startRegistrationFlow}>
+                    <Ticket className="size-4" />
+                    Pay now
+                  </Button>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8">
                 <div className="min-w-0 flex-1 text-sm">
                   <p className="font-medium text-bone">Entry petition</p>
                   <p className="text-muted-foreground">
@@ -261,11 +648,9 @@ export function DivisionRosterButton({
                 <div className="flex items-center gap-2">
                   {elig?.existingPetition && <StatusBadge status={elig.existingPetition.status} />}
                   {!elig || elig.reason === "not_signed_in" ? (
-                    <Button size="sm" variant="secondary" asChild>
-                      <Link href={`/login?next=${encodeURIComponent(`/tournaments/${tournamentSlug}#entries`)}`}>
-                        <LogIn className="size-4" />
-                        Log in
-                      </Link>
+                    <Button type="button" size="sm" variant="secondary" onClick={openAuthForPetition}>
+                      <Ticket className="size-4" />
+                      Register
                     </Button>
                   ) : elig.reason === "invite_pending" && elig.inviteToken ? (
                     <Button size="sm" asChild>

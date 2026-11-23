@@ -20,6 +20,7 @@ export async function signInWithPassword(formData: FormData) {
   }
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const embedded = formData.get("embedded") === "1";
   const next = sanitizeNext(String(formData.get("next") ?? ""));
 
   const supabase = await createClient();
@@ -27,6 +28,7 @@ export async function signInWithPassword(formData: FormData) {
   if (error) return { error: error.message };
   const user = data.user;
   if (!user) return { error: "Sign in failed" };
+  if (embedded) return { ok: true as const };
   redirect(getPostLoginPath(user, next));
 }
 
@@ -105,8 +107,13 @@ export async function signUp(formData: FormData) {
     }
   }
 
+  const embedded = formData.get("embedded") === "1";
   const next = sanitizeNext(String(formData.get("next") ?? ""));
   const user = data.user;
+  if (embedded) {
+    if (!user) return { error: "Sign up failed" };
+    return { ok: true as const };
+  }
   if (!user) redirect("/dashboard?welcome=1");
   const dest = getPostLoginPath(user, next);
   redirect(dest === "/dashboard" ? "/dashboard?welcome=1" : dest);

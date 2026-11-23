@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Clock, CreditCard, Info, Loader2, Lock, Swords, Ticket, UserRound } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import {
@@ -60,6 +60,7 @@ export function RegisterSection({
   defaultFeeCents?: number;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [divisionId, setDivisionId] = useState(divisions[0]?.id ?? "");
   const [partnerName, setPartnerName] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
@@ -83,6 +84,17 @@ export function RegisterSection({
       if (!needs) setPlayerRoleReady(true);
     });
   }, [slug]);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("division");
+    if (!fromQuery) return;
+    if (divisions.some((d) => d.id === fromQuery)) {
+      setDivisionId(fromQuery);
+    }
+    if (typeof window !== "undefined" && window.location.hash === "#register") {
+      document.getElementById("register")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [searchParams, divisions]);
 
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;

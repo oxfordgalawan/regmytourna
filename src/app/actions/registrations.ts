@@ -14,6 +14,7 @@ import { relationOne } from "@/lib/supabase/relations";
 import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
 import { cancelEntry, isCaptainOf, loadTeam } from "@/lib/registrations/team-changes";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
+import { verifyAndSettle } from "@/lib/payments/settle";
 
 export async function listMyRegistrationsForTournamentAction(tournamentSlug: string) {
   const user = await requireUser();
@@ -44,6 +45,35 @@ export async function listMyRegistrationsForTournamentAction(tournamentSlug: str
       divisionId: r.division_id,
       divisionName: (relationOne(r.tournament_divisions) as { name: string } | null)?.name ?? "Category",
     })),
+  };
+}
+
+/** Player polling while the in-drawer QR is open. Organizer desk flow uses a separate action. */
+export async function getMyRegistrationPaymentStatusAction(registrationId: string) {
+  const user = await requireUser();
+  if (!(await isCaptainOf(registrationId, user.id))) return { error: "Entry not found." as const };
+
+  const admin = createAdminClient();
+  let { data: reg } = await admin
+    .from("registrations")
+    .select("payment_status, status")
+    .eq("id", registrationId)
+    .maybeSingle();
+  if (!reg) return { error: "Entry not found." as const };
+
+  if (reg.payment_status !== "paid") {
+    await verifyAndSettle(registrationId).catch(() => undefined);
+    const { data: again } = await admin
+      .from("registrations")
+      .select("payment_status, status")
+      .eq("id", registrationId)
+      .maybeSingle();
+    if (again) reg = again;
+  }
+
+  return {
+    paid: reg.payment_status === "paid",
+    status: reg.status as string,
   };
 }
 
