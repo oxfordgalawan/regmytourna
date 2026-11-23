@@ -42,10 +42,14 @@ export function TournamentCoverHero({
             />
           </button>
           <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-ink via-ink/80 to-ink/25" />
-          <span className="pointer-events-none absolute right-4 top-4 z-[2] flex items-center gap-1.5 rounded-full border border-bone/20 bg-ink/60 px-2.5 py-1 font-mono text-[0.65rem] uppercase tracking-wider text-bone/80 backdrop-blur-sm sm:right-6 sm:top-6">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="absolute right-4 top-4 z-20 flex items-center gap-1.5 rounded-full border border-bone/20 bg-ink/70 px-2.5 py-1.5 font-mono text-[0.65rem] uppercase tracking-wider text-bone/90 backdrop-blur-sm transition-colors hover:border-brass/40 hover:bg-ink/90 hover:text-bone sm:right-6 sm:top-6"
+          >
             <ZoomIn className="size-3.5" aria-hidden />
             Tap to enlarge
-          </span>
+          </button>
           <ImageLightbox
             open={open}
             onOpenChange={setOpen}
@@ -56,7 +60,10 @@ export function TournamentCoverHero({
         </>
       )}
       <div className="court-grid pointer-events-none absolute inset-0 z-[1] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
-      <div className="relative z-10 flex flex-1 flex-col">{children}</div>
+      {/* Let clicks pass through to the cover zoom target except on real controls */}
+      <div className="relative z-10 flex flex-1 flex-col [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto pointer-events-none">
+        {children}
+      </div>
     </section>
   );
 }

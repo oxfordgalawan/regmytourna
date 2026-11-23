@@ -123,7 +123,7 @@ export default async function TournamentDetailPage({
   return (
     <div className="pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-24">
       <TournamentCoverHero coverUrl={tournament.cover_image_url} tournamentName={tournament.name}>
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pt-10 pb-16 sm:px-6 sm:pb-20 lg:pb-24 lg:pt-14">
+        <div className="pointer-events-none mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pt-10 pb-16 sm:px-6 sm:pb-20 lg:pb-24 lg:pt-14 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
           <Link
             transitionTypes={NAV_BACK}
             href="/tournaments"
@@ -132,7 +132,7 @@ export default async function TournamentDetailPage({
             <ArrowLeft className="size-4" />
             All tournaments
           </Link>
-          <div className="relative z-10 mt-auto pt-10 sm:pt-14">
+          <div className="pointer-events-none relative z-10 mt-auto pt-10 sm:pt-14 [&_a]:pointer-events-auto">
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge status={tournament.status} />
               <span className="eyebrow">{tournament.sport}</span>
