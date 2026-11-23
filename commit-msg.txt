@@ -1,3 +1,0 @@
-Edit category gender on divisions tab and cover upload on overview.
-
-Add shared category fields, edit modal with registration guards, overview cover auto-save, and gender labels in the categories table.
