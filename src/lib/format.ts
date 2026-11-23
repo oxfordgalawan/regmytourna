@@ -36,6 +36,7 @@ export function formatDateRange(start: string | null, end: string | null) {
 export function formatDateTime(value: string | null) {
   if (!value) return null;
   return new Date(value).toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     year: "numeric",

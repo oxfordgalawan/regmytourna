@@ -46,7 +46,7 @@ export async function settlePaidCheckout(registrationId: string, sessionId: stri
   if (!alreadyPaid) {
     await admin
       .from("registrations")
-      .update({ status: "confirmed", payment_status: "paid" })
+      .update({ status: "confirmed", payment_status: "paid", payment_hold_expires_at: null })
       .eq("id", registrationId);
   }
 

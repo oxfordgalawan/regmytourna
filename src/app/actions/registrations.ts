@@ -14,6 +14,12 @@ import { relationOne } from "@/lib/supabase/relations";
 import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
 import { cancelEntry, isCaptainOf, loadTeam } from "@/lib/registrations/team-changes";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
+import { isRegistrationWindowOpen } from "@/lib/tournaments/registration-window";
+import {
+  computePaymentHoldExpiresAt,
+  expireStalePaymentHolds,
+  shouldSetPaymentHold,
+} from "@/lib/registrations/payment-hold";
 import { verifyAndSettle } from "@/lib/payments/settle";
 
 export async function listMyRegistrationsForTournamentAction(tournamentSlug: string) {
@@ -54,18 +60,24 @@ export async function getMyRegistrationPaymentStatusAction(registrationId: strin
   if (!(await isCaptainOf(registrationId, user.id))) return { error: "Entry not found." as const };
 
   const admin = createAdminClient();
+  await expireStalePaymentHolds({ registrationId }).catch(() => undefined);
+
   let { data: reg } = await admin
     .from("registrations")
-    .select("payment_status, status")
+    .select("payment_status, status, payment_hold_expires_at")
     .eq("id", registrationId)
     .maybeSingle();
   if (!reg) return { error: "Entry not found." as const };
+
+  if (reg.status === "cancelled") {
+    return { paid: false, status: "cancelled" as const, expired: true as const };
+  }
 
   if (reg.payment_status !== "paid") {
     await verifyAndSettle(registrationId).catch(() => undefined);
     const { data: again } = await admin
       .from("registrations")
-      .select("payment_status, status")
+      .select("payment_status, status, payment_hold_expires_at")
       .eq("id", registrationId)
       .maybeSingle();
     if (again) reg = again;
@@ -74,6 +86,7 @@ export async function getMyRegistrationPaymentStatusAction(registrationId: strin
   return {
     paid: reg.payment_status === "paid",
     status: reg.status as string,
+    paymentHoldExpiresAt: reg.payment_hold_expires_at as string | null,
   };
 }
 
@@ -145,22 +158,28 @@ export async function createRegistrationAction(params: {
 
   const { data: tournament } = await supabase
     .from("tournaments")
-    .select("id, slug, name, entry_fee_cents, status, registration_closes_at, max_capacity, allow_walk_in_payment, waitlist_enabled")
+    .select(
+      "id, slug, name, entry_fee_cents, status, registration_opens_at, registration_closes_at, max_capacity, allow_walk_in_payment, waitlist_enabled"
+    )
     .eq("slug", params.tournamentSlug)
     .single();
   if (!tournament) return { error: "Tournament not found" };
   if ((await getRegistrationMode(tournament.id)) === "bracket_only") {
     return { error: "Players for this event are entered by the organizer." };
   }
-  if (tournament.status !== "registration_open") {
+  if (
+    !isRegistrationWindowOpen({
+      status: tournament.status,
+      registration_opens_at: tournament.registration_opens_at,
+      registration_closes_at: tournament.registration_closes_at,
+    })
+  ) {
     return { error: "Registration is not open" };
   }
-  if (
-    tournament.registration_closes_at &&
-    new Date(tournament.registration_closes_at) < new Date()
-  ) {
-    return { error: "Registration deadline has passed" };
-  }
+
+  await expireStalePaymentHolds({ tournamentId: tournament.id, divisionId: params.divisionId }).catch(
+    () => undefined
+  );
 
   const { data: division } = await supabase
     .from("tournament_divisions")
@@ -250,6 +269,15 @@ export async function createRegistrationAction(params: {
 
   const status = full ? "waitlisted" : fee > 0 ? "awaiting_payment" : "confirmed";
   const payAtVenue = Boolean(!full && params.payAtVenue && tournament.allow_walk_in_payment && fee > 0);
+  const entrySource = payAtVenue ? "pay_at_venue" : "online";
+  const holdExpires = shouldSetPaymentHold({
+    allowWalkInPayment: Boolean(tournament.allow_walk_in_payment),
+    feeCents: fee,
+    entrySource,
+    status,
+  })
+    ? computePaymentHoldExpiresAt()
+    : null;
   const waitlistPosition = full ? await nextWaitlistPosition(division.id, admin) : null;
   const { data: registration, error } = await admin
     .from("registrations")
@@ -260,8 +288,9 @@ export async function createRegistrationAction(params: {
       team_id: teamId,
       status,
       payment_status: full || fee > 0 ? "pending" : "paid",
-      entry_source: payAtVenue ? "pay_at_venue" : "online",
+      entry_source: entrySource,
       waitlist_position: waitlistPosition,
+      payment_hold_expires_at: holdExpires,
     })
     .select("id")
     .single();
@@ -359,7 +388,11 @@ export async function createRegistrationAction(params: {
       checkoutUrl: checkout.checkoutUrl,
     });
     revalidate();
-    return withWarnings({ registrationId: registration.id, checkoutUrl: checkout.checkoutUrl });
+    return withWarnings({
+      registrationId: registration.id,
+      checkoutUrl: checkout.checkoutUrl,
+      paymentHoldExpiresAt: holdExpires,
+    });
   }
 
   revalidate();
@@ -386,7 +419,10 @@ export async function choosePayAtVenueAction(registrationId: string) {
   if (reg.payment_status === "paid") return { error: "This entry is already paid." };
   if (reg.status !== "awaiting_payment") return { error: "This entry isn't waiting for payment." };
 
-  await admin.from("registrations").update({ entry_source: "pay_at_venue" }).eq("id", registrationId);
+  await admin
+    .from("registrations")
+    .update({ entry_source: "pay_at_venue", payment_hold_expires_at: null })
+    .eq("id", registrationId);
   await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
   revalidatePath(`/tournaments/${t.slug}`);
   revalidatePath(`/organizer/tournaments/${reg.tournament_id}/registrations`);

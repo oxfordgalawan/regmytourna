@@ -1,7 +1,8 @@
 "use client";
 
-import { Lock, Plus } from "lucide-react";
+import { Clock, Lock, Plus } from "lucide-react";
 import { PlayerAvatar } from "@/components/players/player-avatar";
+import { PaymentHoldTimer } from "@/components/tournaments/payment-hold-timer";
 import type { PublicRosterEntry } from "@/lib/registrations/public-roster";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export function DivisionSlotGrid({
   categoryFull = false,
   searchQuery = "",
   onClaimSlot,
+  onHoldExpire,
 }: {
   capacity: number;
   entries: PublicRosterEntry[];
@@ -24,6 +26,7 @@ export function DivisionSlotGrid({
   categoryFull?: boolean;
   searchQuery?: string;
   onClaimSlot: () => void;
+  onHoldExpire?: () => void;
 }) {
   const q = searchQuery.trim().toLowerCase();
   const showAvailable = !q;
@@ -36,7 +39,28 @@ export function DivisionSlotGrid({
         const occupied = Boolean(entry);
 
         if (occupied) {
+          if (entry.paymentHold?.expiresAt) {
+            return (
+              <li
+                key={`slot-${slotNumber}`}
+                className="relative flex min-h-[5.5rem] flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line/80 bg-ink/25 p-3 text-center"
+              >
+                <span className="absolute top-2 right-2 font-mono text-[0.65rem] tracking-widest text-muted-foreground/70">
+                  {String(slotNumber).padStart(2, "0")}
+                </span>
+                <span className="flex items-center gap-1.5 text-sm font-medium text-bone/85">
+                  <Clock className="size-3.5 text-brass" aria-hidden />
+                  Reserved
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Pay pending ·{" "}
+                  <PaymentHoldTimer expiresAt={entry.paymentHold.expiresAt} onExpire={onHoldExpire} />
+                </span>
+              </li>
+            );
+          }
           if (q && !entryMatches(entry, q)) return null;
+          if (!entry.players.length) return null;
           const [a, b] = entry.players;
           return (
             <li

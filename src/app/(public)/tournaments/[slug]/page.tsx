@@ -29,6 +29,7 @@ import { buildDrawView } from "@/lib/draw/view";
 import { PublicDraw } from "@/components/draw/public-draw";
 import { AutoRefresh } from "@/components/display/auto-refresh";
 import { daysUntil, formatDateRange, formatDateTime, formatPhp } from "@/lib/format";
+import { isRegistrationWindowOpen, registrationWindowOpensAt } from "@/lib/tournaments/registration-window";
 
 export async function generateMetadata({
   params,
@@ -77,7 +78,13 @@ export default async function TournamentDetailPage({
 
   // bracket-only: the organizer entered the players — no registration or fees here
   const bracketOnly = modeOf(tournament as Record<string, unknown>) === "bracket_only";
-  const isOpen = !bracketOnly && tournament.status === "registration_open";
+  const schedule = {
+    status: tournament.status,
+    registration_opens_at: tournament.registration_opens_at,
+    registration_closes_at: tournament.registration_closes_at,
+  };
+  const isOpen = !bracketOnly && isRegistrationWindowOpen(schedule);
+  const opensLater = !isOpen ? registrationWindowOpensAt(schedule) : null;
   const fees = divisions.map((d) => d.entry_fee_cents ?? tournament.entry_fee_cents);
   const minFee = fees.length ? Math.min(...fees) : tournament.entry_fee_cents;
   const maxFee = fees.length ? Math.max(...fees) : tournament.entry_fee_cents;
@@ -322,9 +329,11 @@ export default async function TournamentDetailPage({
                 <div className="text-sm text-muted-foreground">
                   <StatusBadge status={tournament.status} />
                   <p className="mt-3">
-                    {tournament.status === "published"
-                      ? "Registration hasn't opened yet. Check back closer to the date."
-                      : "Registration is closed for this tournament."}
+                    {opensLater
+                      ? `Registration opens ${formatDateTime(tournament.registration_opens_at)} (Philippine time).`
+                      : tournament.status === "published"
+                        ? "Set a registration open date and time, or open registration from organizer controls."
+                        : "Registration is closed for this tournament."}
                   </p>
                 </div>
               ) : user ? (

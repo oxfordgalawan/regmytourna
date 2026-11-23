@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
+import { computePaymentHoldExpiresAt, shouldSetPaymentHold } from "@/lib/registrations/payment-hold";
 
 /**
  * Slots and the waitlist. An entry holds a slot while it's confirmed or
@@ -13,6 +14,8 @@ type Admin = ReturnType<typeof createAdminClient>;
 
 /** Entries holding a slot in each category of a tournament. */
 export async function slotCounts(tournamentId: string, admin: Admin = createAdminClient()) {
+  const { expireStalePaymentHolds } = await import("@/lib/registrations/payment-hold");
+  await expireStalePaymentHolds({ tournamentId }).catch(() => undefined);
   const { data } = await admin
     .from("registrations")
     .select("division_id, status")
@@ -28,6 +31,8 @@ export async function slotCounts(tournamentId: string, admin: Admin = createAdmi
 }
 
 export async function takenInDivision(divisionId: string, admin: Admin = createAdminClient()) {
+  const { expireStalePaymentHolds } = await import("@/lib/registrations/payment-hold");
+  await expireStalePaymentHolds({ divisionId }).catch(() => undefined);
   const { count } = await admin
     .from("registrations")
     .select("id", { count: "exact", head: true })
@@ -74,15 +79,17 @@ export async function promoteFromWaitlist(divisionId: string): Promise<string[]>
   const admin = createAdminClient();
   const { data: division } = await admin
     .from("tournament_divisions")
-    .select("id, capacity, entry_fee_cents, tournaments(entry_fee_cents)")
+    .select("id, capacity, entry_fee_cents, tournaments(entry_fee_cents, allow_walk_in_payment)")
     .eq("id", divisionId)
     .maybeSingle();
   if (!division) return [];
 
   const t = (Array.isArray(division.tournaments) ? division.tournaments[0] : division.tournaments) as {
     entry_fee_cents: number;
+    allow_walk_in_payment: boolean | null;
   } | null;
   const fee = division.entry_fee_cents ?? t?.entry_fee_cents ?? 0;
+  const allowWalkIn = Boolean(t?.allow_walk_in_payment);
   const promoted: string[] = [];
 
   for (;;) {
@@ -99,13 +106,19 @@ export async function promoteFromWaitlist(divisionId: string): Promise<string[]>
     if (!next) break;
 
     // only the request that flips it from "waitlisted" wins
+    const nextStatus = fee > 0 ? "awaiting_payment" : "confirmed";
+    const holdExpires =
+      fee > 0 && shouldSetPaymentHold({ allowWalkInPayment: allowWalkIn, feeCents: fee, entrySource: "online", status: nextStatus })
+        ? computePaymentHoldExpiresAt()
+        : null;
     const { data: moved } = await admin
       .from("registrations")
       .update({
-        status: fee > 0 ? "awaiting_payment" : "confirmed",
+        status: nextStatus,
         payment_status: fee > 0 ? "pending" : "paid",
         entry_source: "online",
         waitlist_position: null,
+        payment_hold_expires_at: holdExpires,
       })
       .eq("id", next.id)
       .eq("status", "waitlisted")

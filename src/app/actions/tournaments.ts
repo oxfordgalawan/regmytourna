@@ -16,6 +16,7 @@ import { validateSchedule } from "@/lib/validations/schedule";
 import { isOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createOrganizerDataClient, getOrganizerActAsContext } from "@/lib/auth/organizer-act-as";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
+import { registrationInstantForDb } from "@/lib/tournaments/registration-window";
 import type { TournamentStatus } from "@/types/database";
 
 const PUBLISH_STATUSES: TournamentStatus[] = ["published", "registration_open"];

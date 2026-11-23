@@ -25,7 +25,13 @@ import { cn } from "@/lib/utils";
 import { showError } from "@/lib/ui/error-dialog";
 
 export type DivisionRegisterComplete =
-  | { kind: "pay"; registrationId: string; checkoutUrl: string; amountCents: number }
+  | {
+      kind: "pay";
+      registrationId: string;
+      checkoutUrl: string;
+      amountCents: number;
+      paymentHoldExpiresAt?: string | null;
+    }
   | { kind: "waitlist"; registrationId: string; position?: number | null }
   | { kind: "venue"; registrationId: string }
   | { kind: "confirmed"; registrationId: string }
@@ -157,6 +163,10 @@ export function DivisionRegisterForm({
         registrationId,
         checkoutUrl: result.checkoutUrl,
         amountCents: feeCents,
+        paymentHoldExpiresAt:
+          "paymentHoldExpiresAt" in result && typeof result.paymentHoldExpiresAt === "string"
+            ? result.paymentHoldExpiresAt
+            : null,
       });
       return;
     }

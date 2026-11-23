@@ -117,6 +117,15 @@ export async function notifyRegistrantAfterRegistration(registrationId: string, 
     status.actionLabel = undefined;
   }
 
+  if (kind === "payment_hold_expired") {
+    status.statusTitle = "Slot released — payment not received";
+    status.statusDetail =
+      "Your unpaid entry was cancelled after 30 minutes so another team could register. You can sign up again if a slot is still available.";
+    status.statusTone = "warn";
+    status.actionUrl = eventUrl;
+    status.actionLabel = "View tournament";
+  }
+
   const html = buildRegistrationEmailHtml({
     kind,
     playerName: profile?.full_name ?? "Player",

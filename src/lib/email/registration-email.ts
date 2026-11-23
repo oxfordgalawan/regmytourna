@@ -1,7 +1,12 @@
 import { formatDateRange, formatPhp } from "@/lib/format";
 import { escapeHtml } from "@/lib/email/escape";
 
-export type RegistrationEmailKind = "registered" | "payment_confirmed" | "waitlisted" | "promoted";
+export type RegistrationEmailKind =
+  | "registered"
+  | "payment_confirmed"
+  | "waitlisted"
+  | "promoted"
+  | "payment_hold_expired";
 
 export type RegistrationEmailContent = {
   kind: RegistrationEmailKind;
@@ -123,12 +128,14 @@ export function buildRegistrationEmailHtml(c: RegistrationEmailContent) {
     registered: "You're registered",
     waitlisted: "You're on the waitlist",
     promoted: "A slot opened — you're in!",
+    payment_hold_expired: "Payment window ended",
   }[c.kind];
   const sub = {
     payment_confirmed: `Thanks for completing payment for ${escapeHtml(c.tournamentName)}.`,
     registered: `Here's a summary of your entry for ${escapeHtml(c.tournamentName)}.`,
     waitlisted: `${escapeHtml(c.divisionName)} at ${escapeHtml(c.tournamentName)} is full, so we saved your place in line.`,
     promoted: `Someone left ${escapeHtml(c.divisionName)} at ${escapeHtml(c.tournamentName)} and you were next on the waitlist.`,
+    payment_hold_expired: `We didn't receive payment within 30 minutes for ${escapeHtml(c.tournamentName)}, so your slot was released.`,
   }[c.kind];
   const showRefundNote = c.feeCents > 0 && c.kind !== "waitlisted";
 
@@ -211,5 +218,6 @@ export function registrationEmailSubject(kind: RegistrationEmailKind, tournament
   }
   if (kind === "waitlisted") return `You're on the waitlist — ${tournamentName}`;
   if (kind === "promoted") return `A slot opened for you — ${tournamentName}`;
+  if (kind === "payment_hold_expired") return `Payment window ended — ${tournamentName}`;
   return `Registration received — ${tournamentName}`;
 }

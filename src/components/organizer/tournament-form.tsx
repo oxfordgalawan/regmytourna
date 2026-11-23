@@ -316,8 +316,8 @@ export function TournamentForm() {
           label="Registration period opens"
           hint={
             schedule.startDate
-              ? "Time defaults to 12:00 AM unless you change hr and min."
-              : "Pick the first day above to limit these dates. Time defaults to 12:00 AM."
+              ? "Philippine time (PHT). Entries unlock at this date & time while the event is announced or open."
+              : "Pick the first day above. Times are Philippine time (PHT)."
           }
           error={scheduleErrors.registrationOpensAt}
         >

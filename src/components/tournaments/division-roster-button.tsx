@@ -2,18 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDeferredValue, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Clock, FileText, List, Loader2, Lock, Search, Ticket, Users } from "lucide-react";
 import { RegistrationAuthPanel } from "@/components/auth/registration-auth-panel";
 import { getMyPetitionEligibilityAction } from "@/app/actions/petitions";
 import { getPublicDivisionRosterAction } from "@/app/actions/public-roster";
-import { listMyRegistrationsForTournamentAction } from "@/app/actions/registrations";
+import {
+  getMyRegistrationPaymentStatusAction,
+  listMyRegistrationsForTournamentAction,
+} from "@/app/actions/registrations";
 import {
   DivisionRegisterForm,
   type DivisionRegisterComplete,
 } from "@/components/tournaments/division-register-form";
 import { CheckoutQrPanel } from "@/components/payments/checkout-qr-panel";
 import { DivisionSlotGrid } from "@/components/tournaments/division-slot-grid";
+import { PaymentHoldTimer } from "@/components/tournaments/payment-hold-timer";
 import { PetitionSubmitDialog } from "@/components/petitions/petition-submit-dialog";
 import { PlayerAvatar } from "@/components/players/player-avatar";
 import { Button } from "@/components/ui/button";
@@ -32,7 +36,32 @@ type Eligibility = Awaited<ReturnType<typeof getMyPetitionEligibilityAction>>;
 type Roster = Awaited<ReturnType<typeof getPublicDivisionRosterAction>>;
 
 /** One entry as a card: stacked avatars, names, and their entry number. */
-function TeamCard({ entry, index }: { entry: PublicRosterEntry; index: number }) {
+function TeamCard({
+  entry,
+  index,
+  onHoldExpire,
+}: {
+  entry: PublicRosterEntry;
+  index: number;
+  onHoldExpire?: () => void;
+}) {
+  if (entry.paymentHold?.expiresAt) {
+    return (
+      <li
+        className="flex min-h-[5.5rem] flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line/80 bg-ink/25 p-4 text-center"
+        style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+      >
+        <span className="font-mono text-xs text-brass">#{String(index + 1).padStart(2, "0")}</span>
+        <span className="flex items-center gap-1.5 text-sm font-medium text-bone/85">
+          <Clock className="size-3.5 text-brass" aria-hidden />
+          Reserved
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Pay pending · <PaymentHoldTimer expiresAt={entry.paymentHold.expiresAt} onExpire={onHoldExpire} />
+        </span>
+      </li>
+    );
+  }
   const [a, b] = entry.players;
   return (
     <li
@@ -120,9 +149,12 @@ export function DivisionRosterButton({
   const [myEntry, setMyEntry] = useState<MyEntry | null>(null);
   const [query, setQuery] = useState("");
   const [flowStep, setFlowStep] = useState<FlowStep>("roster");
-  const [payState, setPayState] = useState<{ registrationId: string; checkoutUrl: string; amountCents: number } | null>(
-    null
-  );
+  const [payState, setPayState] = useState<{
+    registrationId: string;
+    checkoutUrl: string;
+    amountCents: number;
+    paymentHoldExpiresAt?: string | null;
+  } | null>(null);
   const [payLoading, setPayLoading] = useState(false);
   const [successKind, setSuccessKind] = useState<"waitlist" | "venue" | "free" | "paid" | null>(null);
   const [waitlistPos, setWaitlistPos] = useState<number | null>(null);
@@ -177,7 +209,15 @@ export function DivisionRosterButton({
   const roster = data && !("error" in data) ? data : null;
   const elig = eligibility && !("error" in eligibility) ? eligibility : null;
   const noun = (n: number) => entrantNoun(format, n || 1);
-  const matches = (e: PublicRosterEntry) => !q || e.players.some((p) => p.name.toLowerCase().includes(q));
+  const matches = (e: PublicRosterEntry) =>
+    !q || Boolean(e.paymentHold) || e.players.some((p) => p.name.toLowerCase().includes(q));
+  const hasActiveHolds = Boolean(roster?.slots.some((s) => s.paymentHold?.expiresAt));
+
+  useEffect(() => {
+    if (!open || flowStep !== "roster" || !hasActiveHolds) return;
+    const id = window.setInterval(() => void load(), 20_000);
+    return () => window.clearInterval(id);
+  }, [open, flowStep, hasActiveHolds]);
   const slots = roster?.slots.filter(matches) ?? [];
   const fill = roster?.capacity ? Math.min(100, (roster.taken / roster.capacity) * 100) : null;
   const sessionActive = isSignedIn || guestSignedIn;
@@ -194,10 +234,20 @@ export function DivisionRosterButton({
       feeCents > 0
   );
 
-  async function beginPayFlow(registrationId: string, knownCheckout?: string, amountCents = feeCents) {
+  async function beginPayFlow(
+    registrationId: string,
+    knownCheckout?: string,
+    amountCents = feeCents,
+    paymentHoldExpiresAt?: string | null
+  ) {
     setFlowStep("pay");
     setPayLoading(true);
     let checkoutUrl = knownCheckout?.trim() || "";
+    let holdEnds = paymentHoldExpiresAt ?? null;
+    if (!holdEnds && !allowPayAtVenue) {
+      const status = await getMyRegistrationPaymentStatusAction(registrationId);
+      if (!("error" in status) && status.paymentHoldExpiresAt) holdEnds = status.paymentHoldExpiresAt;
+    }
     if (!checkoutUrl) {
       try {
         const res = await fetch("/api/payments/create", {
@@ -215,13 +265,18 @@ export function DivisionRosterButton({
         return;
       }
     }
-    setPayState({ registrationId, checkoutUrl, amountCents });
+    setPayState({ registrationId, checkoutUrl, amountCents, paymentHoldExpiresAt: holdEnds });
     setPayLoading(false);
   }
 
   async function handleRegisterComplete(result: DivisionRegisterComplete) {
     if (result.kind === "pay") {
-      await beginPayFlow(result.registrationId, result.checkoutUrl || undefined, result.amountCents);
+      await beginPayFlow(
+        result.registrationId,
+        result.checkoutUrl || undefined,
+        result.amountCents,
+        result.paymentHoldExpiresAt
+      );
       return;
     }
     if (result.kind === "payment_required") {
@@ -275,7 +330,7 @@ export function DivisionRosterButton({
   function startRegistrationFlow() {
     if (!registrationOpen) {
       showError(
-        "Registration for this event isn't open yet. When the organizer opens entries, tap an available slot to sign up here.",
+        "Registration isn't open yet. Check the open date on the event page, or ask the organizer to enable entries.",
         { title: "Registration not open" }
       );
       return;
@@ -368,6 +423,15 @@ export function DivisionRosterButton({
                     Registration isn&apos;t open yet — slots shown for reference.
                   </span>
                 )}
+                {showSlotGrid &&
+                  flowStep === "roster" &&
+                  !allowPayAtVenue &&
+                  roster?.onlinePaymentHoldMinutes &&
+                  feeCents > 0 && (
+                    <span className="mt-1 block text-bone/70">
+                      Online payment only — unpaid slots release after {roster.onlinePaymentHoldMinutes} minutes.
+                    </span>
+                  )}
               </DialogDescription>
               {fill !== null && (
                 <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-ink/60" aria-hidden>
@@ -428,9 +492,16 @@ export function DivisionRosterButton({
                     registrationId={payState.registrationId}
                     amountCents={payState.amountCents}
                     currency={currency}
+                    paymentHoldExpiresAt={payState.paymentHoldExpiresAt}
                     onPaid={() => {
                       setSuccessKind("paid");
                       setFlowStep("success");
+                      void load();
+                      router.refresh();
+                    }}
+                    onHoldExpired={() => {
+                      setPayState(null);
+                      setFlowStep("roster");
                       void load();
                       router.refresh();
                     }}
@@ -502,6 +573,7 @@ export function DivisionRosterButton({
                       categoryFull={categoryFull}
                       searchQuery={q}
                       onClaimSlot={startRegistrationFlow}
+                      onHoldExpire={() => void load()}
                     />
                     {q && roster.slots.every((e) => !matches(e)) && (
                       <p className="text-sm text-muted-foreground">No player matches &ldquo;{query}&rdquo;.</p>
@@ -532,7 +604,12 @@ export function DivisionRosterButton({
                 ) : (
                   <ul className="grid gap-3 sm:grid-cols-2">
                     {slots.map((e, i) => (
-                      <TeamCard key={`${e.players.map((p) => p.name).join("|")}-${i}`} entry={e} index={i} />
+                      <TeamCard
+                        key={e.paymentHold ? `hold-${i}` : `${e.players.map((p) => p.name).join("|")}-${i}`}
+                        entry={e}
+                        index={i}
+                        onHoldExpire={() => void load()}
+                      />
                     ))}
                   </ul>
                 )}

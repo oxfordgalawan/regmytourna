@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Check, ExternalLink, Loader2 } from "lucide-react";
 import { getMyRegistrationPaymentStatusAction } from "@/app/actions/registrations";
+import { PaymentHoldTimer } from "@/components/tournaments/payment-hold-timer";
 import { Button } from "@/components/ui/button";
 import { formatPhp } from "@/lib/format";
 import {
@@ -16,16 +17,21 @@ export function CheckoutQrPanel({
   registrationId,
   amountCents,
   currency = "PHP",
+  paymentHoldExpiresAt,
   onPaid,
+  onHoldExpired,
 }: {
   checkoutUrl: string;
   registrationId: string;
   amountCents: number;
   currency?: string;
+  paymentHoldExpiresAt?: string | null;
   onPaid?: () => void;
+  onHoldExpired?: () => void;
 }) {
   const [qr, setQr] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
+  const [holdExpired, setHoldExpired] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,18 +44,35 @@ export function CheckoutQrPanel({
   }, [checkoutUrl]);
 
   useEffect(() => {
-    if (paid) return;
+    if (paid || holdExpired) return;
     const id = window.setInterval(async () => {
       if (document.visibilityState !== "visible") return;
       const res = await getMyRegistrationPaymentStatusAction(registrationId);
       if ("error" in res && res.error) return;
+      if ("expired" in res && res.expired) {
+        setHoldExpired(true);
+        onHoldExpired?.();
+        return;
+      }
       if (res.paid) {
         setPaid(true);
         onPaid?.();
       }
     }, 3000);
     return () => window.clearInterval(id);
-  }, [paid, registrationId, onPaid]);
+  }, [paid, holdExpired, registrationId, onPaid, onHoldExpired]);
+
+  if (holdExpired) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8 text-center">
+        <p className="display text-2xl text-bone">Time&apos;s up</p>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          Your slot was released because payment wasn&apos;t received within 30 minutes. You can try again if a slot is
+          still open.
+        </p>
+      </div>
+    );
+  }
 
   if (paid) {
     return (
@@ -70,6 +93,18 @@ export function CheckoutQrPanel({
       <p className="text-sm text-muted-foreground">
         Pay <span className="font-mono text-bone">{amount}</span> to confirm your slot
       </p>
+      {paymentHoldExpiresAt && (
+        <p className="text-sm text-bone/80">
+          Complete payment within{" "}
+          <PaymentHoldTimer
+            expiresAt={paymentHoldExpiresAt}
+            onExpire={() => {
+              setHoldExpired(true);
+              onHoldExpired?.();
+            }}
+          />
+        </p>
+      )}
       <div className="rounded-2xl bg-white p-3">
         {qr ? (
           // eslint-disable-next-line @next/next/no-img-element

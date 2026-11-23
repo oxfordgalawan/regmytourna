@@ -16,6 +16,7 @@ import { RegistrationDateTimeInput } from "@/components/organizer/registration-d
 import { showError } from "@/lib/ui/error-dialog";
 import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
+import { parseRegistrationInstant } from "@/lib/tournaments/registration-window";
 
 export type EditableTournament = {
   id: string;
@@ -37,11 +38,24 @@ export type EditableTournament = {
   allow_walk_in_payment?: boolean | null;
 };
 
-/** Stored timestamps back to the `YYYY-MM-DDTHH:mm` value they were entered as. */
+/** Stored timestamps back to the `YYYY-MM-DDTHH:mm` value entered as Philippine time. */
 function toFormDateTime(value: string | null) {
   if (!value) return "";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 16);
+  const d = parseRegistrationInstant(value);
+  if (!d) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  const hour = get("hour");
+  const minute = get("minute");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour === "24" ? "00" : hour}:${minute}`;
 }
 
 function slugify(value: string) {
