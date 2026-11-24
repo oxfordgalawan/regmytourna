@@ -63,7 +63,41 @@ type TxMeta = {
   settlement_cents?: number;
   paymongo_fee_cents?: number;
   status?: string;
+  reverses?: "entry_payment" | "platform_fee";
+  original_amount_cents?: number;
 };
+
+type WalletTxRow = {
+  id: string;
+  type: string;
+  amount_cents: number;
+  description: string | null;
+  metadata: unknown;
+  created_at: string;
+  tournament_id: string | null;
+  payment_id: string | null;
+  payments: unknown;
+  tournaments: unknown;
+  registrations: unknown;
+};
+
+function incomeEventSlice(
+  byEvent: Map<string, IncomeByEvent>,
+  tournamentId: string,
+  t: { name: string; slug: string }
+): IncomeByEvent {
+  return (
+    byEvent.get(tournamentId) ?? {
+      tournamentId,
+      name: t.name,
+      slug: t.slug,
+      netCents: 0,
+      grossCents: 0,
+      feeCents: 0,
+      entries: 0,
+    }
+  );
+}
 
 export async function loadWalletOverview(userId: string) {
   const admin = createAdminClient();
@@ -72,7 +106,7 @@ export async function loadWalletOverview(userId: string) {
     admin
       .from("wallet_transactions")
       .select(
-        `id, type, amount_cents, description, metadata, created_at, tournament_id, payments(method), tournaments(name, slug), registrations(id, tournament_divisions(name), ${REGISTRATION_PLAYERS_SELECT})`
+        `id, type, amount_cents, description, metadata, created_at, tournament_id, payment_id, payments(method), tournaments(name, slug), registrations(id, tournament_divisions(name), ${REGISTRATION_PLAYERS_SELECT})`
       )
       .eq("wallet_user_id", userId)
       .order("created_at", { ascending: false })
@@ -113,43 +147,44 @@ export async function loadWalletOverview(userId: string) {
   let lifetimeFees = 0;
   let monthNet = 0;
 
+  const entryByPaymentId = new Map<string, WalletTxRow>();
+  const feeByPaymentId = new Map<string, WalletTxRow>();
+  for (const tx of (txs ?? []) as WalletTxRow[]) {
+    if (!tx.payment_id) continue;
+    if (tx.type === "entry_payment") entryByPaymentId.set(tx.payment_id, tx);
+    else if (tx.type === "platform_fee") feeByPaymentId.set(tx.payment_id, tx);
+  }
+
   const activity: WalletActivity[] = (txs ?? []).map((tx) => {
-    const meta = (tx.metadata ?? {}) as TxMeta;
-    const t = relationOne(tx.tournaments) as { name: string; slug: string } | null;
-    const pay = relationOne(tx.payments) as { method: string | null } | null;
-    const reg = relationOne(tx.registrations) as { tournament_divisions: unknown; registration_players?: unknown } | null;
+    const row = tx as WalletTxRow;
+    const meta = (row.metadata ?? {}) as TxMeta;
+    const t = relationOne(row.tournaments) as { name: string; slug: string } | null;
+    const pay = relationOne(row.payments) as { method: string | null } | null;
+    const reg = relationOne(row.registrations) as { tournament_divisions: unknown; registration_players?: unknown } | null;
     const category = reg ? (relationOne(reg.tournament_divisions as never) as { name: string } | null)?.name ?? null : null;
     const team = reg ? registrationName(reg) : null;
     const gross = meta.gross_cents ?? null;
     const fee = meta.platform_fee_cents ?? null;
 
-    if (tx.type === "entry_payment") {
+    if (row.type === "entry_payment") {
       const channel = pay?.method === "qr" ? "qr" : "online";
-      channels[channel] += tx.amount_cents;
-      lifetimeNet += tx.amount_cents;
-      lifetimeGross += gross ?? tx.amount_cents;
+      channels[channel] += row.amount_cents;
+      lifetimeNet += row.amount_cents;
+      lifetimeGross += gross ?? row.amount_cents;
       lifetimeFees += fee ?? 0;
-      if (new Date(tx.created_at) >= monthStart) monthNet += tx.amount_cents;
-      if (tx.tournament_id && t) {
-        const e = byEvent.get(tx.tournament_id) ?? {
-          tournamentId: tx.tournament_id,
-          name: t.name,
-          slug: t.slug,
-          netCents: 0,
-          grossCents: 0,
-          feeCents: 0,
-          entries: 0,
-        };
-        e.netCents += tx.amount_cents;
-        e.grossCents += gross ?? tx.amount_cents;
+      if (new Date(row.created_at) >= monthStart) monthNet += row.amount_cents;
+      if (row.tournament_id && t) {
+        const e = incomeEventSlice(byEvent, row.tournament_id, t);
+        e.netCents += row.amount_cents;
+        e.grossCents += gross ?? row.amount_cents;
         e.feeCents += fee ?? 0;
         e.entries += 1;
-        byEvent.set(tx.tournament_id, e);
+        byEvent.set(row.tournament_id, e);
       }
       return {
-        id: tx.id,
+        id: row.id,
         kind: "entry",
-        amountCents: tx.amount_cents,
+        amountCents: row.amount_cents,
         grossCents: gross,
         feeCents: fee,
         settlementCents: meta.settlement_cents ?? null,
@@ -159,30 +194,22 @@ export async function loadWalletOverview(userId: string) {
         subtitle: category,
         eventName: t?.name ?? null,
         status: null,
-        createdAt: tx.created_at,
+        createdAt: row.created_at,
       } satisfies WalletActivity;
     }
-    if (tx.type === "platform_fee") {
-      channels.cashFees += tx.amount_cents;
-      lifetimeFees += -tx.amount_cents;
-      if (tx.tournament_id && t) {
-        const e = byEvent.get(tx.tournament_id) ?? {
-          tournamentId: tx.tournament_id,
-          name: t.name,
-          slug: t.slug,
-          netCents: 0,
-          grossCents: 0,
-          feeCents: 0,
-          entries: 0,
-        };
-        e.netCents += tx.amount_cents;
-        e.feeCents += -tx.amount_cents;
-        byEvent.set(tx.tournament_id, e);
+    if (row.type === "platform_fee") {
+      channels.cashFees += row.amount_cents;
+      lifetimeFees += -row.amount_cents;
+      if (row.tournament_id && t) {
+        const e = incomeEventSlice(byEvent, row.tournament_id, t);
+        e.netCents += row.amount_cents;
+        e.feeCents += -row.amount_cents;
+        byEvent.set(row.tournament_id, e);
       }
       return {
-        id: tx.id,
+        id: row.id,
         kind: "cash_fee",
-        amountCents: tx.amount_cents,
+        amountCents: row.amount_cents,
         grossCents: gross,
         feeCents: fee,
         settlementCents: null,
@@ -192,40 +219,104 @@ export async function loadWalletOverview(userId: string) {
         subtitle: category,
         eventName: t?.name ?? null,
         status: null,
-        createdAt: tx.created_at,
+        createdAt: row.created_at,
       } satisfies WalletActivity;
     }
-    if (tx.type === "payout") {
+    if (row.type === "refund") {
+      lifetimeNet += row.amount_cents;
+      if (new Date(row.created_at) >= monthStart) monthNet += row.amount_cents;
+
+      let refundGross: number | null = null;
+      let refundFee: number | null = null;
+      let refundChannel: WalletActivity["channel"] = null;
+
+      if (meta.reverses === "entry_payment") {
+        const original = row.payment_id ? entryByPaymentId.get(row.payment_id) : undefined;
+        const origMeta = (original?.metadata ?? {}) as TxMeta;
+        const reversedGross =
+          origMeta.gross_cents ?? meta.original_amount_cents ?? Math.abs(row.amount_cents);
+        const reversedFee = origMeta.platform_fee_cents ?? 0;
+
+        lifetimeGross -= reversedGross;
+        lifetimeFees -= reversedFee;
+        refundGross = reversedGross;
+        refundFee = reversedFee;
+
+        if (original) {
+          const origPay = relationOne(original.payments) as { method: string | null } | null;
+          const channel = origPay?.method === "qr" ? "qr" : "online";
+          channels[channel] += row.amount_cents;
+          refundChannel = channel;
+        }
+
+        if (row.tournament_id && t) {
+          const e = incomeEventSlice(byEvent, row.tournament_id, t);
+          e.netCents += row.amount_cents;
+          e.grossCents -= reversedGross;
+          e.feeCents -= reversedFee;
+          e.entries = Math.max(0, e.entries - 1);
+          byEvent.set(row.tournament_id, e);
+        }
+      } else if (meta.reverses === "platform_fee") {
+        channels.cashFees += row.amount_cents;
+        lifetimeFees -= row.amount_cents;
+        refundChannel = "cash";
+
+        if (row.tournament_id && t) {
+          const e = incomeEventSlice(byEvent, row.tournament_id, t);
+          e.netCents += row.amount_cents;
+          e.feeCents += -row.amount_cents;
+          byEvent.set(row.tournament_id, e);
+        }
+      }
+
       return {
-        id: tx.id,
+        id: row.id,
+        kind: "refund",
+        amountCents: row.amount_cents,
+        grossCents: refundGross,
+        feeCents: refundFee,
+        settlementCents: null,
+        paymongoFeeCents: null,
+        channel: refundChannel,
+        title: row.description ?? "Refund",
+        subtitle: null,
+        eventName: t?.name ?? null,
+        status: null,
+        createdAt: row.created_at,
+      } satisfies WalletActivity;
+    }
+    if (row.type === "payout") {
+      return {
+        id: row.id,
         kind: "withdrawal",
-        amountCents: tx.amount_cents,
+        amountCents: row.amount_cents,
         grossCents: null,
         feeCents: null,
         settlementCents: null,
         paymongoFeeCents: null,
         channel: null,
         title: "Withdrawal",
-        subtitle: tx.description,
+        subtitle: row.description,
         eventName: null,
         status: meta.status ?? null,
-        createdAt: tx.created_at,
+        createdAt: row.created_at,
       } satisfies WalletActivity;
     }
     return {
-      id: tx.id,
-      kind: tx.type === "refund" ? "refund" : "adjustment",
-      amountCents: tx.amount_cents,
+      id: row.id,
+      kind: row.type === "refund" ? "refund" : "adjustment",
+      amountCents: row.amount_cents,
       grossCents: null,
       feeCents: null,
       settlementCents: null,
       paymongoFeeCents: null,
       channel: null,
-      title: tx.description ?? (tx.type === "refund" ? "Refund" : "Adjustment"),
+      title: row.description ?? "Adjustment",
       subtitle: null,
       eventName: t?.name ?? null,
       status: null,
-      createdAt: tx.created_at,
+      createdAt: row.created_at,
     } satisfies WalletActivity;
   });
 

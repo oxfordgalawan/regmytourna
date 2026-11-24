@@ -1393,6 +1393,16 @@ export type Database = {
       }
     }
     Functions: {
+      adjust_organizer_wallet_balance: {
+        Args: {
+          p_admin_user_id: string
+          p_amount_cents: number
+          p_description: string
+          p_metadata?: Json
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       credit_organizer_wallet: {
         Args: {
           p_description?: string

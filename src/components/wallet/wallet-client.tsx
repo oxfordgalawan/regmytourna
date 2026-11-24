@@ -41,12 +41,14 @@ export function BalanceCard({
   monthNetCents,
   minWithdrawalCents,
   methods,
+  feePercent,
 }: {
   balanceCents: number;
   pendingWithdrawalCents: number;
   monthNetCents: number;
   minWithdrawalCents: number;
   methods: PayoutMethod[];
+  feePercent?: number;
 }) {
   const [withdrawing, setWithdrawing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -70,7 +72,9 @@ export function BalanceCard({
             </p>
             {balanceCents < 0 && (
               <p className="mt-1 text-xs text-bone/70">
-                Convenience fees on cash entries — settled from your next online payments.
+                {feePercent === 0
+                  ? "Often legacy cash fees or a refund after a withdrawal — check Activity, or contact support."
+                  : "Convenience fees on cash entries — settled from your next online payments."}
               </p>
             )}
           </div>

@@ -4,7 +4,8 @@ import { ViewAsOrganizerButton } from "@/components/super-admin/view-as-organize
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listPlatformOrganizers } from "@/lib/super-admin/queries";
 import { PageHeader } from "@/components/layout/page-header";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatPhp } from "@/lib/format";
+import { OrganizerWalletAdminButtons } from "@/components/super-admin/organizer-wallet-admin-buttons";
 import { getPlatformFeePercent } from "@/lib/env/server";
 import {
   Table,
@@ -64,10 +65,18 @@ export default async function SuperAdminOrganizersPage() {
                     {row.lastActivity ? formatDateTime(row.lastActivity) : "—"}
                   </TableCell>
                   <TableCell className="max-w-[11rem] text-xs text-muted-foreground">
-                    {row.platformFeePercent !== null ? `${row.platformFeePercent}% fee` : `Default ${defaultFee}%`}
-                    {row.walletCreditSettlement ? " · settlement credit" : ""}
+                    <span className="font-mono text-bone">{formatPhp(row.availableBalanceCents)}</span>
+                    <span className="mt-0.5 block">
+                      {row.platformFeePercent !== null ? `${row.platformFeePercent}% fee` : `Default ${defaultFee}%`}
+                      {row.walletCreditSettlement ? " · settlement credit" : ""}
+                    </span>
+                    <OrganizerWalletAdminButtons
+                      organizerId={row.id}
+                      balanceCents={row.availableBalanceCents}
+                      platformFeePercent={row.platformFeePercent}
+                    />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right align-top">
                     <ViewAsOrganizerButton organizerId={row.id} />
                   </TableCell>
                 </TableRow>

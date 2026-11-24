@@ -58,6 +58,7 @@ export default async function OrganizerWalletPage() {
         monthNetCents={o.monthNetCents}
         minWithdrawalCents={getMinWithdrawalCents()}
         methods={o.methods}
+        feePercent={feePercent}
       />
 
       <section className="space-y-4">
