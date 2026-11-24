@@ -17,7 +17,6 @@ import { showError } from "@/lib/ui/error-dialog";
 import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
 import { parseRegistrationInstant } from "@/lib/tournaments/registration-window";
-
 export type EditableTournament = {
   id: string;
   name: string;
@@ -114,7 +113,13 @@ function Toggle({ name, label, hint, defaultChecked }: { name: string; label: st
   );
 }
 
-export function EditTournamentForm({ tournament: t, bracketOnly }: { tournament: EditableTournament; bracketOnly: boolean }) {
+export function EditTournamentForm({
+  tournament: t,
+  bracketOnly,
+}: {
+  tournament: EditableTournament;
+  bracketOnly: boolean;
+}) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [slug, setSlug] = useState(t.slug);
@@ -301,7 +306,7 @@ export function EditTournamentForm({ tournament: t, bracketOnly }: { tournament:
           Categories, status and brackets are managed in their own tabs.
         </p>
         <Button type="button" variant="ghost" onClick={() => router.back()}>
-          Cancel
+          Back
         </Button>
         <Button type="submit" size="lg" disabled={saving}>
           {saving && <Loader2 className="animate-spin" />}

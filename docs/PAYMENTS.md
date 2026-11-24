@@ -25,10 +25,12 @@ Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the 
 
 - Default **convenience fee** is `PLATFORM_FEE_PERCENT` (env, usually 5%). Applied to **online / desk QR** entry payments when crediting the organizer wallet (`gross − fee`).
 - **Cash at the desk:** money stays with the organizer; the convenience fee is debited from the wallet via `charge_cash_platform_fee` (balance may go negative until online income offsets it).
-- **Per-organizer overrides** on `profiles`:
-  - `platform_fee_percent` — `NULL` uses the global default; set `0` for no RegMyTourna convenience fee.
-  - `wallet_credit_settlement` — when `true`, online/QR credits use **PayMongo settlement** (net after PayMongo’s MDR), not the player’s full entry amount. Shown in wallet activity as **settlement** vs **gross**.
-- Example: player pays **₱1,000**, PayMongo settles **₱985.05**, Neil-style account (0% + settlement) credits **₱985.05** to the ledger so withdrawals stay aligned with PayMongo cash.
+- **Per-organizer overrides** on `profiles` (or super-admin tournament owners):
+  - `platform_fee_percent` — `NULL` uses the global default (**5%**); set `0` only for whitelisted accounts (e.g. Neil).
+  - `wallet_credit_settlement` — when `true` **and** `platform_fee_percent = 0`, online/QR credits use **PayMongo wallet receive** after **Instant Settlement** (e.g. ₱492.52 on a ₱500 QR entry), not payment-intent `net_amount` alone (≈ ₱497.50) and not player gross.
+  - **Super admins** who own tournaments get the same **0% + instant-settlement credit** policy automatically when crediting the wallet.
+- **Everyone else** stays on **5% convenience fee** on entry **gross** (`organizer_net = gross − 5%`); no instant-settlement wallet lookup.
+- Example (eligible): player pays **₱500** QR → PayMongo wallet shows **₱492.52** receive → wallet credits **₱492.52** at **0%** platform fee.
 
 Super admins see overrides on `/super-admin/organizers` (read-only).
 

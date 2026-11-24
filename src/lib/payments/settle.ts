@@ -3,6 +3,7 @@ import { isCheckoutSessionPaid } from "@/lib/services/paymongo/paymongo-service"
 import { isPaymentIntentPaid } from "@/lib/services/paymongo/paymongo-qrph";
 import { persistPaymongoSettlementOnPayment } from "@/lib/payments/persist-settlement";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
+import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { isPayMongoConfigured } from "@/lib/env/server";
@@ -116,6 +117,7 @@ export async function verifyAndSettle(registrationId: string) {
  */
 export async function reconcileOrganizerWallet(userId: string) {
   const admin = createAdminClient();
+  const policy = await loadOrganizerWalletPolicy(admin as never, userId);
   const { data: events } = await admin.from("tournaments").select("id").eq("owner_id", userId);
   const ids = (events ?? []).map((t) => t.id);
   if (!ids.length) return;
@@ -127,13 +129,20 @@ export async function reconcileOrganizerWallet(userId: string) {
   // 1. paid through PayMongo (online or desk QR) but never credited — cash is excluded: it never reaches the platform
   const { data: uncredited } = await admin
     .from("payments")
-    .select("registration_id")
+    .select("registration_id, paymongo_payment_intent_id, paymongo_checkout_session_id")
     .in("registration_id", regIds)
     .eq("status", "paid")
     .in("method", ["online", "qr"])
     .is("credited_to_user_id", null)
     .limit(50);
   for (const p of uncredited ?? []) {
+    if (policy.settlementEligible) {
+      await persistPaymongoSettlementOnPayment(admin as never, {
+        registrationId: p.registration_id,
+        intentId: p.paymongo_payment_intent_id,
+        sessionId: p.paymongo_checkout_session_id,
+      });
+    }
     await creditOrganizerFromRegistration(admin as never, p.registration_id);
   }
 

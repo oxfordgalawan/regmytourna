@@ -1,4 +1,5 @@
 import { getServerEnv, isPayMongoConfigured } from "@/lib/env/server";
+import { resolveWalletInstantSettlement } from "@/lib/services/paymongo/paymongo-wallet-settlement";
 
 const PAYMONGO_API = "https://api.paymongo.com/v1";
 
@@ -48,12 +49,11 @@ function pickBestSettlement(
   return { settlementCents: settlement, paymongoFeeCents: paymongoFee };
 }
 
-export async function resolvePaymongoSettlement(opts: {
+async function resolvePaymentIntentSettlement(opts: {
   intentId?: string | null;
   sessionId?: string | null;
   grossCents?: number;
 }): Promise<{ settlementCents: number; paymongoFeeCents: number } | null> {
-  if (!isPayMongoConfigured()) return null;
   const intentId = opts.intentId?.trim();
   const sessionId = opts.sessionId?.trim();
 
@@ -107,4 +107,39 @@ export async function resolvePaymongoSettlement(opts: {
   }
 
   return null;
+}
+
+export async function resolvePaymongoSettlement(opts: {
+  intentId?: string | null;
+  sessionId?: string | null;
+  grossCents?: number;
+  paidAt?: string | null;
+  useWalletInstantSettlement?: boolean;
+}): Promise<{ settlementCents: number; paymongoFeeCents: number } | null> {
+  if (!isPayMongoConfigured()) return null;
+
+  const paymentNet = await resolvePaymentIntentSettlement(opts);
+
+  if (!opts.useWalletInstantSettlement) {
+    return paymentNet;
+  }
+
+  const walletNet = await resolveWalletInstantSettlement({
+    intentId: opts.intentId,
+    grossCents: opts.grossCents,
+    paidAt: opts.paidAt,
+  });
+
+  if (walletNet && paymentNet) {
+    if (walletNet.settlementCents <= paymentNet.settlementCents) {
+      return walletNet;
+    }
+    console.warn(
+      "paymongo_settlement: wallet instant net exceeds payment net; using payment net",
+      { wallet: walletNet.settlementCents, payment: paymentNet.settlementCents }
+    );
+    return paymentNet;
+  }
+
+  return walletNet ?? paymentNet;
 }

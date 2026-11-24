@@ -63,7 +63,7 @@ export default async function OrganizerWalletPage() {
 
       <section className="space-y-4">
         <SectionHeading title="Where your money comes from" />
-        <IncomeSources overview={o} feePercent={feePercent} />
+        <IncomeSources overview={o} feePercent={feePercent} settlementDisplay={o.settlementDisplay} />
       </section>
 
       <section className="space-y-4">

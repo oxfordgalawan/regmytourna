@@ -34,7 +34,7 @@ export async function creditOrganizerFromRegistration(
   const { data: payment, error: payError } = await admin
     .from("payments")
     .select(
-      "id, amount_cents, status, credited_to_user_id, paymongo_payment_intent_id, paymongo_checkout_session_id, settlement_cents, paymongo_fee_cents"
+      "id, amount_cents, status, credited_to_user_id, paymongo_payment_intent_id, paymongo_checkout_session_id, settlement_cents, paymongo_fee_cents, paid_at"
     )
     .eq("registration_id", registrationId)
     .eq("status", "paid")

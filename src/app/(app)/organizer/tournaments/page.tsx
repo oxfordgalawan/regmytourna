@@ -22,6 +22,7 @@ const statusFilters = [
   { value: "registration_open", label: "Open" },
   { value: "in_progress", label: "Live" },
   { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 export default async function OrganizerTournamentsPage({
@@ -120,6 +121,7 @@ async function EventList({
 
   if (q) query = query.ilike("name", `%${q}%`);
   if (status) query = query.eq("status", status);
+  else query = query.neq("status", "cancelled");
 
   const { data: tournaments } = await query;
   const filtered = Boolean(q || status);

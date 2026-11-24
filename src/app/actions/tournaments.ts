@@ -52,6 +52,130 @@ export async function updateTournamentStatusAction(
   return { ok: true };
 }
 
+const UNPAID_REGISTRATION_STATUSES = [
+  "pending",
+  "awaiting_partner",
+  "awaiting_payment",
+  "waitlisted",
+] as const;
+
+async function tournamentHasFinancialHistory(tournamentId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: regs } = await admin.from("registrations").select("id").eq("tournament_id", tournamentId);
+  const regIds = (regs ?? []).map((r) => r.id);
+  if (regIds.length > 0) {
+    const { count, error } = await admin
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .in("registration_id", regIds);
+    if (error) throw new Error(error.message);
+    if ((count ?? 0) > 0) return true;
+  }
+  const { count: walletCount, error: walletError } = await admin
+    .from("wallet_transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId);
+  if (walletError) throw new Error(walletError.message);
+  return (walletCount ?? 0) > 0;
+}
+
+function revalidateTournamentPaths(tournamentId: string, slug?: string | null) {
+  revalidatePath("/organizer/tournaments");
+  revalidatePath(`/organizer/tournaments/${tournamentId}`);
+  revalidatePath(`/organizer/tournaments/${tournamentId}/edit`);
+  if (slug) revalidatePath(`/tournaments/${slug}`);
+}
+
+export async function cancelTournamentAction(
+  tournamentId: string
+): Promise<{ ok?: true; error?: string }> {
+  if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
+
+  const admin = createAdminClient();
+  const { data: tournament, error: loadError } = await admin
+    .from("tournaments")
+    .select("status, slug")
+    .eq("id", tournamentId)
+    .single();
+  if (loadError || !tournament) return { error: loadError?.message ?? "Event not found." };
+  if (tournament.status === "draft") {
+    return { error: "Draft events can't be cancelled. Delete the draft instead." };
+  }
+  if (tournament.status === "cancelled") return { error: "This event is already cancelled." };
+
+  const { error: updateError } = await admin
+    .from("tournaments")
+    .update({ status: "cancelled", is_public: false })
+    .eq("id", tournamentId);
+  if (updateError) return { error: updateError.message };
+
+  const { data: unpaidRegs } = await admin
+    .from("registrations")
+    .select("id")
+    .eq("tournament_id", tournamentId)
+    .in("status", [...UNPAID_REGISTRATION_STATUSES]);
+  for (const reg of unpaidRegs ?? []) {
+    await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", reg.id).eq("status", "pending");
+    await admin
+      .from("registrations")
+      .update({ status: "cancelled", waitlist_position: null, needs_partner_since: null })
+      .eq("id", reg.id);
+  }
+
+  revalidateTournamentPaths(tournamentId, tournament.slug);
+  return { ok: true };
+}
+
+export async function deleteTournamentAction(
+  tournamentId: string
+): Promise<{ ok?: true; redirect?: string; error?: string }> {
+  if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
+  const user = await requireUser();
+  if (!(await isOrganizerForTournament(user.id, tournamentId, user))) {
+    return { error: "You don't have permission to change this event." };
+  }
+
+  const admin = createAdminClient();
+  const { data: tournament, error: loadError } = await admin
+    .from("tournaments")
+    .select("slug")
+    .eq("id", tournamentId)
+    .single();
+  if (loadError || !tournament) return { error: loadError?.message ?? "Event not found." };
+
+  try {
+    if (await tournamentHasFinancialHistory(tournamentId)) {
+      return {
+        error:
+          "This event has payment or wallet history and can't be deleted. Cancel it instead to hide it from public listings.",
+      };
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't verify whether this event can be deleted." };
+  }
+
+  const { error: deleteError } = await admin.from("tournaments").delete().eq("id", tournamentId);
+  if (deleteError) return { error: deleteError.message };
+
+  revalidatePath("/organizer/tournaments");
+  if (tournament.slug) revalidatePath(`/tournaments/${tournament.slug}`);
+  return { ok: true, redirect: "/organizer/tournaments" };
+}
+
+/** Whether hard-delete is allowed (no payments or wallet transactions). */
+export async function tournamentCanBeDeleted(tournamentId: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    return !(await tournamentHasFinancialHistory(tournamentId));
+  } catch {
+    return false;
+  }
+}
+
 export async function createTournamentAction(formData: FormData) {
   if (!isSupabaseConfigured()) return { error: "Supabase not configured" };
   const user = await requireUser();
