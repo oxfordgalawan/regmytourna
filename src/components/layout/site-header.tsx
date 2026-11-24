@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/tournaments", label: "Tournaments" },
+  { href: "/umpire-tool", label: "Umpire tool" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#for-organizers", label: "For organizers" },
 ];
@@ -26,7 +27,10 @@ export function SiteHeader() {
     () => false
   );
   const tournamentsActive = pathname.startsWith("/tournaments");
-  const { ref: navRef, style: pillStyle, ready: pillReady } = useSlidingIndicator<HTMLElement>(tournamentsActive);
+  const umpireToolActive = pathname.startsWith("/umpire-tool");
+  const { ref: navRef, style: pillStyle, ready: pillReady } = useSlidingIndicator<HTMLElement>(
+    tournamentsActive || umpireToolActive
+  );
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -71,7 +75,9 @@ export function SiteHeader() {
             style={pillStyle}
           />
           {navLinks.map((link) => {
-            const active = link.href === "/tournaments" && tournamentsActive;
+            const active =
+              (link.href === "/tournaments" && tournamentsActive) ||
+              (link.href === "/umpire-tool" && umpireToolActive);
             return (
               <Link
                 key={link.href}

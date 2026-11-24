@@ -209,6 +209,10 @@ const sections: LegalSection[] = [
             public scoreboard may lag behind what&apos;s happening on court.
           </li>
           <li>
+            The free <strong>Umpire tool</strong> (no account) lets anyone score a casual match and share a browser link for a
+            TV. Those sessions expire automatically after about seven days. Anyone with the link can view the live score.
+          </li>
+          <li>
             The Service keeps an officiating record for each match (such as timers run, coin toss, first server and each
             point) to help resolve disputes. Disputes about results are decided by the organizer.
           </li>

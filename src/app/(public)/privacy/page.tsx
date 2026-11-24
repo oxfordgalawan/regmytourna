@@ -82,6 +82,11 @@ const sections: LegalSection[] = [
             scoring works offline, and caches umpire pages so they open without signal. This stays on the device until it
             syncs or you clear it.
           </li>
+          <li>
+            <strong>Free umpire tool:</strong> if you use the public scoring tool without an account, we store match names
+            and live scores on our servers for about seven days so a shared TV link can update. Anyone with that link can
+            view the scoreboard.
+          </li>
         </ul>
         <p>
           We don&apos;t ask for sensitive personal information (such as government IDs, health, religion or financial

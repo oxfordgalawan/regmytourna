@@ -50,7 +50,10 @@ function uuid() {
 
 export type MatchStore = ReturnType<typeof createStore>;
 
-function createStore(matchId: string, server: CoreSnapshot, ctx: EngineContext) {
+type StoreOptions = { syncUrl?: string };
+
+function createStore(matchId: string, server: CoreSnapshot, ctx: EngineContext, options: StoreOptions = {}) {
+  const syncUrl = options.syncUrl ?? `/api/umpire/matches/${matchId}/sync`;
   const fromServer = (): StoreState => ({
     snapshot: { ...server, history: [] },
     pending: [],
@@ -105,7 +108,7 @@ function createStore(matchId: string, server: CoreSnapshot, ctx: EngineContext) 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch(`/api/umpire/matches/${matchId}/sync`, {
+      const res = await fetch(syncUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ops: batch }),
@@ -196,15 +199,21 @@ function createStore(matchId: string, server: CoreSnapshot, ctx: EngineContext) 
 
 const stores = new Map<string, MatchStore>();
 
-export function getMatchStore(matchId: string, server: CoreSnapshot, ctx: EngineContext) {
+export function getMatchStore(
+  matchId: string,
+  server: CoreSnapshot,
+  ctx: EngineContext,
+  options: StoreOptions = {}
+) {
+  const cacheKey = options.syncUrl ? `${matchId}:${options.syncUrl}` : matchId;
   // never share a store between server requests
-  if (typeof window === "undefined") return createStore(matchId, server, ctx);
-  let s = stores.get(matchId);
+  if (typeof window === "undefined") return createStore(matchId, server, ctx, options);
+  let s = stores.get(cacheKey);
   // the server moved past this tab's copy (another device): start over from it
   if (s && server.seq > s.getState().snapshot.seq) s = undefined;
   if (!s) {
-    s = createStore(matchId, server, ctx);
-    stores.set(matchId, s);
+    s = createStore(matchId, server, ctx, options);
+    stores.set(cacheKey, s);
   }
   return s;
 }

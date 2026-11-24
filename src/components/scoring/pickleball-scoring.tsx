@@ -3,7 +3,20 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CloudOff, Flag, Loader2, RefreshCw, Settings2, Timer, TriangleAlert, Undo2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CloudOff,
+  Flag,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Settings2,
+  Share2,
+  Timer,
+  TriangleAlert,
+  Undo2,
+} from "lucide-react";
+import { QuickScoreShare } from "@/components/quick-score/quick-score-share";
 import { toast } from "@/lib/ui/app-toast";
 import { umpireSignInAction } from "@/app/actions/umpire";
 import { GameSetup } from "@/components/scoring/game-setup";
@@ -59,24 +72,36 @@ export function PickleballScoring({
   courtName,
   divisionName,
   backHref,
+  backLabel = "All matches",
   doubles,
   gamesToWin,
   players,
   events,
+  mode = "tournament",
+  syncUrl,
+  tvUrl,
 }: {
   match: ServerMatch;
   tournamentId: string;
   courtName: string;
   divisionName?: string;
   backHref: string;
+  backLabel?: string;
   doubles: boolean;
   gamesToWin: number;
   players: { a: CourtPlayer[]; b: CourtPlayer[] };
   events: Array<TimerEvent & { clientOpId?: string | null }>;
+  mode?: "tournament" | "quick";
+  syncUrl?: string;
+  tvUrl?: string;
 }) {
+  const quick = mode === "quick";
   const router = useRouter();
   const server = useMemo(() => serverSnapshot(match), [match]);
-  const store = useMemo(() => getMatchStore(match.id, server, { doubles, gamesToWin }), [match.id, server, doubles, gamesToWin]);
+  const store = useMemo(
+    () => getMatchStore(match.id, server, { doubles, gamesToWin }, syncUrl ? { syncUrl } : undefined),
+    [match.id, server, doubles, gamesToWin, syncUrl]
+  );
   const serverState = useMemo<StoreState>(
     () => ({ snapshot: { ...server, history: [] }, pending: [], timerLog: [], status: "synced", message: null, discarded: 0 }),
     [server]
@@ -89,11 +114,17 @@ export function PickleballScoring({
   const [timersOpen, setTimersOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [matchDone, setMatchDone] = useState(false);
   const [lastCall, setLastCall] = useState<string | null>(null);
 
   useEffect(() => {
     if (st.discarded) toast.warning(`${st.discarded} unsynced action(s) on this phone were replaced by newer scores from the server.`);
   }, [st.discarded]);
+
+  useEffect(() => {
+    if (quick && match.status === "completed") setMatchDone(true);
+  }, [quick, match.status]);
 
   const dispatch = useCallback(
     (op: OpInput) => {
@@ -142,12 +173,16 @@ export function PickleballScoring({
   function endGame() {
     if (dispatch({ type: "end_game", payload: {} })) return;
     setEndOpen(false);
-    if (store.getState().snapshot.status === "completed") returnToQueue();
+    if (store.getState().snapshot.status === "completed") {
+      if (quick) setMatchDone(true);
+      else returnToQueue();
+    }
   }
 
   useEffect(() => {
-    if (snap.status === "completed") returnToQueue();
-  }, [snap.status, returnToQueue]);
+    if (snap.status === "completed" && !quick) returnToQueue();
+    if (snap.status === "completed" && quick) setMatchDone(true);
+  }, [snap.status, returnToQueue, quick]);
 
   function confirmReopenSetup() {
     if (snap.scoreA + snap.scoreB > 0 || snap.history.length > 0) {
@@ -185,9 +220,21 @@ export function PickleballScoring({
           className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-bone"
         >
           <ArrowLeft className="size-4" />
-          All matches
+          {backLabel}
         </Link>
-        <SyncPill state={st} onRetry={store.retry} onSignIn={() => setSignInOpen(true)} />
+        <div className="flex items-center gap-2">
+          {quick && tvUrl ? (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-brass/50 bg-brass/10 px-2.5 py-1 text-xs text-brass"
+            >
+              <Share2 className="size-3.5" />
+              TV link
+            </button>
+          ) : null}
+          <SyncPill state={st} onRetry={store.retry} onSignIn={quick ? undefined : () => setSignInOpen(true)} />
+        </div>
       </div>
 
       <header className="flex items-center justify-between gap-4">
@@ -222,11 +269,29 @@ export function PickleballScoring({
         </div>
       )}
 
-      {snap.status === "completed" ? (
-        <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border border-line bg-surface/50 p-8 text-center">
-          <Loader2 className="size-8 animate-spin text-brass" />
-          <p className="text-sm text-muted-foreground">Back to the queue…</p>
-        </div>
+      {matchDone || snap.status === "completed" ? (
+        quick ? (
+          <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-4 rounded-3xl border border-line bg-surface/50 p-8 text-center">
+            <p className="display text-3xl text-bone">Match finished</p>
+            <p className="text-sm text-muted-foreground">
+              {teams.a.label} {snap.gamesA}–{snap.gamesB} {teams.b.label}
+            </p>
+            {tvUrl ? (
+              <Button type="button" onClick={() => setShareOpen(true)}>
+                <Link2 className="size-4" />
+                Share TV scoreboard
+              </Button>
+            ) : null}
+            <Button variant="outline" asChild>
+              <Link href="/umpire-tool">Start another match</Link>
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-3 rounded-3xl border border-line bg-surface/50 p-8 text-center">
+            <Loader2 className="size-8 animate-spin text-brass" />
+            <p className="text-sm text-muted-foreground">Back to the queue…</p>
+          </div>
+        )
       ) : !serve ? (
         <GameSetup
           key={snap.game}
@@ -351,36 +416,58 @@ export function PickleballScoring({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={signInOpen} onOpenChange={setSignInOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Sign in to sync</DialogTitle>
-            <DialogDescription>Your scores are safe on this phone. Enter your PIN to keep syncing.</DialogDescription>
-          </DialogHeader>
-          <PinEntry
-            label="Your 4-digit PIN"
-            onSubmit={async (pin) => {
-              const res = await umpireSignInAction(tournamentId, pin);
-              if (res.error) return { error: res.error };
-              setSignInOpen(false);
-              store.resumeAfterAuth();
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      {!quick && (
+        <Dialog open={signInOpen} onOpenChange={setSignInOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Sign in to sync</DialogTitle>
+              <DialogDescription>Your scores are safe on this phone. Enter your PIN to keep syncing.</DialogDescription>
+            </DialogHeader>
+            <PinEntry
+              label="Your 4-digit PIN"
+              onSubmit={async (pin) => {
+                const res = await umpireSignInAction(tournamentId, pin);
+                if (res.error) return { error: res.error };
+                setSignInOpen(false);
+                store.resumeAfterAuth();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {quick && tvUrl ? (
+        <QuickScoreShare open={shareOpen} onOpenChange={setShareOpen} tvUrl={tvUrl} />
+      ) : null}
     </div>
   );
 }
 
-function SyncPill({ state, onRetry, onSignIn }: { state: StoreState; onRetry: () => void; onSignIn: () => void }) {
+function SyncPill({
+  state,
+  onRetry,
+  onSignIn,
+}: {
+  state: StoreState;
+  onRetry: () => void;
+  onSignIn?: () => void;
+}) {
   const n = state.pending.length;
   const base = "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs";
-  if (state.status === "auth") {
+  if (state.status === "auth" && onSignIn) {
     return (
       <button type="button" onClick={onSignIn} className={cn(base, "border-brass/50 bg-brass/10 text-brass")}>
         <TriangleAlert className="size-3.5" />
         Sign in to sync
       </button>
+    );
+  }
+  if (state.status === "auth") {
+    return (
+      <span className={cn(base, "border-line text-muted-foreground")}>
+        <CloudOff className="size-3.5" />
+        Saved on phone
+      </span>
     );
   }
   if (state.status === "conflict") {
