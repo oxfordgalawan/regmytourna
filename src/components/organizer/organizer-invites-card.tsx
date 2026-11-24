@@ -1,31 +1,53 @@
 import Link from "next/link";
-import { ArrowRight, UsersRound } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { UsersRound } from "lucide-react";
+import { InviteActions } from "@/components/invites/invite-actions";
+import { acceptCoOrganizerInviteAction, declineCoOrganizerInviteAction } from "@/app/actions/organizer-team";
+import type { PendingOrganizerInvite } from "@/lib/organizers/team";
 
-/** "You're invited to co-organize X" — on the dashboard until accepted or declined. */
-export function OrganizerInvitesCard({ invites }: { invites: Array<{ token: string; tournamentName: string }> }) {
+/** Pending co-organizer email invites — accept in-app without the email link. */
+export function OrganizerInvitesCard({ invites }: { invites: PendingOrganizerInvite[] }) {
   if (!invites.length) return null;
   return (
-    <section className="animate-rise space-y-2" aria-label="Co-organizer invites">
-      {invites.map((i) => (
-        <div
-          key={i.token}
-          className="flex flex-wrap items-center gap-3 rounded-2xl border border-brass/40 bg-brass/[0.06] px-4 py-3"
-        >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-umber/50 text-brass">
-            <UsersRound className="size-5" />
-          </span>
-          <p className="min-w-0 flex-1 text-sm text-bone">
-            You&apos;re invited to co-organize <span className="font-semibold">{i.tournamentName}</span>
-          </p>
-          <Button size="sm" asChild>
-            <Link href={`/join/${i.token}`}>
-              View invite
-              <ArrowRight />
-            </Link>
-          </Button>
-        </div>
-      ))}
+    <section className="animate-rise space-y-3" aria-label="Co-organizer invites">
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-bone">
+        <UsersRound className="size-5 text-brass" />
+        {invites.length === 1 ? "Co-organizer invite" : `${invites.length} co-organizer invites`}
+      </h2>
+      <div className="grid gap-3">
+        {invites.map((i) => (
+          <article
+            key={i.token}
+            className="flex flex-col gap-4 rounded-2xl border border-brass/40 bg-brass/[0.06] p-4 sm:flex-row sm:flex-wrap sm:items-center"
+          >
+            <p className="min-w-0 flex-1 text-sm text-bone">
+              You&apos;re invited to co-organize{" "}
+              <span className="font-semibold">{i.tournamentName}</span>
+            </p>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[16rem]">
+              <InviteActions
+                compact
+                acceptLabel="Accept"
+                afterAccept={`/organizer/tournaments/${i.tournamentId}`}
+                accept={acceptCoOrganizerInviteAction.bind(null, i.token)}
+                decline={declineCoOrganizerInviteAction.bind(null, i.token)}
+                copy={{
+                  decline: "Decline",
+                  confirmDecline: "Decline this invite? The organizer can invite you again.",
+                  confirmDeclineButton: "Yes, decline",
+                  declined: "Invite declined.",
+                  accepted: "You're on the team. Opening the event…",
+                }}
+              />
+              <Link
+                href={`/join/${i.token}`}
+                className="text-center text-xs text-muted-foreground underline-offset-4 hover:text-bone hover:underline"
+              >
+                View event details
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

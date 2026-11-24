@@ -27,20 +27,23 @@ export function TournamentDangerZone({
 
   function run(kind: ConfirmKind) {
     start(async () => {
-      const res =
-        kind === "cancel"
-          ? await cancelTournamentAction(tournamentId)
-          : await deleteTournamentAction(tournamentId);
+      if (kind === "cancel") {
+        const res = await cancelTournamentAction(tournamentId);
+        if (res.error) {
+          toast.error(res.error);
+          return;
+        }
+        setConfirm(null);
+        toast.success("Event cancelled — it's hidden from public listings.");
+        router.refresh();
+        return;
+      }
+      const res = await deleteTournamentAction(tournamentId);
       if (res.error) {
         toast.error(res.error);
         return;
       }
       setConfirm(null);
-      if (kind === "cancel") {
-        toast.success("Event cancelled — it's hidden from public listings.");
-        router.refresh();
-        return;
-      }
       toast.success("Event deleted.");
       router.push(res.redirect ?? "/organizer/tournaments");
     });

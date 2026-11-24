@@ -25,6 +25,7 @@ async function requireOwner(tournamentId: string) {
 function refresh(tournamentId: string) {
   revalidatePath(`/organizer/tournaments/${tournamentId}/team`);
   revalidatePath("/organizer/tournaments");
+  revalidatePath("/organizer/wallet");
   revalidatePath("/dashboard");
 }
 
@@ -81,5 +82,6 @@ export async function acceptCoOrganizerInviteAction(token: string): Promise<Resu
 export async function declineCoOrganizerInviteAction(token: string): Promise<Result> {
   await declineInvite(token);
   revalidatePath("/dashboard");
+  revalidatePath("/organizer/tournaments");
   return { ok: true };
 }

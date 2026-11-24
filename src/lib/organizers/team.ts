@@ -256,20 +256,30 @@ export async function declineInvite(token: string) {
   return { ok: true as const };
 }
 
-/** Email invites waiting for this person (for their dashboard). */
-export async function pendingOrganizerInvites(email: string | null | undefined) {
+export type PendingOrganizerInvite = {
+  token: string;
+  tournamentId: string;
+  tournamentName: string;
+};
+
+/** Email invites waiting for this person (dashboard + organizer shell). */
+export async function pendingOrganizerInvites(email: string | null | undefined): Promise<PendingOrganizerInvite[]> {
   if (!email) return [];
   const { data, error } = await createAdminClient()
     .from("organizer_invites")
     .select("token, invited_by, tournaments(id, name)")
     .eq("kind", "email")
     .eq("status", "pending")
-    .ilike("email", normalizePartnerEmail(email));
+    .eq("email", normalizePartnerEmail(email));
   if (error) return [];
-  return (data ?? []).map((i) => ({
-    token: i.token as string,
-    tournamentName: (relationOne(i.tournaments as never) as { name: string } | null)?.name ?? "An event",
-  }));
+  return (data ?? []).map((i) => {
+    const t = relationOne(i.tournaments as never) as { id: string; name: string } | null;
+    return {
+      token: i.token as string,
+      tournamentId: t?.id ?? "",
+      tournamentName: t?.name ?? "An event",
+    };
+  }).filter((i) => i.tournamentId);
 }
 
 export async function removeMember(tournamentId: string, userId: string) {

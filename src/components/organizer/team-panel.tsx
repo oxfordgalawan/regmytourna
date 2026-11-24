@@ -279,7 +279,9 @@ function InviteDialog({
         toast.error(res.error);
         return;
       }
-      toast.success(`Invite sent to ${email.trim()}`);
+      toast.success(
+        `Invite sent to ${email.trim()}. They’ll see it on My events and Overview when signed in with that email.`
+      );
       setEmail("");
       router.refresh();
     });
