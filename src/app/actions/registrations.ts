@@ -10,6 +10,7 @@ import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-category-eligibility";
 import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
+import { joinPersonName } from "@/lib/validations/person-name";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
@@ -167,7 +168,8 @@ export async function previewPartnerConflictAction(params: {
 export async function createRegistrationAction(params: {
   tournamentSlug: string;
   divisionId: string;
-  partnerName?: string;
+  partnerFirstName?: string;
+  partnerLastName?: string;
   partnerEmail?: string;
   partnerPhone?: string;
   guestName?: string;
@@ -210,13 +212,14 @@ export async function createRegistrationAction(params: {
     .single();
   if (!division) return { error: "Division not found" };
 
-  const partnerName = params.partnerName?.trim();
+  let partnerName: string | null = null;
+  if (division.format === "doubles") {
+    const joined = joinPersonName(params.partnerFirstName ?? "", params.partnerLastName ?? "");
+    if (!joined.ok) return { error: joined.error === "First name is required." ? "Partner's first name is required." : "Partner's last name is required." };
+    partnerName = joined.value;
+  }
   const partnerEmailRaw = params.partnerEmail?.trim();
   const partnerEmail = partnerEmailRaw ? normalizePartnerEmail(partnerEmailRaw) : "";
-
-  if (division.format === "doubles" && !partnerName) {
-    return { error: "Partner's full name is required for doubles." };
-  }
   let partnerPhone: string | null = null;
   if (division.format === "doubles") {
     const parsed = parsePhilippineMobileRequired(params.partnerPhone ?? "");

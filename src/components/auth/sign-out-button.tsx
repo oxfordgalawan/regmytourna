@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { LogOut, Loader2 } from "lucide-react";
-import { signOutAction } from "@/app/actions/auth";
+import { performSignOut } from "@/lib/auth/perform-sign-out";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,18 +23,10 @@ export function SignOutButton({
   async function handleSignOut() {
     if (busy) return;
     setBusy(true);
-    try {
-      const result = await signOutAction();
-      if (result?.error) {
-        setBusy(false);
-        console.error("[sign-out]", result.error);
-        window.location.assign("/");
-      }
-    } catch (err) {
-      if (isRedirectError(err)) throw err;
+    const result = await performSignOut();
+    if (result.error) {
       setBusy(false);
-      console.error("[sign-out]", err);
-      window.location.assign("/");
+      console.error("[sign-out]", result.error);
     }
   }
 

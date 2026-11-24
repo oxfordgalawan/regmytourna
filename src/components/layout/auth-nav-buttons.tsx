@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,8 +19,8 @@ export function AuthNavButtons({ stacked = false }: { stacked?: boolean }) {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      const user = data.user;
+
+    const applyUser = (user: User | null) => {
       setLoggedIn(Boolean(user));
       if (user && isSuperAdmin(user)) {
         setSuperAdmin(true);
@@ -28,7 +29,17 @@ export function AuthNavButtons({ stacked = false }: { stacked?: boolean }) {
         setSuperAdmin(false);
         setHomeHref("/dashboard");
       }
+    };
+
+    void supabase.auth.getUser().then(({ data }) => applyUser(data.user));
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applyUser(session?.user ?? null);
     });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (loggedIn) {

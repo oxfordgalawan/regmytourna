@@ -7,6 +7,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ClipboardList, Eye, EyeOff, Loader2 } from "lucide-react";
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
+import { splitPersonName } from "@/lib/validations/person-name";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { signUp } from "@/app/actions/auth";
 import { authHref } from "@/lib/auth/safe-next";
@@ -69,11 +70,13 @@ export function SignupForm({
   const [loading, setLoading] = useState(false);
 
   const [place, setPlace] = useState<PlaceSelection | null>(null);
+  const nameDefaults = splitPersonName(defaultName);
 
   const form = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      fullName: defaultName ?? "",
+      firstName: nameDefaults.firstName,
+      lastName: nameDefaults.lastName,
       phone: "",
       email: defaultEmail ?? "",
       password: "",
@@ -89,7 +92,8 @@ export function SignupForm({
   async function onSubmit(values: SignupInput) {
     setLoading(true);
     const fd = new FormData();
-    fd.set("fullName", values.fullName);
+    fd.set("firstName", values.firstName);
+    fd.set("lastName", values.lastName);
     fd.set("phone", values.phone);
     fd.set("email", values.email);
     fd.set("password", values.password);
@@ -182,16 +186,29 @@ export function SignupForm({
       />
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}fullName`}>Full name</Label>
-        <Input
-          id={`${idPrefix}fullName`}
-          autoComplete="name"
-          placeholder="Juan Dela Cruz"
-          aria-invalid={Boolean(errors.fullName)}
-          {...form.register("fullName")}
-        />
-        <FieldError message={errors.fullName?.message} />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}firstName`}>First name</Label>
+          <Input
+            id={`${idPrefix}firstName`}
+            autoComplete="given-name"
+            placeholder="Juan"
+            aria-invalid={Boolean(errors.firstName)}
+            {...form.register("firstName")}
+          />
+          <FieldError message={errors.firstName?.message} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}lastName`}>Last name</Label>
+          <Input
+            id={`${idPrefix}lastName`}
+            autoComplete="family-name"
+            placeholder="Dela Cruz"
+            aria-invalid={Boolean(errors.lastName)}
+            {...form.register("lastName")}
+          />
+          <FieldError message={errors.lastName?.message} />
+        </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}phone`}>Mobile number</Label>

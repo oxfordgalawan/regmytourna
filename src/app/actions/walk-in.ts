@@ -5,6 +5,7 @@ import { promoteFromWaitlist } from "@/lib/registrations/waitlist";
 import { expireSubstitutions } from "@/lib/registrations/team-changes";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { joinPersonName } from "@/lib/validations/person-name";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
@@ -179,13 +180,19 @@ export async function getEntryPaymentStatusAction(registrationId: string): Promi
  */
 export async function addWalkInEntryAction(
   tournamentId: string,
-  input: { divisionId: string; playerName: string; partnerName?: string }
+  input: {
+    divisionId: string;
+    playerFirstName: string;
+    playerLastName: string;
+    partnerFirstName?: string;
+    partnerLastName?: string;
+  }
 ): Promise<Result & { registrationId?: string; feeCents?: number }> {
   try {
     const user = await requireOrganizerForTournament(tournamentId);
-    const playerName = input.playerName.trim();
-    const partnerName = input.partnerName?.trim();
-    if (playerName.length < 2) return { error: "Enter the player's name." };
+    const playerJoined = joinPersonName(input.playerFirstName, input.playerLastName);
+    if (!playerJoined.ok) return { error: playerJoined.error };
+    const playerName = playerJoined.value;
 
     const admin = createAdminClient();
     const [{ data: tournament }, { data: division }] = await Promise.all([
@@ -202,7 +209,12 @@ export async function addWalkInEntryAction(
       return { error: "This category's draw has started — reset the draw to add entries." };
     }
     const doubles = division.format === "doubles";
-    if (doubles && !partnerName) return { error: "Doubles needs a partner's name too." };
+    let partnerName: string | null = null;
+    if (doubles) {
+      const partnerJoined = joinPersonName(input.partnerFirstName ?? "", input.partnerLastName ?? "");
+      if (!partnerJoined.ok) return { error: partnerJoined.error };
+      partnerName = partnerJoined.value;
+    }
 
     const { count } = await admin
       .from("registrations")

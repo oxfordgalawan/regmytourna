@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { Loader2, LogOut, UserRound } from "lucide-react";
-import { signOutAction } from "@/app/actions/auth";
+import { performSignOut } from "@/lib/auth/perform-sign-out";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -54,26 +53,34 @@ export function UserAccountMenu({ size = "md" }: { size?: "sm" | "md" }) {
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) return;
     void load();
     const onUpdate = () => void load();
     window.addEventListener(PROFILE_UPDATED_EVENT, onUpdate);
-    return () => window.removeEventListener(PROFILE_UPDATED_EVENT, onUpdate);
+
+    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setAccount(null);
+        return;
+      }
+      void load();
+    });
+
+    return () => {
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onUpdate);
+      subscription.unsubscribe();
+    };
   }, [load]);
 
   async function signOut() {
     if (signingOut || !isSupabaseConfigured()) return;
     setSigningOut(true);
-    try {
-      const result = await signOutAction();
-      if (result?.error) {
-        console.error("[sign-out]", result.error);
-        window.location.assign("/");
-      }
-    } catch (err) {
-      if (isRedirectError(err)) throw err;
-      console.error("[sign-out]", err);
-      window.location.assign("/");
-    } finally {
+    const result = await performSignOut();
+    if (result.error) {
+      console.error("[sign-out]", result.error);
       setSigningOut(false);
     }
   }

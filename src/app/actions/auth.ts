@@ -12,6 +12,7 @@ import { findInviteByToken, linkPartner } from "@/lib/registrations/partner-invi
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { acceptSubstitution, findSubstitution } from "@/lib/registrations/team-changes";
 import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
+import { joinPersonName } from "@/lib/validations/person-name";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -39,7 +40,12 @@ export async function signUp(formData: FormData) {
   }
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const fullName = String(formData.get("fullName") ?? "");
+  const nameJoined = joinPersonName(
+    String(formData.get("firstName") ?? ""),
+    String(formData.get("lastName") ?? "")
+  );
+  if (!nameJoined.ok) return { error: nameJoined.error };
+  const fullName = nameJoined.value;
   const phoneRaw = String(formData.get("phone") ?? "");
   const phoneParsed = parsePhilippineMobileRequired(phoneRaw);
   if (!phoneParsed.ok) return { error: phoneParsed.error };
@@ -210,5 +216,5 @@ export async function signOutAction() {
   const supabase = await createClient();
   const { error } = await supabase.auth.signOut();
   if (error) return { error: error.message };
-  redirect("/");
+  return {};
 }

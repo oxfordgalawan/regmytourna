@@ -237,8 +237,10 @@ export function AddWalkInDialog({
 }) {
   const router = useRouter();
   const [divisionId, setDivisionId] = useState("");
-  const [player, setPlayer] = useState("");
-  const [partner, setPartner] = useState("");
+  const [playerFirst, setPlayerFirst] = useState("");
+  const [playerLast, setPlayerLast] = useState("");
+  const [partnerFirst, setPartnerFirst] = useState("");
+  const [partnerLast, setPartnerLast] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const category = categories.find((c) => c.id === divisionId);
   const doubles = category?.format === "doubles";
@@ -246,12 +248,22 @@ export function AddWalkInDialog({
   async function add(pay: "cash" | "qr" | "later") {
     if (!category) return toast.error("Choose a category.");
     setBusy(pay);
-    const res = await addWalkInEntryAction(tournamentId, { divisionId, playerName: player, partnerName: partner });
+    const res = await addWalkInEntryAction(tournamentId, {
+      divisionId,
+      playerFirstName: playerFirst,
+      playerLastName: playerLast,
+      partnerFirstName: doubles ? partnerFirst : undefined,
+      partnerLastName: doubles ? partnerLast : undefined,
+    });
     setBusy(null);
     if (res.error || !res.registrationId) return toast.error(res.error ?? "Couldn't add the entry");
-    const name = doubles && partner.trim() ? `${player.trim()} / ${partner.trim()}` : player.trim();
-    setPlayer("");
-    setPartner("");
+    const p1 = [playerFirst.trim(), playerLast.trim()].filter(Boolean).join(" ");
+    const p2 = [partnerFirst.trim(), partnerLast.trim()].filter(Boolean).join(" ");
+    const name = doubles && p2 ? `${p1} / ${p2}` : p1;
+    setPlayerFirst("");
+    setPlayerLast("");
+    setPartnerFirst("");
+    setPartnerLast("");
     router.refresh();
     onClose();
     if (pay !== "later" && (res.feeCents ?? 0) > 0) {
@@ -307,30 +319,86 @@ export function AddWalkInDialog({
               })}
             </div>
           </div>
-          <div className={cn("grid gap-3", doubles && "sm:grid-cols-2")}>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="walkin-player">{doubles ? "Player 1" : "Player"}</Label>
-              <Input id="walkin-player" value={player} onChange={(e) => setPlayer(e.target.value)} placeholder="Full name" autoComplete="off" />
+              <Label className="text-sm text-bone">{doubles ? "Player 1" : "Player"}</Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  id="walkin-player-first"
+                  value={playerFirst}
+                  onChange={(e) => setPlayerFirst(e.target.value)}
+                  placeholder="First name"
+                  autoComplete="off"
+                />
+                <Input
+                  id="walkin-player-last"
+                  value={playerLast}
+                  onChange={(e) => setPlayerLast(e.target.value)}
+                  placeholder="Last name"
+                  autoComplete="off"
+                />
+              </div>
             </div>
             {doubles && (
-              <div className="space-y-2 animate-in fade-in-0">
-                <Label htmlFor="walkin-partner">Player 2</Label>
-                <Input id="walkin-partner" value={partner} onChange={(e) => setPartner(e.target.value)} placeholder="Partner's full name" autoComplete="off" />
+              <div className="animate-in fade-in-0 space-y-2">
+                <Label className="text-sm text-bone">Player 2</Label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    id="walkin-partner-first"
+                    value={partnerFirst}
+                    onChange={(e) => setPartnerFirst(e.target.value)}
+                    placeholder="First name"
+                    autoComplete="off"
+                  />
+                  <Input
+                    id="walkin-partner-last"
+                    value={partnerLast}
+                    onChange={(e) => setPartnerLast(e.target.value)}
+                    placeholder="Last name"
+                    autoComplete="off"
+                  />
+                </div>
               </div>
             )}
           </div>
         </div>
 
         <DialogFooter className="flex-wrap">
-          <Button variant="ghost" onClick={() => add("later")} disabled={busy !== null || !player.trim()}>
+          <Button
+            variant="ghost"
+            onClick={() => add("later")}
+            disabled={
+              busy !== null ||
+              !playerFirst.trim() ||
+              !playerLast.trim() ||
+              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
+            }
+          >
             {busy === "later" ? <Loader2 className="animate-spin" /> : <UserPlus />}
             Add, pay later
           </Button>
-          <Button variant="outline" onClick={() => add("qr")} disabled={busy !== null || !player.trim()}>
+          <Button
+            variant="outline"
+            onClick={() => add("qr")}
+            disabled={
+              busy !== null ||
+              !playerFirst.trim() ||
+              !playerLast.trim() ||
+              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
+            }
+          >
             {busy === "qr" ? <Loader2 className="animate-spin" /> : <QrCode />}
             Add & show QR
           </Button>
-          <Button onClick={() => add("cash")} disabled={busy !== null || !player.trim()}>
+          <Button
+            onClick={() => add("cash")}
+            disabled={
+              busy !== null ||
+              !playerFirst.trim() ||
+              !playerLast.trim() ||
+              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
+            }
+          >
             {busy === "cash" ? <Loader2 className="animate-spin" /> : <Banknote />}
             Add & take cash
           </Button>

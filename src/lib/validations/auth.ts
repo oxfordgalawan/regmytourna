@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { philippineMobileSchema } from "@/lib/validations/phone";
+import { personNameFieldsSchema } from "@/lib/validations/person-name";
 
 export const loginSchema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -9,7 +10,7 @@ export const loginSchema = z.object({
 
 export const signupSchema = z
   .object({
-    fullName: z.string().min(2, "Enter your full name"),
+    ...personNameFieldsSchema.shape,
     phone: philippineMobileSchema,
     email: z.string().email("Enter a valid email address"),
     password: z

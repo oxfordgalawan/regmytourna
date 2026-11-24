@@ -67,7 +67,8 @@ export function RegisterSection({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [divisionId, setDivisionId] = useState(divisions[0]?.id ?? "");
-  const [partnerName, setPartnerName] = useState("");
+  const [partnerFirstName, setPartnerFirstName] = useState("");
+  const [partnerLastName, setPartnerLastName] = useState("");
   const [partnerPhone, setPartnerPhone] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -214,7 +215,8 @@ export function RegisterSection({
     const result = await createRegistrationAction({
       tournamentSlug: slug,
       divisionId,
-      partnerName: isDoubles ? partnerName.trim() : undefined,
+      partnerFirstName: isDoubles ? partnerFirstName.trim() : undefined,
+      partnerLastName: isDoubles ? partnerLastName.trim() : undefined,
       partnerPhone: isDoubles ? partnerPhone.trim() : undefined,
       partnerEmail: isDoubles && partnerEmail.trim() ? partnerEmail.trim() : undefined,
       payAtVenue: venue,
@@ -280,8 +282,8 @@ export function RegisterSection({
 
   async function handleRegister() {
     if (!divisionId) return;
-    if (isDoubles && !partnerName.trim()) {
-      showError("Partner's full name is required for doubles.", { title: "Couldn't register" });
+    if (isDoubles && (!partnerFirstName.trim() || !partnerLastName.trim())) {
+      showError("Partner's first and last name are required for doubles.", { title: "Couldn't register" });
       return;
     }
     if (isDoubles) {
@@ -499,18 +501,33 @@ export function RegisterSection({
       {isDoubles && (
         <fieldset className="space-y-4 animate-in fade-in-0 slide-in-from-top-1">
           <legend className="eyebrow mb-1">2 · Partner details</legend>
-          <div className="space-y-2">
-            <Label htmlFor="partner-name" className="text-sm font-medium text-bone">
-              Partner&apos;s full name
-            </Label>
-            <Input
-              id="partner-name"
-              value={partnerName}
-              onChange={(e) => setPartnerName(e.target.value)}
-              placeholder="Partner's full name"
-              autoComplete="name"
-              required
-            />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="partner-first-name" className="text-sm font-medium text-bone">
+                Partner&apos;s first name
+              </Label>
+              <Input
+                id="partner-first-name"
+                value={partnerFirstName}
+                onChange={(e) => setPartnerFirstName(e.target.value)}
+                placeholder="First name"
+                autoComplete="given-name"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="partner-last-name" className="text-sm font-medium text-bone">
+                Partner&apos;s last name
+              </Label>
+              <Input
+                id="partner-last-name"
+                value={partnerLastName}
+                onChange={(e) => setPartnerLastName(e.target.value)}
+                placeholder="Last name"
+                autoComplete="family-name"
+                required
+              />
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="partner-phone" className="text-sm font-medium text-bone">
@@ -624,7 +641,8 @@ export function RegisterSection({
             !divisionId ||
             Boolean(entryForDivision) ||
             Boolean(crossCategoryBlock) ||
-            (isDoubles && (!partnerName.trim() || !normalizePhilippineMobile(partnerPhone)))
+            (isDoubles &&
+              (!partnerFirstName.trim() || !partnerLastName.trim() || !normalizePhilippineMobile(partnerPhone)))
           }
         >
           {loading ? (

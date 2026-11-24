@@ -5,6 +5,7 @@ import { relationOne } from "@/lib/supabase/relations";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
+import { assertTwoPartPersonName } from "@/lib/validations/person-name";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { promoteFromWaitlist } from "@/lib/registrations/waitlist";
 import { sendRegistrationEmail } from "@/lib/email/send";
@@ -278,11 +279,12 @@ export async function changePartner(
   next: { name: string; email: string; phone: string }
 ): Promise<Result> {
   if (!team.doubles) return { error: "This is a singles entry." };
-  const name = next.name.trim().replace(/\s+/g, " ");
+  const nameCheck = assertTwoPartPersonName(next.name);
+  if (!nameCheck.ok) return { error: nameCheck.error };
+  const name = nameCheck.value;
   const email = next.email.trim() ? normalizePartnerEmail(next.email) : "";
   const phoneParsed = parsePhilippineMobileRequired(next.phone);
   if (!phoneParsed.ok) return { error: phoneParsed.error };
-  if (name.length < 2) return { error: "Enter your partner's full name." };
   if (email) {
     const problem = await validateNewPlayerEmail(team, email, captainUserId, captainEmail);
     if (problem) return { error: problem };
@@ -326,9 +328,10 @@ export async function createSubstitution(
   sub: { name: string; email: string }
 ): Promise<Result> {
   if (team.pending) return { error: "You already have a substitute invite waiting. Withdraw it first to ask someone else." };
-  const name = sub.name.trim().replace(/\s+/g, " ");
+  const nameCheck = assertTwoPartPersonName(sub.name);
+  if (!nameCheck.ok) return { error: nameCheck.error };
+  const name = nameCheck.value;
   const email = normalizePartnerEmail(sub.email);
-  if (name.length < 2) return { error: "Enter their full name." };
   const problem = await validateNewPlayerEmail(team, email, requester.id, requester.email);
   if (problem) return { error: problem };
 

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import { normalizePhilippineMobile } from "@/lib/validations/phone";
+import { joinPersonName } from "@/lib/validations/person-name";
 import {
   cancelOurEntryAction,
   changeMyPartnerAction,
@@ -341,12 +342,14 @@ function PersonForm({
   phoneRequired?: boolean;
   onSubmit: (p: { name: string; email: string; phone: string }) => void;
 }) {
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const phoneOk = !phoneRequired || Boolean(normalizePhilippineMobile(phone));
+  const nameJoined = joinPersonName(firstName, lastName);
   const ready =
-    name.trim().length >= 2 &&
+    nameJoined.ok &&
     phoneOk &&
     (emailOptional || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   return (
@@ -354,13 +357,32 @@ function PersonForm({
       className="space-y-4"
       onSubmit={(ev) => {
         ev.preventDefault();
-        if (ready) onSubmit({ name: name.trim(), email: email.trim(), phone: phone.trim() });
+        if (ready && nameJoined.ok) {
+          onSubmit({ name: nameJoined.value, email: email.trim(), phone: phone.trim() });
+        }
       }}
     >
       <p className="text-sm leading-relaxed text-bone/75">{intro}</p>
-      <div className="space-y-2">
-        <Label htmlFor="mp-name">Full name</Label>
-        <Input id="mp-name" value={name} onChange={(ev) => setName(ev.target.value)} autoComplete="off" autoFocus />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="mp-first-name">First name</Label>
+          <Input
+            id="mp-first-name"
+            value={firstName}
+            onChange={(ev) => setFirstName(ev.target.value)}
+            autoComplete="given-name"
+            autoFocus
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="mp-last-name">Last name</Label>
+          <Input
+            id="mp-last-name"
+            value={lastName}
+            onChange={(ev) => setLastName(ev.target.value)}
+            autoComplete="family-name"
+          />
+        </div>
       </div>
       {phoneRequired && (
         <div className="space-y-2">
