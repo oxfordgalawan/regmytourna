@@ -5,6 +5,7 @@ import { Clock, Info, Loader2, Lock, UserRound } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import {
   createRegistrationAction,
+  previewCrossCategoryEligibilityAction,
   previewPartnerConflictAction,
 } from "@/app/actions/registrations";
 import { enableRoleAction, needsPlayerRoleForRegistrationAction } from "@/app/actions/role";
@@ -55,6 +56,7 @@ export function DivisionRegisterForm({
   capacity,
   taken = 0,
   blockNewRegistration,
+  crossCategoryBlock,
   onComplete,
 }: {
   slug: string;
@@ -68,6 +70,7 @@ export function DivisionRegisterForm({
   capacity?: number | null;
   taken?: number;
   blockNewRegistration?: boolean;
+  crossCategoryBlock?: string | null;
   onComplete: (result: DivisionRegisterComplete) => void;
 }) {
   const [partnerName, setPartnerName] = useState("");
@@ -223,6 +226,14 @@ export function DivisionRegisterForm({
     );
   }
 
+  if (crossCategoryBlock) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{crossCategoryBlock}</AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -328,7 +339,9 @@ export function DivisionRegisterForm({
           size="lg"
           className="mt-4 w-full"
           onClick={handleRegister}
-          disabled={loading || enablingPlayer || closed || (isDoubles && !partnerName.trim())}
+          disabled={
+            loading || enablingPlayer || closed || Boolean(crossCategoryBlock) || (isDoubles && !partnerName.trim())
+          }
         >
           {loading ? (
             <>

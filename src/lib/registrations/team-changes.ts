@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-category-eligibility";
 import { relationOne } from "@/lib/supabase/relations";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
@@ -397,6 +398,11 @@ export async function acceptSubstitution(token: string, userId: string): Promise
     .neq("id", team.id);
   if ((others ?? []).some((r) => ((r.registration_players ?? []) as Array<{ user_id: string | null }>).some((p) => p.user_id === userId))) {
     return { error: `You're already on another team in ${team.event.categoryName}.` };
+  }
+
+  if (team.doubles) {
+    const cross = await checkCrossCategoryEligibility(userId, team.tournamentId, team.divisionId);
+    if (!cross.ok) return { error: cross.error };
   }
 
   const { data: profile } = await admin.from("profiles").select("full_name").eq("id", userId).maybeSingle();

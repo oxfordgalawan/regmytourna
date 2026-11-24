@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-category-eligibility";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
@@ -119,6 +120,24 @@ export async function cancelMyRegistrationAction(registrationId: string) {
   return { ok: true as const };
 }
 
+export async function previewCrossCategoryEligibilityAction(params: {
+  tournamentSlug: string;
+  divisionId: string;
+}) {
+  const user = await requireUser();
+  const supabase = await createClient();
+  const { data: tournament } = await supabase
+    .from("tournaments")
+    .select("id")
+    .eq("slug", params.tournamentSlug)
+    .maybeSingle();
+  if (!tournament) return { error: "Tournament not found" as const };
+
+  const result = await checkCrossCategoryEligibility(user.id, tournament.id, params.divisionId);
+  if (!result.ok) return { allowed: false as const, error: result.error, existing: result.existing };
+  return { allowed: true as const, existing: result.existing };
+}
+
 export async function previewPartnerConflictAction(params: {
   tournamentSlug: string;
   divisionId: string;
@@ -201,6 +220,11 @@ export async function createRegistrationAction(params: {
   }
   if (partnerEmail && user.email && normalizePartnerEmail(user.email) === partnerEmail) {
     return { error: "Partner email can\u2019t be your own address. Leave it blank if your partner doesn\u2019t use email." };
+  }
+
+  if (division.format === "doubles") {
+    const cross = await checkCrossCategoryEligibility(user.id, tournament.id, division.id);
+    if (!cross.ok) return { error: cross.error };
   }
 
   let warnings: string[] = [];

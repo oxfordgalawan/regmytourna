@@ -10,6 +10,7 @@ import { getPublicDivisionRosterAction } from "@/app/actions/public-roster";
 import {
   getMyRegistrationPaymentStatusAction,
   listMyRegistrationsForTournamentAction,
+  previewCrossCategoryEligibilityAction,
 } from "@/app/actions/registrations";
 import {
   DivisionRegisterForm,
@@ -158,6 +159,7 @@ export function DivisionRosterButton({
     qrExpiresAt?: string | null;
   } | null>(null);
   const [payLoading, setPayLoading] = useState(false);
+  const [crossCategoryBlock, setCrossCategoryBlock] = useState<string | null>(null);
   const [successKind, setSuccessKind] = useState<"waitlist" | "venue" | "free" | "paid" | null>(null);
   const [waitlistPos, setWaitlistPos] = useState<number | null>(null);
   const q = useDeferredValue(query.trim().toLowerCase());
@@ -166,10 +168,20 @@ export function DivisionRosterButton({
   async function load(assumeSignedIn = false) {
     setLoading(true);
     setError(null);
-    const [res, elig] = await Promise.all([
+    const crossPreview =
+      isSignedIn || guestSignedIn || assumeSignedIn
+        ? previewCrossCategoryEligibilityAction({ tournamentSlug, divisionId })
+        : Promise.resolve({ allowed: true as const, existing: [] as const });
+    const [res, elig, cross] = await Promise.all([
       getPublicDivisionRosterAction(tournamentSlug, divisionId),
       getMyPetitionEligibilityAction(tournamentSlug, divisionId),
+      crossPreview,
     ]);
+    if ("allowed" in cross && !cross.allowed && "error" in cross && cross.error) {
+      setCrossCategoryBlock(cross.error);
+    } else {
+      setCrossCategoryBlock(null);
+    }
     if (isSignedIn || guestSignedIn || assumeSignedIn) {
       const mine = await listMyRegistrationsForTournamentAction(tournamentSlug);
       const e = mine.entries?.find((x) => x.divisionId === divisionId);
@@ -367,6 +379,10 @@ export function DivisionRosterButton({
       return;
     }
     if (invitePending && elig?.inviteToken) return;
+    if (crossCategoryBlock) {
+      showError(crossCategoryBlock, { title: "Can't register here" });
+      return;
+    }
     if (alreadyEntered) {
       const regId = elig?.registrationId ?? myEntry?.id;
       if (needsUnpaidPay && regId) {
@@ -498,6 +514,7 @@ export function DivisionRosterButton({
                 capacity={capacity ?? roster?.capacity ?? null}
                 taken={roster?.taken ?? taken}
                 blockNewRegistration={Boolean(alreadyEntered && !needsUnpaidPay)}
+                crossCategoryBlock={crossCategoryBlock}
                 onComplete={handleRegisterComplete}
               />
             )}

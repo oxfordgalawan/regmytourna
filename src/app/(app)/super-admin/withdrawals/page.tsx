@@ -52,7 +52,9 @@ export default async function SuperAdminWithdrawalsPage({
   const admin = createAdminClient();
   let query = admin
     .from("withdrawal_requests")
-    .select("id, user_id, amount_cents, status, payout_snapshot, admin_note, created_at, reviewed_at, profiles(full_name, avatar_url)")
+    .select(
+      "id, user_id, amount_cents, status, payout_snapshot, admin_note, created_at, reviewed_at, profiles!withdrawal_requests_user_id_fkey(full_name, avatar_url)"
+    )
     .order("created_at", { ascending: status === "pending" })
     .limit(100);
   if (status !== "all") query = query.eq("status", status as "pending" | "approved" | "rejected");

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { relationOne } from "@/lib/supabase/relations";
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-category-eligibility";
 import { sendPartnerDeclinedEmail } from "@/lib/email/send";
 
 /**
@@ -165,6 +166,9 @@ export async function linkPartner(invite: PartnerInvite, userId: string): Promis
       ((r.registration_players ?? []) as Array<{ user_id: string | null }>).some((p) => p.user_id === userId)
   );
   if (clash) return { error: `You're already on another team in ${invite.categoryName}.` };
+
+  const cross = await checkCrossCategoryEligibility(userId, invite.tournament.id, invite.divisionId);
+  if (!cross.ok) return { error: cross.error };
 
   const { data: profile } = await admin.from("profiles").select("full_name").eq("id", userId).maybeSingle();
   const { error } = await admin

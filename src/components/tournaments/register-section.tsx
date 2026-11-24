@@ -9,6 +9,7 @@ import {
   createRegistrationAction,
   listMyRegistrationsForTournamentAction,
   previewPartnerConflictAction,
+  previewCrossCategoryEligibilityAction,
 } from "@/app/actions/registrations";
 import Link from "next/link";
 import { enableRoleAction, needsPlayerRoleForRegistrationAction } from "@/app/actions/role";
@@ -75,6 +76,7 @@ export function RegisterSection({
   const [playerRoleReady, setPlayerRoleReady] = useState(false);
   const [playerGateOpen, setPlayerGateOpen] = useState(false);
   const [enablingPlayer, startEnablePlayer] = useTransition();
+  const [crossCategoryBlock, setCrossCategoryBlock] = useState<string | null>(null);
 
   useEffect(() => {
     void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
@@ -84,6 +86,18 @@ export function RegisterSection({
       if (!needs) setPlayerRoleReady(true);
     });
   }, [slug]);
+
+  useEffect(() => {
+    const div = divisions.find((d) => d.id === divisionId);
+    if (!divisionId || div?.format !== "doubles") {
+      setCrossCategoryBlock(null);
+      return;
+    }
+    void previewCrossCategoryEligibilityAction({ tournamentSlug: slug, divisionId }).then((res) => {
+      if ("allowed" in res && !res.allowed && "error" in res && res.error) setCrossCategoryBlock(res.error);
+      else setCrossCategoryBlock(null);
+    });
+  }, [slug, divisionId, divisions]);
 
   useEffect(() => {
     const fromQuery = searchParams.get("division");
@@ -230,6 +244,14 @@ export function RegisterSection({
 
   return (
     <div className="space-y-5">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        You may enter one Men&apos;s, Women&apos;s, or Open doubles category per event, plus Mixed Doubles.
+      </p>
+      {crossCategoryBlock && (
+        <Alert variant="destructive">
+          <AlertDescription>{crossCategoryBlock}</AlertDescription>
+        </Alert>
+      )}
       {partnerWarnings.length > 0 && (
         <Alert>
           <AlertDescription>
@@ -455,6 +477,7 @@ export function RegisterSection({
             closed ||
             !divisionId ||
             Boolean(entryForDivision) ||
+            Boolean(crossCategoryBlock) ||
             (isDoubles && !partnerName.trim())
           }
         >
