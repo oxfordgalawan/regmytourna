@@ -141,6 +141,21 @@ ${p("If this is a mistake, contact them or the organizer.", true)}`,
   return { subject: `Team update — ${x.event.tournamentName}`, html };
 }
 
+/** To players when the organizer removes a paid entry from the event. */
+export function organizerRemovedEntryEmail(x: { event: EventInfo; organizerName: string }) {
+  const html = layout(
+    `${h1("Your entry was removed")}
+${p(`The organizer (${b(x.organizerName)}) removed your team from this event. Your slot was released.`)}
+${eventBox(x.event)}
+${p(
+  "If you already paid, contact the organizer to arrange your refund. Entry fees are not refunded through RegMyTourna.",
+  true
+)}`,
+    FOOTER
+  );
+  return { subject: `Entry removed — ${x.event.tournamentName}`, html };
+}
+
 /** To the other player when the entry was cancelled. */
 export function entryCancelledEmail(x: { event: EventInfo; byName: string }) {
   const html = layout(

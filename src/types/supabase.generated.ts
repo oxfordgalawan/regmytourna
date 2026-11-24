@@ -764,6 +764,7 @@ export type Database = {
           created_at: string
           guest_email: string | null
           guest_name: string | null
+          guest_phone: string | null
           id: string
           is_primary: boolean
           partner_invite_status:
@@ -777,6 +778,7 @@ export type Database = {
           created_at?: string
           guest_email?: string | null
           guest_name?: string | null
+          guest_phone?: string | null
           id?: string
           is_primary?: boolean
           partner_invite_status?:
@@ -790,6 +792,7 @@ export type Database = {
           created_at?: string
           guest_email?: string | null
           guest_name?: string | null
+          guest_phone?: string | null
           id?: string
           is_primary?: boolean
           partner_invite_status?:
@@ -1382,6 +1385,16 @@ export type Database = {
           p_organizer_net_cents: number
           p_payment_id: string
           p_platform_fee_cents: number
+          p_registration_id: string
+          p_tournament_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      reverse_payment_on_entry_removal: {
+        Args: {
+          p_description?: string
+          p_payment_id: string
           p_registration_id: string
           p_tournament_id: string
           p_user_id: string

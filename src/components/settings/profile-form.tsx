@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import type { Profile } from "@/types/database";
 import { PlaceSearchCombobox, type PlaceSelection } from "@/components/places/place-search-combobox";
 import { AvatarUpload } from "@/components/settings/avatar-upload";
+import { normalizePhilippineMobile } from "@/lib/validations/phone";
 
 export function ProfileForm({
   userId,
@@ -43,10 +44,15 @@ export function ProfileForm({
       toast.error("Couldn't save your profile. Please sign in again.");
       return;
     }
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone && !normalizePhilippineMobile(trimmedPhone)) {
+      toast.error("Use 11 digits starting with 09.");
+      return;
+    }
     setSaving(true);
     const result = await updateProfile({
       fullName,
-      phone: phone || null,
+      phone: trimmedPhone || null,
       placePsgcCode: place?.psgcCode ?? null,
       placeLabel: place?.label ?? null,
     });
@@ -93,10 +99,12 @@ export function ProfileForm({
           id="phone"
           type="tel"
           autoComplete="tel"
-          placeholder="+63 9XX XXX XXXX"
+          placeholder="09XXXXXXXXX"
+          maxLength={11}
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+        <p className="text-xs text-muted-foreground">Optional for older accounts. If set, use 11 digits starting with 09.</p>
       </div>
       <div className="sm:col-span-2">
         <PlaceSearchCombobox

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/require-user";
 import { createClient } from "@/lib/supabase/server";
 import type { AccountType } from "@/types/database";
+import { normalizePhilippineMobile } from "@/lib/validations/phone";
 
 export async function updateProfile(input: {
   fullName: string;
@@ -19,7 +20,14 @@ export async function updateProfile(input: {
     return { error: "Full name is required." };
   }
 
-  const phone = input.phone?.trim() || null;
+  const phoneRaw = input.phone?.trim() ?? "";
+  let phone: string | null = null;
+  if (phoneRaw) {
+    phone = normalizePhilippineMobile(phoneRaw);
+    if (!phone) {
+      return { error: "Use 11 digits starting with 09." };
+    }
+  }
 
   let placePsgcCode: string | null = null;
   let placeLabel: string | null = null;

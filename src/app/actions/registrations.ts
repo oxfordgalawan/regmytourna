@@ -9,6 +9,7 @@ import { isPayMongoConfigured } from "@/lib/env/server";
 import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-category-eligibility";
+import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
@@ -168,6 +169,7 @@ export async function createRegistrationAction(params: {
   divisionId: string;
   partnerName?: string;
   partnerEmail?: string;
+  partnerPhone?: string;
   guestName?: string;
   /** player chose to pay in cash/QR at the venue (only if the tournament allows it) */
   payAtVenue?: boolean;
@@ -214,6 +216,12 @@ export async function createRegistrationAction(params: {
 
   if (division.format === "doubles" && !partnerName) {
     return { error: "Partner's full name is required for doubles." };
+  }
+  let partnerPhone: string | null = null;
+  if (division.format === "doubles") {
+    const parsed = parsePhilippineMobileRequired(params.partnerPhone ?? "");
+    if (!parsed.ok) return { error: parsed.error };
+    partnerPhone = parsed.value;
   }
   if (partnerEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(partnerEmailRaw)) {
     return { error: "Enter a valid partner email or leave it blank." };
@@ -335,6 +343,7 @@ export async function createRegistrationAction(params: {
     const { error: partnerPlayerError } = await admin.from("registration_players").insert({
       registration_id: registration.id,
       guest_name: partnerName,
+      guest_phone: partnerPhone,
       ...(partnerEmail
         ? {
             guest_email: partnerEmail,

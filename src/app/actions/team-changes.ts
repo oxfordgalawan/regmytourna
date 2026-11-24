@@ -33,7 +33,10 @@ async function guarded(registrationId: string) {
 }
 
 /** Captain: change (or add) the partner right away. */
-export async function changeMyPartnerAction(registrationId: string, partner: { name: string; email: string }): Promise<Result> {
+export async function changeMyPartnerAction(
+  registrationId: string,
+  partner: { name: string; email: string; phone: string }
+): Promise<Result> {
   const { user, g } = await guarded(registrationId);
   if (!g.ok) return { error: g.error };
   if (!isCaptain(g.team, user.id)) return { error: "Only the team captain can change partners." };

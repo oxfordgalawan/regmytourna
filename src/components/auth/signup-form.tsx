@@ -74,6 +74,7 @@ export function SignupForm({
     resolver: zodResolver(signupSchema),
     defaultValues: {
       fullName: defaultName ?? "",
+      phone: "",
       email: defaultEmail ?? "",
       password: "",
       confirmPassword: "",
@@ -89,6 +90,7 @@ export function SignupForm({
     setLoading(true);
     const fd = new FormData();
     fd.set("fullName", values.fullName);
+    fd.set("phone", values.phone);
     fd.set("email", values.email);
     fd.set("password", values.password);
     fd.set("accountType", values.accountType);
@@ -190,6 +192,21 @@ export function SignupForm({
           {...form.register("fullName")}
         />
         <FieldError message={errors.fullName?.message} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}phone`}>Mobile number</Label>
+        <Input
+          id={`${idPrefix}phone`}
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel"
+          placeholder="09XXXXXXXXX"
+          maxLength={11}
+          aria-invalid={Boolean(errors.phone)}
+          {...form.register("phone")}
+        />
+        <p className="text-xs text-muted-foreground">11 digits, starts with 09.</p>
+        <FieldError message={errors.phone?.message} />
       </div>
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}email`}>Email</Label>

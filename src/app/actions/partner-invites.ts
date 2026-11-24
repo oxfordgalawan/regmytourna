@@ -97,7 +97,7 @@ export async function resendPartnerInviteAction(registrationId: string): Promise
 /** Kept for older callers — the Manage entry sheet uses changeMyPartnerAction. */
 export async function changePartnerAction(
   registrationId: string,
-  partner: { name: string; email: string }
+  partner: { name: string; email: string; phone: string }
 ): Promise<Result> {
   const entry = await ownEntry(registrationId);
   if ("error" in entry) return { error: entry.error };

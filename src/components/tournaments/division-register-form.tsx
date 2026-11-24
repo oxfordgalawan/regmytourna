@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { showError } from "@/lib/ui/error-dialog";
+import { normalizePhilippineMobile, parsePhilippineMobileRequired } from "@/lib/validations/phone";
 
 export type DivisionRegisterComplete =
   | {
@@ -74,6 +75,7 @@ export function DivisionRegisterForm({
   onComplete: (result: DivisionRegisterComplete) => void;
 }) {
   const [partnerName, setPartnerName] = useState("");
+  const [partnerPhone, setPartnerPhone] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [partnerWarnings, setPartnerWarnings] = useState<string[]>([]);
@@ -127,6 +129,7 @@ export function DivisionRegisterForm({
       tournamentSlug: slug,
       divisionId,
       partnerName: isDoubles ? partnerName.trim() : undefined,
+      partnerPhone: isDoubles ? partnerPhone.trim() : undefined,
       partnerEmail: isDoubles && partnerEmail.trim() ? partnerEmail.trim() : undefined,
       payAtVenue: venue,
     });
@@ -197,6 +200,13 @@ export function DivisionRegisterForm({
     if (isDoubles && !partnerName.trim()) {
       showError("Partner's full name is required for doubles.", { title: "Couldn't register" });
       return;
+    }
+    if (isDoubles) {
+      const phoneCheck = parsePhilippineMobileRequired(partnerPhone);
+      if (!phoneCheck.ok) {
+        showError(phoneCheck.error, { title: "Couldn't register" });
+        return;
+      }
     }
     if (needsPlayerRole && !playerRoleReady) {
       setPlayerGateOpen(true);
@@ -271,6 +281,23 @@ export function DivisionRegisterForm({
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="drawer-partner-phone" className="text-sm font-medium text-bone">
+              Partner&apos;s mobile number
+            </Label>
+            <Input
+              id="drawer-partner-phone"
+              type="tel"
+              inputMode="numeric"
+              value={partnerPhone}
+              onChange={(e) => setPartnerPhone(e.target.value)}
+              placeholder="09XXXXXXXXX"
+              maxLength={11}
+              autoComplete="tel"
+              required
+            />
+            <p className="text-xs text-muted-foreground">11 digits, starts with 09.</p>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="drawer-partner-email" className="eyebrow">
               Partner&apos;s email <span className="normal-case tracking-normal">(optional)</span>
             </Label>
@@ -340,7 +367,11 @@ export function DivisionRegisterForm({
           className="mt-4 w-full"
           onClick={handleRegister}
           disabled={
-            loading || enablingPlayer || closed || Boolean(crossCategoryBlock) || (isDoubles && !partnerName.trim())
+            loading ||
+            enablingPlayer ||
+            closed ||
+            Boolean(crossCategoryBlock) ||
+            (isDoubles && (!partnerName.trim() || !normalizePhilippineMobile(partnerPhone)))
           }
         >
           {loading ? (

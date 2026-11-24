@@ -22,6 +22,7 @@ import {
 import { seedingLayoutSchema, toChallongeTournament } from "@/lib/bracket-format";
 import { insertMatches, loadDivisionContext, nextMatchNumber, setDivisionState, writePatches } from "@/lib/draw/server";
 import { advanceAfterResult, refreshDivisionState, revalidateDraw } from "@/lib/draw/progress";
+import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -297,19 +298,12 @@ export async function withdrawEntryAction(registrationId: string, withdraw = tru
     if (!withdraw && ctx.division.bracket_state !== "not_started") {
       return { error: "Entries can only be reinstated before the bracket starts." };
     }
-    await admin
-      .from("registrations")
-      .update({ withdrawn_at: withdraw ? new Date().toISOString() : null })
-      .eq("id", registrationId);
-
-    if (withdraw && ctx.division.bracket_state !== "not_started") {
-      ctx.withdrawn.add(registrationId);
-      const patches = resolvePending(ctx.matches, { names: ctx.names, withdrawn: ctx.withdrawn });
-      await writePatches(patches);
-      const byId = new Map(ctx.matches.map((m) => [m.id, m]));
-      for (const p of patches) Object.assign(byId.get(p.id)!, p);
-      await refreshDivisionState(ctx, [...byId.values()]);
+    if (withdraw) {
+      const res = await applyBracketWithdrawalForRegistration(registrationId);
+      if (res.error) return { error: res.error };
+      return { ok: true };
     }
+    await admin.from("registrations").update({ withdrawn_at: null }).eq("id", registrationId);
     await revalidateDraw(ctx.division.tournament_id, ctx.division.id);
     return { ok: true };
   } catch (e) {

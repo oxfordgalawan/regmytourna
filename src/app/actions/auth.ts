@@ -11,6 +11,7 @@ import { sanitizeNext } from "@/lib/auth/safe-next";
 import { findInviteByToken, linkPartner } from "@/lib/registrations/partner-invites";
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { acceptSubstitution, findSubstitution } from "@/lib/registrations/team-changes";
+import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -39,6 +40,9 @@ export async function signUp(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("fullName") ?? "");
+  const phoneRaw = String(formData.get("phone") ?? "");
+  const phoneParsed = parsePhilippineMobileRequired(phoneRaw);
+  if (!phoneParsed.ok) return { error: phoneParsed.error };
   const accountType = String(formData.get("accountType") ?? "player");
   const placePsgcCode = String(formData.get("placePsgcCode") ?? "").trim();
   const placeLabel = String(formData.get("placeLabel") ?? "").trim();
@@ -59,11 +63,13 @@ export async function signUp(formData: FormData) {
   if (data.user) {
     const profileUpdate: {
       full_name: string;
+      phone: string;
       account_type: "player" | "organizer";
       place_psgc_code?: string | null;
       place_label?: string | null;
     } = {
       full_name: fullName,
+      phone: phoneParsed.value,
       account_type: accountType === "organizer" ? "organizer" : "player",
     };
 

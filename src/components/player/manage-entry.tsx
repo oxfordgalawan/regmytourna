@@ -18,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
+import { normalizePhilippineMobile } from "@/lib/validations/phone";
 import {
   cancelOurEntryAction,
   changeMyPartnerAction,
@@ -247,7 +248,8 @@ export function ManageEntry({ entry: e, className }: { entry: PlayerEntry; class
                   }.`}
                   submitLabel="Send invite"
                   pending={pending}
-                  onSubmit={(p) => run(() => inviteSubstituteAction(e.id, p), `Invite sent to ${p.email}`)}
+                  phoneRequired={false}
+                  onSubmit={(p) => run(() => inviteSubstituteAction(e.id, { name: p.name, email: p.email }), `Invite sent to ${p.email}`)}
                 />
               ) : step === "leave" ? (
                 <Confirm
@@ -329,23 +331,30 @@ function PersonForm({
   submitLabel,
   pending,
   emailOptional = false,
+  phoneRequired = true,
   onSubmit,
 }: {
   intro: string;
   submitLabel: string;
   pending: boolean;
   emailOptional?: boolean;
-  onSubmit: (p: { name: string; email: string }) => void;
+  phoneRequired?: boolean;
+  onSubmit: (p: { name: string; email: string; phone: string }) => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const ready = name.trim().length >= 2 && (emailOptional || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
+  const [phone, setPhone] = useState("");
+  const phoneOk = !phoneRequired || Boolean(normalizePhilippineMobile(phone));
+  const ready =
+    name.trim().length >= 2 &&
+    phoneOk &&
+    (emailOptional || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   return (
     <form
       className="space-y-4"
       onSubmit={(ev) => {
         ev.preventDefault();
-        if (ready) onSubmit({ name: name.trim(), email: email.trim() });
+        if (ready) onSubmit({ name: name.trim(), email: email.trim(), phone: phone.trim() });
       }}
     >
       <p className="text-sm leading-relaxed text-bone/75">{intro}</p>
@@ -353,6 +362,22 @@ function PersonForm({
         <Label htmlFor="mp-name">Full name</Label>
         <Input id="mp-name" value={name} onChange={(ev) => setName(ev.target.value)} autoComplete="off" autoFocus />
       </div>
+      {phoneRequired && (
+        <div className="space-y-2">
+          <Label htmlFor="mp-phone">Mobile number</Label>
+          <Input
+            id="mp-phone"
+            type="tel"
+            inputMode="numeric"
+            value={phone}
+            onChange={(ev) => setPhone(ev.target.value)}
+            autoComplete="tel"
+            placeholder="09XXXXXXXXX"
+            maxLength={11}
+          />
+          <p className="text-xs text-muted-foreground">11 digits, starts with 09.</p>
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="mp-email">Email{emailOptional ? " (optional)" : ""}</Label>
         <Input

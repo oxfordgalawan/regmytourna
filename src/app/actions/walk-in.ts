@@ -10,6 +10,9 @@ import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph
 import { splitPaymentAmount } from "@/lib/wallet/fees";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
+import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry";
+import { notifyPlayersOrganizerRemovedEntry } from "@/lib/registrations/organizer-removal-notify";
+import { reverseOrganizerWalletOnRemoval } from "@/lib/wallet/reverse-organizer-on-removal";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -235,23 +238,60 @@ export async function addWalkInEntryAction(
   }
 }
 
-/** Frees the slot of an unpaid no-show. Paid entries need a refund instead. */
+/** Frees an entry's slot (unpaid no-show or paid removal by the organizer). */
 export async function cancelEntryAction(registrationId: string): Promise<Result> {
   const found = await loadRegistration(registrationId);
   if (!found) return { error: "Entry not found" };
-  await requireOrganizerForTournament(found.reg.tournament_id);
-  // imported entries (bracket-only events) never involved a payment
-  if (found.reg.payment_status === "paid" && found.reg.entry_source !== "import") {
-    return { error: "This entry is paid — refund it before cancelling." };
-  }
+  const user = await requireOrganizerForTournament(found.reg.tournament_id);
+  if (found.reg.status === "cancelled") return { error: "This entry is already cancelled." };
+
   const admin = createAdminClient();
-  await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
-  await admin
-    .from("registrations")
-    .update({ status: "cancelled", waitlist_position: null, needs_partner_since: null })
-    .eq("id", registrationId);
+  const paidRemoval = found.reg.payment_status === "paid" && found.reg.entry_source !== "import";
+
+  if (paidRemoval) {
+    const { data: division } = await admin
+      .from("tournament_divisions")
+      .select("bracket_state")
+      .eq("id", found.reg.division_id)
+      .maybeSingle();
+
+    if (division?.bracket_state && division.bracket_state !== "not_started") {
+      const bracket = await applyBracketWithdrawalForRegistration(registrationId, { revalidate: false });
+      if (bracket.error) return { error: bracket.error };
+    }
+
+    const wallet = await reverseOrganizerWalletOnRemoval(
+      admin,
+      registrationId,
+      found.tournament.owner_id,
+      found.reg.tournament_id,
+      found.tournament.name
+    );
+    if (wallet.error) return { error: wallet.error };
+
+    await admin.from("payments").update({ status: "refunded" }).eq("registration_id", registrationId).eq("status", "paid");
+    await admin
+      .from("registrations")
+      .update({
+        status: "cancelled",
+        payment_status: "refunded",
+        waitlist_position: null,
+        needs_partner_since: null,
+      })
+      .eq("id", registrationId);
+
+    const { data: profile } = await admin.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
+    const organizerName = profile?.full_name?.trim() || "The organizer";
+    await notifyPlayersOrganizerRemovedEntry(registrationId, organizerName).catch(() => undefined);
+  } else {
+    await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
+    await admin
+      .from("registrations")
+      .update({ status: "cancelled", waitlist_position: null, needs_partner_since: null })
+      .eq("id", registrationId);
+  }
+
   await expireSubstitutions(registrationId);
-  // the freed slot goes to the next team on the waitlist
   await promoteFromWaitlist(found.reg.division_id);
   revalidateEvent(found.reg.tournament_id, found.tournament.slug);
   return { ok: true };

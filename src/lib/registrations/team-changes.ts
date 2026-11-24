@@ -4,6 +4,7 @@ import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-categor
 import { relationOne } from "@/lib/supabase/relations";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { promoteFromWaitlist } from "@/lib/registrations/waitlist";
 import { sendRegistrationEmail } from "@/lib/email/send";
@@ -37,6 +38,7 @@ export type TeamRow = {
   is_primary: boolean;
   guest_name: string | null;
   guest_email: string | null;
+  guest_phone: string | null;
   partner_invite_token: string | null;
   name: string;
 };
@@ -80,7 +82,7 @@ export async function loadTeam(registrationId: string): Promise<Team | null> {
     admin
       .from("registrations")
       .select(
-        "id, status, payment_status, entry_source, tournament_id, division_id, registered_by, needs_partner_since, tournament_divisions(name, format, bracket_state), tournaments(name, slug, start_date, end_date, venue_name, city), registration_players(id, user_id, is_primary, guest_name, guest_email, partner_invite_token, profiles(full_name))"
+        "id, status, payment_status, entry_source, tournament_id, division_id, registered_by, needs_partner_since, tournament_divisions(name, format, bracket_state), tournaments(name, slug, start_date, end_date, venue_name, city), registration_players(id, user_id, is_primary, guest_name, guest_email, guest_phone, partner_invite_token, profiles(full_name))"
       )
       .eq("id", registrationId)
       .maybeSingle(),
@@ -103,6 +105,7 @@ export async function loadTeam(registrationId: string): Promise<Team | null> {
       is_primary: Boolean(r.is_primary),
       guest_name: r.guest_name,
       guest_email: r.guest_email,
+      guest_phone: r.guest_phone,
       partner_invite_token: r.partner_invite_token,
       name: (relationOne(r.profiles as never) as { full_name: string | null } | null)?.full_name || r.guest_name || "Player",
     }))
@@ -272,11 +275,13 @@ export async function changePartner(
   team: Team,
   captainUserId: string,
   captainEmail: string | null | undefined,
-  next: { name: string; email: string }
+  next: { name: string; email: string; phone: string }
 ): Promise<Result> {
   if (!team.doubles) return { error: "This is a singles entry." };
   const name = next.name.trim().replace(/\s+/g, " ");
   const email = next.email.trim() ? normalizePartnerEmail(next.email) : "";
+  const phoneParsed = parsePhilippineMobileRequired(next.phone);
+  if (!phoneParsed.ok) return { error: phoneParsed.error };
   if (name.length < 2) return { error: "Enter your partner's full name." };
   if (email) {
     const problem = await validateNewPlayerEmail(team, email, captainUserId, captainEmail);
@@ -290,6 +295,7 @@ export async function changePartner(
     user_id: null,
     guest_name: name,
     guest_email: email || null,
+    guest_phone: phoneParsed.value,
     partner_invite_status: email ? ("pending" as const) : null,
     partner_invite_token: email ? randomBytes(24).toString("hex") : null,
     partner_notified_at: null,

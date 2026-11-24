@@ -121,10 +121,14 @@ export function RegistrationsTable({
   }
 
   async function cancel(r: RegistrationRow) {
-    if (!window.confirm(`Cancel ${r.player}'s entry? Their slot in ${r.division} is freed.`)) return;
+    const paid = r.payment_status === "paid" && r.status !== "waitlisted";
+    const message = paid
+      ? `Remove ${r.player} from ${r.division}?\n\nTheir slot is freed and your wallet is adjusted for this payment. You must refund the player off-platform (not through RegMyTourna).`
+      : `Cancel ${r.player}'s entry? Their slot in ${r.division} is freed.`;
+    if (!window.confirm(message)) return;
     const res = await cancelEntryAction(r.id);
     if (res.error) return toast.error(res.error);
-    toast.success("Entry cancelled");
+    toast.success(paid ? "Entry removed" : "Entry cancelled");
     router.refresh();
   }
 
@@ -312,12 +316,21 @@ export function RegistrationsTable({
                         </Button>
                       </span>
                     ) : (
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-1">
                         <StatusBadge status={r.payment_status} />
                         {r.paidVia && r.paidVia !== "online" && (
                           <span className="font-mono text-[0.65rem] text-muted-foreground">{PAID_LABEL[r.paidVia]}</span>
                         )}
                         {replaceButton}
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => cancel(r)}
+                          aria-label={`Remove ${r.player}'s entry`}
+                          title="Remove entry and free their slot"
+                        >
+                          <X />
+                        </Button>
                       </span>
                     )}
                   </TableCell>
