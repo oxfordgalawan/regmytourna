@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMinWithdrawalCents } from "@/lib/env/server";
 import { sendRegistrationEmail } from "@/lib/email/send";
 import { withdrawalReviewedEmail } from "@/lib/email/wallet-email";
+import { paymongoWalletConfigured } from "@/lib/services/paymongo/paymongo-env";
+import { sendPaymongoWithdrawalPayout } from "@/lib/wallet/paymongo-withdrawal-payout";
 
 export async function requestWalletWithdrawal(input: {
   amountCents: number;
@@ -47,6 +49,38 @@ export async function reviewWithdrawalRequest(input: {
   const adminUser = await requireSuperAdmin();
   const admin = createAdminClient();
 
+  let paymongoTransferId: string | null = null;
+
+  if (input.action === "approve") {
+    const { data: pending } = await admin
+      .from("withdrawal_requests")
+      .select("id, amount_cents, status, payout_snapshot, paymongo_transfer_id")
+      .eq("id", input.requestId)
+      .maybeSingle();
+
+    if (!pending || pending.status !== "pending") {
+      return { error: "This request is not pending." };
+    }
+
+    if (paymongoWalletConfigured()) {
+      if (pending.paymongo_transfer_id) {
+        return { error: "This withdrawal already has a PayMongo transfer. Refresh the page." };
+      }
+      const payout = await sendPaymongoWithdrawalPayout({
+        requestId: pending.id,
+        amountCents: pending.amount_cents,
+        payoutSnapshot: (pending.payout_snapshot ?? {}) as Record<string, unknown>,
+      });
+      if ("error" in payout && payout.error) {
+        return { error: payout.error };
+      }
+      if (!("transferId" in payout) || !payout.transferId) {
+        return { error: "PayMongo payout did not return a transfer id." };
+      }
+      paymongoTransferId = payout.transferId;
+    }
+  }
+
   const { error } = await admin.rpc("review_wallet_withdrawal", {
     p_request_id: input.requestId,
     p_action: input.action,
@@ -55,13 +89,30 @@ export async function reviewWithdrawalRequest(input: {
   });
 
   if (error) {
-    return { error: error.message.includes("already reviewed") ? "This request was already reviewed." : "Review failed." };
+    return {
+      error: error.message.includes("already reviewed")
+        ? "This request was already reviewed."
+        : paymongoTransferId
+          ? `Ledger update failed after PayMongo transfer ${paymongoTransferId}. Contact support before retrying.`
+          : "Review failed.",
+    };
+  }
+
+  if (paymongoTransferId) {
+    const refNote = input.note?.trim();
+    await admin
+      .from("withdrawal_requests")
+      .update({
+        paymongo_transfer_id: paymongoTransferId,
+        admin_note: [refNote, `PayMongo: ${paymongoTransferId}`].filter(Boolean).join(" · ") || null,
+      })
+      .eq("id", input.requestId);
   }
 
   // let the organizer know (best effort)
   const { data: req } = await admin
     .from("withdrawal_requests")
-    .select("user_id, amount_cents, payout_snapshot, admin_note")
+    .select("user_id, amount_cents, payout_snapshot, admin_note, paymongo_transfer_id")
     .eq("id", input.requestId)
     .maybeSingle();
   if (req) {

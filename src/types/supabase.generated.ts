@@ -1293,6 +1293,7 @@ export type Database = {
           id: string
           payout_method_id: string | null
           payout_snapshot: Json
+          paymongo_transfer_id: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           status: Database["public"]["Enums"]["withdrawal_request_status"]
@@ -1307,6 +1308,7 @@ export type Database = {
           id?: string
           payout_method_id?: string | null
           payout_snapshot: Json
+          paymongo_transfer_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["withdrawal_request_status"]
@@ -1321,6 +1323,7 @@ export type Database = {
           id?: string
           payout_method_id?: string | null
           payout_snapshot?: Json
+          paymongo_transfer_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["withdrawal_request_status"]

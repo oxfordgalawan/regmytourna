@@ -50,11 +50,13 @@ export function WithdrawalReviewActions({
   amountCents,
   organizerName,
   payoutSnapshot,
+  paymongoPayoutEnabled = false,
 }: {
   requestId: string;
   amountCents: number;
   organizerName: string;
   payoutSnapshot: Record<string, unknown>;
+  paymongoPayoutEnabled?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"approve" | "reject" | null>(null);
@@ -117,7 +119,9 @@ export function WithdrawalReviewActions({
           <DialogTitle>{mode === "approve" ? `Send ${formatPhp(amountCents)}` : "Decline withdrawal"}</DialogTitle>
           <DialogDescription>
             {mode === "approve"
-              ? `Send the money to ${organizerName}'s ${methodTypeLabel(snap.method_type)} first, then confirm here. They'll be emailed.`
+              ? paymongoPayoutEnabled
+                ? `PayMongo will InstaPay ${formatPhp(amountCents)} to ${organizerName}'s ${methodTypeLabel(snap.method_type)}. Confirm once details look correct — they'll be emailed.`
+                : `Send the money to ${organizerName}'s ${methodTypeLabel(snap.method_type)} first, then confirm here. They'll be emailed.`
               : `${formatPhp(amountCents)} goes back to ${organizerName}'s available balance. Tell them why.`}
           </DialogDescription>
           {mode === "approve" && (
@@ -156,7 +160,7 @@ export function WithdrawalReviewActions({
               onClick={submit}
             >
               {pending && <Loader2 className="animate-spin" />}
-              {mode === "approve" ? "I've sent it — approve" : "Decline"}
+              {mode === "approve" ? (paymongoPayoutEnabled ? "Send via PayMongo" : "I've sent it — approve") : "Decline"}
             </Button>
           </div>
         </DialogContent>

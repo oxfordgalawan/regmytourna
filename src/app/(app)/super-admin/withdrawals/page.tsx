@@ -12,6 +12,8 @@ import { MethodMark } from "@/components/wallet/payout-method-ui";
 import { PlayerAvatar } from "@/components/players/player-avatar";
 import { cn } from "@/lib/utils";
 import { relationOne } from "@/lib/supabase/relations";
+import { fetchPaymongoWalletSnapshot } from "@/lib/services/paymongo/paymongo-wallet";
+import { paymongoWalletConfigured } from "@/lib/services/paymongo/paymongo-env";
 
 export const metadata = { title: "Withdrawal approvals · Super admin" };
 
@@ -53,7 +55,7 @@ export default async function SuperAdminWithdrawalsPage({
   let query = admin
     .from("withdrawal_requests")
     .select(
-      "id, user_id, amount_cents, status, payout_snapshot, admin_note, created_at, reviewed_at, profiles!withdrawal_requests_user_id_fkey(full_name, avatar_url)"
+      "id, user_id, amount_cents, status, payout_snapshot, admin_note, paymongo_transfer_id, created_at, reviewed_at, profiles!withdrawal_requests_user_id_fkey(full_name, avatar_url)"
     )
     .order("created_at", { ascending: status === "pending" })
     .limit(100);
@@ -63,11 +65,12 @@ export default async function SuperAdminWithdrawalsPage({
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  const [{ data: rows }, emailMap, { data: pendingAll }, { data: sentMonth }] = await Promise.all([
+  const [{ data: rows }, emailMap, { data: pendingAll }, { data: sentMonth }, paymongoWallet] = await Promise.all([
     query,
     fetchAuthEmailMap(admin),
     admin.from("withdrawal_requests").select("amount_cents, created_at").eq("status", "pending"),
     admin.from("withdrawal_requests").select("amount_cents").eq("status", "approved").gte("reviewed_at", monthStart.toISOString()),
+    paymongoWalletConfigured() ? fetchPaymongoWalletSnapshot() : Promise.resolve(null),
   ]);
 
   // each organizer's current wallet, for context while reviewing
@@ -86,8 +89,34 @@ export default async function SuperAdminWithdrawalsPage({
       <PageHeader
         eyebrow="Platform"
         title="Withdrawal approvals"
-        description="Send the money to the organizer's account, then approve. Declined requests go back to their balance."
+        description={
+          paymongoWalletConfigured()
+            ? "Approve sends organizer payouts via PayMongo InstaPay from your merchant wallet. Declined requests return to their balance."
+            : "Send the money to the organizer's account, then approve. Declined requests go back to their balance."
+        }
       />
+
+      {paymongoWallet?.configured ? (
+        <div className="rounded-2xl border border-line bg-surface px-5 py-4">
+          <p className="eyebrow text-brass">PayMongo wallet</p>
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="display text-4xl text-bone">
+                {paymongoWallet.error ? "—" : formatPhp(paymongoWallet.availableCents)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Available · account ···{paymongoWallet.accountLast4}
+                {!paymongoWallet.error && paymongoWallet.pendingCents > 0
+                  ? ` · ${formatPhp(paymongoWallet.pendingCents)} pending`
+                  : ""}
+              </p>
+            </div>
+            {paymongoWallet.error ? (
+              <p className="max-w-md text-sm text-[#e58a72]">{paymongoWallet.error}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-3">
         <div className="bg-surface p-5">
@@ -191,6 +220,7 @@ export default async function SuperAdminWithdrawalsPage({
                         amountCents={row.amount_cents}
                         organizerName={name}
                         payoutSnapshot={row.payout_snapshot as Record<string, unknown>}
+                        paymongoPayoutEnabled={paymongoWalletConfigured()}
                       />
                     </>
                   ) : (
@@ -203,6 +233,7 @@ export default async function SuperAdminWithdrawalsPage({
                       {row.status === "approved" ? <Check className="size-3.5" /> : <X className="size-3.5" />}
                       {row.status === "approved" ? "Sent" : row.status === "rejected" ? "Declined" : row.status}
                       {row.reviewed_at ? ` · ${formatDateTime(row.reviewed_at)}` : ""}
+                      {row.paymongo_transfer_id ? ` · ${row.paymongo_transfer_id}` : ""}
                       {row.admin_note ? ` · “${row.admin_note}”` : ""}
                     </span>
                   )}
