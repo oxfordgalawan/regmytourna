@@ -7,10 +7,12 @@ import { toast } from "@/lib/ui/app-toast";
 import {
   cancelMyRegistrationAction,
   createRegistrationAction,
+  getMyRegistrationPaymentStatusAction,
   listMyRegistrationsForTournamentAction,
   previewPartnerConflictAction,
   previewCrossCategoryEligibilityAction,
 } from "@/app/actions/registrations";
+import { CheckoutQrPanel } from "@/components/payments/checkout-qr-panel";
 import Link from "next/link";
 import { enableRoleAction, needsPlayerRoleForRegistrationAction } from "@/app/actions/role";
 import { Button } from "@/components/ui/button";
@@ -79,6 +81,15 @@ export function RegisterSection({
   const [playerGateOpen, setPlayerGateOpen] = useState(false);
   const [enablingPlayer, startEnablePlayer] = useTransition();
   const [crossCategoryBlock, setCrossCategoryBlock] = useState<string | null>(null);
+  const [payState, setPayState] = useState<{
+    registrationId: string;
+    qrImageUrl: string;
+    checkoutUrl?: string | null;
+    amountCents: number;
+    paymentHoldExpiresAt?: string | null;
+    qrExpiresAt?: string | null;
+  } | null>(null);
+  const [payLoading, setPayLoading] = useState(false);
 
   useEffect(() => {
     void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
@@ -145,6 +156,55 @@ export function RegisterSection({
     return () => clearTimeout(t);
   }, [runPartnerPreview]);
 
+  async function beginPayFlow(
+    registrationId: string,
+    knownQr?: { qrImageUrl: string; checkoutUrl?: string | null; qrExpiresAt?: string | null },
+    amountCents = fee,
+    paymentHoldExpiresAt?: string | null
+  ) {
+    setPayLoading(true);
+    let qrImageUrl = knownQr?.qrImageUrl?.trim() || "";
+    let checkoutUrl = knownQr?.checkoutUrl?.trim() || "";
+    let qrExpiresAt = knownQr?.qrExpiresAt ?? null;
+    let holdEnds = paymentHoldExpiresAt ?? null;
+    if (!holdEnds) {
+      const status = await getMyRegistrationPaymentStatusAction(registrationId);
+      if (!("error" in status) && status.paymentHoldExpiresAt) holdEnds = status.paymentHoldExpiresAt;
+    }
+    if (!qrImageUrl) {
+      try {
+        const res = await fetch("/api/payments/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ registrationId }),
+        });
+        const json = (await res.json()) as {
+          qrImageUrl?: string;
+          checkoutUrl?: string;
+          expiresAt?: string;
+          error?: string;
+        };
+        if (!res.ok || !json.qrImageUrl) throw new Error(json.error ?? "Couldn't start checkout");
+        qrImageUrl = json.qrImageUrl;
+        checkoutUrl = json.checkoutUrl ?? "";
+        qrExpiresAt = json.expiresAt ?? null;
+      } catch (e) {
+        setPayLoading(false);
+        showError(e instanceof Error ? e.message : "Couldn't start checkout", { title: "Payment" });
+        return;
+      }
+    }
+    setPayState({
+      registrationId,
+      qrImageUrl,
+      checkoutUrl: checkoutUrl || null,
+      amountCents,
+      paymentHoldExpiresAt: holdEnds,
+      qrExpiresAt,
+    });
+    setPayLoading(false);
+  }
+
   async function submitRegistration() {
     setLoading(true);
     setMessage(null);
@@ -156,8 +216,16 @@ export function RegisterSection({
       partnerEmail: isDoubles && partnerEmail.trim() ? partnerEmail.trim() : undefined,
       payAtVenue: venue,
     });
+    setLoading(false);
     if ("error" in result && result.error) {
-      setLoading(false);
+      const existingId =
+        "existingRegistrationId" in result && typeof result.existingRegistrationId === "string"
+          ? result.existingRegistrationId
+          : null;
+      if (existingId && fee > 0 && !venue) {
+        await beginPayFlow(existingId, { qrImageUrl: "" }, fee);
+        return;
+      }
       showError(typeof result.error === "string" ? result.error : "Registration failed", { title: "Couldn't register" });
       return;
     }
@@ -169,28 +237,40 @@ export function RegisterSection({
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&waitlist=${pos}`);
       return;
     }
-    if ("checkoutUrl" in result && result.checkoutUrl) {
-      window.location.href = result.checkoutUrl;
-      return;
-    }
-    if (
-      "qrImageUrl" in result &&
-      typeof result.qrImageUrl === "string" &&
-      result.qrImageUrl &&
-      "registrationId" in result &&
-      result.registrationId
-    ) {
-      router.push(`/tournaments/${slug}`);
-      return;
-    }
     if ("payAtVenue" in result && result.payAtVenue && "registrationId" in result) {
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&venue=1`);
       return;
     }
-    setLoading(false);
+    const registrationId =
+      "registrationId" in result && typeof result.registrationId === "string" ? result.registrationId : "";
+    if ("paymentRequired" in result && result.paymentRequired && registrationId) {
+      showError(
+        typeof result.message === "string" ? result.message : "Payment is not available.",
+        { title: "Payment" }
+      );
+      return;
+    }
+    const qrImageUrl =
+      "qrImageUrl" in result && typeof result.qrImageUrl === "string" ? result.qrImageUrl : "";
+    const checkoutUrl =
+      "checkoutUrl" in result && typeof result.checkoutUrl === "string" ? result.checkoutUrl : null;
+    const paymentHoldExpiresAt =
+      "paymentHoldExpiresAt" in result && typeof result.paymentHoldExpiresAt === "string"
+        ? result.paymentHoldExpiresAt
+        : null;
+    if (registrationId && fee > 0 && !venue) {
+      await beginPayFlow(
+        registrationId,
+        { qrImageUrl, checkoutUrl, qrExpiresAt: null },
+        fee,
+        paymentHoldExpiresAt
+      );
+      void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
+      return;
+    }
     if ("message" in result && result.message) setMessage(result.message);
-    if ("confirmed" in result && result.confirmed && "registrationId" in result) {
-      router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}`);
+    if ("confirmed" in result && result.confirmed && registrationId) {
+      router.push(`/tournaments/${slug}/register/success?registration=${registrationId}`);
     }
     void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
   }
@@ -243,6 +323,42 @@ export function RegisterSection({
   }
 
   const entryForDivision = myEntries.find((e) => e.divisionId === divisionId);
+
+  if (payLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="size-8 animate-spin text-brass" />
+      </div>
+    );
+  }
+
+  if (payState) {
+    return (
+      <div className="space-y-4">
+        <CheckoutQrPanel
+          qrImageUrl={payState.qrImageUrl}
+          checkoutUrl={payState.checkoutUrl}
+          qrExpiresAt={payState.qrExpiresAt}
+          registrationId={payState.registrationId}
+          amountCents={payState.amountCents}
+          currency={currency}
+          paymentHoldExpiresAt={payState.paymentHoldExpiresAt}
+          onPaid={() => {
+            router.push(`/tournaments/${slug}/register/success?registration=${payState.registrationId}`);
+            router.refresh();
+          }}
+          onHoldExpired={() => {
+            setPayState(null);
+            void listMyRegistrationsForTournamentAction(slug).then((res) => setMyEntries(res.entries ?? []));
+            router.refresh();
+          }}
+        />
+        <Button type="button" variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setPayState(null)}>
+          Back to registration
+        </Button>
+      </div>
+    );
+  }
 
   if (!divisions.length) {
     return (
