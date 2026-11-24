@@ -27,6 +27,8 @@ import {
 import { FilterChips } from "@/components/ui/filter-chips";
 import { ReplacePlayerDialog, type ReplaceTarget } from "@/components/organizer/replace-player-dialog";
 import { PlayerEmailCell } from "@/components/organizer/player-email-cell";
+import { PlayerNameCell } from "@/components/organizer/player-name-cell";
+import { PlayerPhoneCell } from "@/components/organizer/player-phone-cell";
 import { formatPhp } from "@/lib/format";
 
 export type RegistrationRow = {
@@ -40,7 +42,14 @@ export type RegistrationRow = {
   feeCents: number;
   checkedIn: boolean;
   partner?: "on_platform" | "invited" | "declined" | "guest" | null;
-  players?: Array<{ rowId: string; name: string; email: string | null; primary: boolean; hasAccount: boolean }>;
+  players?: Array<{
+    rowId: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    primary: boolean;
+    hasAccount: boolean;
+  }>;
   doubles?: boolean;
   needsPartner?: boolean;
   substitutePending?: boolean;
@@ -101,7 +110,11 @@ export function RegistrationsTable({
       return (
         r.player.toLowerCase().includes(q) ||
         r.division.toLowerCase().includes(q) ||
-        Boolean(r.players?.some((p) => p.email?.toLowerCase().includes(q)))
+        Boolean(
+          r.players?.some(
+            (p) => p.email?.toLowerCase().includes(q) || p.phone?.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
+          )
+        )
       );
     });
   }, [visible, deferredQuery, view]);
@@ -229,7 +242,11 @@ export function RegistrationsTable({
                       <span className="block space-y-1.5">
                         {r.players.map((p) => (
                           <span key={p.rowId} className="block min-w-0">
-                            <span className="block font-medium text-bone">{p.name}</span>
+                            {p.hasAccount ? (
+                              <span className="block font-medium text-bone">{p.name}</span>
+                            ) : (
+                              <PlayerNameCell registrationId={r.id} rowId={p.rowId} name={p.name} />
+                            )}
                             <PlayerEmailCell
                               key={`${p.rowId}-${p.email ?? ""}`}
                               registrationId={r.id}
@@ -237,6 +254,12 @@ export function RegistrationsTable({
                               email={p.email}
                               hasAccount={p.hasAccount}
                               partner={!p.primary}
+                            />
+                            <PlayerPhoneCell
+                              registrationId={r.id}
+                              rowId={p.rowId}
+                              phone={p.phone}
+                              hasAccount={p.hasAccount}
                             />
                           </span>
                         ))}

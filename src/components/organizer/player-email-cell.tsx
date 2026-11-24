@@ -121,12 +121,12 @@ export function PlayerEmailCell({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex shrink-0 items-center gap-1 rounded px-1 text-[0.65rem] text-muted-foreground opacity-70 transition-opacity hover:text-bone group-hover/email:opacity-100"
+          className="flex shrink-0 items-center gap-1 rounded px-1 text-[0.65rem] text-muted-foreground transition-colors hover:text-bone"
           aria-label={email ? "Edit email" : "Add email"}
           title={email ? "Fix this email" : "Add an email"}
         >
           <Pencil className="size-3" />
-          {!email && "Add"}
+          {email ? "Edit" : "Add"}
         </button>
       )}
     </span>

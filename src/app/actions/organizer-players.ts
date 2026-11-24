@@ -8,8 +8,39 @@ import { relationOne } from "@/lib/supabase/relations";
 import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { expireSubstitutions, refreshMatchLabels } from "@/lib/registrations/team-changes";
+import { normalizePhilippineMobile } from "@/lib/validations/phone";
 
 const ACTIVE = ["confirmed", "awaiting_payment", "pending", "awaiting_partner", "waitlisted"];
+
+type RegSlug = { tournament_id: string; tournaments: unknown };
+
+async function loadGuestPlayerRow(registrationId: string, rowId: string) {
+  const admin = createAdminClient();
+  const { data: reg } = await admin
+    .from("registrations")
+    .select("id, tournament_id, division_id, status, payment_status, entry_source, tournaments(slug)")
+    .eq("id", registrationId)
+    .maybeSingle();
+  if (!reg) return { error: "Entry not found." as const };
+  await requireOrganizerForTournament(reg.tournament_id);
+
+  const { data: row } = await admin
+    .from("registration_players")
+    .select("id, is_primary, user_id, guest_name, guest_email, guest_phone")
+    .eq("id", rowId)
+    .eq("registration_id", registrationId)
+    .maybeSingle();
+  if (!row) return { error: "Player not found on this entry." as const };
+  if (row.user_id) return { error: "This player has an account — only they can change their details." as const };
+  return { admin, reg: reg as RegSlug & typeof reg, row };
+}
+
+function revalidateRegistrationPaths(reg: RegSlug) {
+  const slug = (relationOne(reg.tournaments) as { slug: string } | null)?.slug;
+  revalidatePath(`/organizer/tournaments/${reg.tournament_id}/registrations`);
+  revalidatePath("/entries");
+  if (slug) revalidatePath(`/tournaments/${slug}`);
+}
 
 /**
  * Organizer swaps a player on an entry — e.g. a partner can't make it on the day.
@@ -177,9 +208,58 @@ export async function updatePlayerEmailAction(
     await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
   }
 
-  const slug = (relationOne(reg.tournaments) as { slug: string } | null)?.slug;
-  revalidatePath(`/organizer/tournaments/${reg.tournament_id}/registrations`);
-  revalidatePath("/entries");
-  if (slug) revalidatePath(`/tournaments/${slug}`);
+  revalidateRegistrationPaths(reg);
+  return { ok: true };
+}
+
+/** Guest-only: fix name on registration or walk-in row; updates drawn match labels. */
+export async function updatePlayerNameAction(
+  registrationId: string,
+  rowId: string,
+  rawName: string
+): Promise<{ ok?: true; error?: string }> {
+  const loaded = await loadGuestPlayerRow(registrationId, rowId);
+  if ("error" in loaded) return { error: loaded.error };
+
+  const name = rawName.trim().replace(/\s+/g, " ");
+  if (name.length < 2) return { error: "Enter the player's full name." };
+  if (name === (loaded.row.guest_name ?? "").trim()) return { ok: true };
+
+  const { error } = await loaded.admin
+    .from("registration_players")
+    .update({ guest_name: name })
+    .eq("id", loaded.row.id);
+  if (error) return { error: error.message };
+
+  await refreshMatchLabels(registrationId);
+  revalidateRegistrationPaths(loaded.reg);
+  revalidatePath(`/organizer/tournaments/${loaded.reg.tournament_id}/draw`);
+  return { ok: true };
+}
+
+/** Guest-only: fix or clear mobile on registration row. */
+export async function updatePlayerPhoneAction(
+  registrationId: string,
+  rowId: string,
+  rawPhone: string
+): Promise<{ ok?: true; error?: string }> {
+  const loaded = await loadGuestPlayerRow(registrationId, rowId);
+  if ("error" in loaded) return { error: loaded.error };
+
+  const trimmed = rawPhone.trim();
+  let phone: string | null = null;
+  if (trimmed) {
+    phone = normalizePhilippineMobile(trimmed);
+    if (!phone) return { error: "Use 11 digits starting with 09." };
+  }
+  if (phone === (loaded.row.guest_phone ?? null)) return { ok: true };
+
+  const { error } = await loaded.admin
+    .from("registration_players")
+    .update({ guest_phone: phone })
+    .eq("id", loaded.row.id);
+  if (error) return { error: error.message };
+
+  revalidateRegistrationPaths(loaded.reg);
   return { ok: true };
 }

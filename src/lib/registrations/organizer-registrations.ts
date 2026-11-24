@@ -15,7 +15,14 @@ export type OrganizerRegistrationRow = {
   /** doubles partner's account status — informational, the entry never waits on it */
   partner: "on_platform" | "invited" | "declined" | "guest" | null;
   /** each player, primary first, with the email we have for them */
-  players: Array<{ rowId: string; name: string; email: string | null; primary: boolean; hasAccount: boolean }>;
+  players: Array<{
+    rowId: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    primary: boolean;
+    hasAccount: boolean;
+  }>;
   doubles: boolean;
   /** a player left and the team hasn't named a new partner */
   needsPartner: boolean;
@@ -57,7 +64,7 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
     admin
       .from("registrations")
       .select(
-        `id, status, payment_status, entry_source, division_id, needs_partner_since, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, format, entry_fee_cents), check_ins(id), payments(method, status), partner_rows:registration_players(id, is_primary, user_id, guest_name, guest_email, partner_invite_status, profiles(full_name))`
+        `id, status, payment_status, entry_source, division_id, needs_partner_since, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, format, entry_fee_cents), check_ins(id), payments(method, status), partner_rows:registration_players(id, is_primary, user_id, guest_name, guest_email, guest_phone, partner_invite_status, profiles(full_name, phone))`
       )
       .eq("tournament_id", tournamentId)
       .order("created_at", { ascending: false }),
@@ -70,8 +77,9 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
     user_id: string | null;
     guest_name: string | null;
     guest_email: string | null;
+    guest_phone: string | null;
     partner_invite_status: string | null;
-    profiles: { full_name: string | null } | Array<{ full_name: string | null }> | null;
+    profiles: { full_name: string | null; phone: string | null } | Array<{ full_name: string | null; phone: string | null }> | null;
   };
   const userIds = [
     ...new Set(
@@ -112,13 +120,17 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
       doubles: division?.format === "doubles",
       needsPartner: Boolean(r.needs_partner_since) && division?.format === "doubles" && playerRows.length < 2,
       substitutePending: pendingSubs.has(r.id),
-      players: playerRows.map((p) => ({
-        rowId: p.id,
-        name: (relationOne(p.profiles as never) as { full_name: string | null } | null)?.full_name || p.guest_name || "Player",
-        email: (p.user_id ? emails.get(p.user_id) : null) ?? p.guest_email,
-        primary: p.is_primary,
-        hasAccount: Boolean(p.user_id),
-      })),
+      players: playerRows.map((p) => {
+        const profile = relationOne(p.profiles as never) as { full_name: string | null; phone: string | null } | null;
+        return {
+          rowId: p.id,
+          name: profile?.full_name || p.guest_name || "Player",
+          email: (p.user_id ? emails.get(p.user_id) : null) ?? p.guest_email,
+          phone: (p.user_id ? profile?.phone : null) ?? p.guest_phone ?? null,
+          primary: p.is_primary,
+          hasAccount: Boolean(p.user_id),
+        };
+      }),
       division: division?.name ?? "—",
       status: r.status,
       payment_status: r.payment_status,
