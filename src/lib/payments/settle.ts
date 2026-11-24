@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isCheckoutSessionPaid } from "@/lib/services/paymongo/paymongo-service";
+import { isPaymentIntentPaid } from "@/lib/services/paymongo/paymongo-qrph";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
@@ -11,7 +12,10 @@ import { isPayMongoConfigured } from "@/lib/env/server";
  * more than once — the webhook, the success page and the wallet's self-check
  * all use it.
  */
-export async function settlePaidCheckout(registrationId: string, sessionId: string | null) {
+export async function settlePaidPayment(
+  registrationId: string,
+  match: { sessionId?: string | null; intentId?: string | null }
+) {
   const admin = createAdminClient();
   const { data: before } = await admin
     .from("registrations")
@@ -22,8 +26,9 @@ export async function settlePaidCheckout(registrationId: string, sessionId: stri
   const alreadyPaid = before.payment_status === "paid";
 
   const paidAt = new Date().toISOString();
-  // mark only the checkout that was paid (an entry can have several: an
-  // abandoned online checkout plus a QR shown at the desk)
+  const sessionId = match.sessionId?.trim() || null;
+  const intentId = match.intentId?.trim() || null;
+  // mark only the checkout / intent that was paid (an entry can have several)
   const { data: matched } = sessionId
     ? await admin
         .from("payments")
@@ -32,7 +37,15 @@ export async function settlePaidCheckout(registrationId: string, sessionId: stri
         .eq("paymongo_checkout_session_id", sessionId)
         .neq("status", "paid")
         .select("id")
-    : { data: null };
+    : intentId
+      ? await admin
+          .from("payments")
+          .update({ status: "paid", paid_at: paidAt })
+          .eq("registration_id", registrationId)
+          .eq("paymongo_payment_intent_id", intentId)
+          .neq("status", "paid")
+          .select("id")
+      : { data: null };
   if (!matched?.length && !alreadyPaid) {
     await admin
       .from("payments")
@@ -60,18 +73,28 @@ export async function settlePaidCheckout(registrationId: string, sessionId: stri
   return { settled: true, credited: credit.credited };
 }
 
+export async function settlePaidCheckout(registrationId: string, sessionId: string | null) {
+  return settlePaidPayment(registrationId, { sessionId });
+}
+
+export async function settlePaidIntent(registrationId: string, intentId: string | null) {
+  return settlePaidPayment(registrationId, { intentId });
+}
+
 /** Backup for a missed webhook: if PayMongo says this entry's checkout is paid, settle it. */
 export async function verifyAndSettle(registrationId: string) {
   if (!isPayMongoConfigured()) return { settled: false };
   const { data: payments } = await createAdminClient()
     .from("payments")
-    .select("paymongo_checkout_session_id, status")
+    .select("paymongo_checkout_session_id, paymongo_payment_intent_id, status")
     .eq("registration_id", registrationId)
     .eq("status", "pending")
-    .not("paymongo_checkout_session_id", "is", null)
     .order("created_at", { ascending: false })
-    .limit(3);
+    .limit(5);
   for (const p of payments ?? []) {
+    if (p.paymongo_payment_intent_id && (await isPaymentIntentPaid(p.paymongo_payment_intent_id))) {
+      return settlePaidIntent(registrationId, p.paymongo_payment_intent_id);
+    }
     if (p.paymongo_checkout_session_id && (await isCheckoutSessionPaid(p.paymongo_checkout_session_id))) {
       return settlePaidCheckout(registrationId, p.paymongo_checkout_session_id);
     }
@@ -112,15 +135,19 @@ export async function reconcileOrganizerWallet(userId: string) {
   const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
   const { data: open } = await admin
     .from("payments")
-    .select("registration_id, paymongo_checkout_session_id")
+    .select("registration_id, paymongo_checkout_session_id, paymongo_payment_intent_id")
     .in("registration_id", regIds)
     .eq("status", "pending")
-    .not("paymongo_checkout_session_id", "is", null)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(5);
+    .limit(8);
   for (const p of open ?? []) {
-    if (p.paymongo_checkout_session_id && (await isCheckoutSessionPaid(p.paymongo_checkout_session_id))) {
+    if (p.paymongo_payment_intent_id && (await isPaymentIntentPaid(p.paymongo_payment_intent_id))) {
+      await settlePaidIntent(p.registration_id, p.paymongo_payment_intent_id);
+    } else if (
+      p.paymongo_checkout_session_id &&
+      (await isCheckoutSessionPaid(p.paymongo_checkout_session_id))
+    ) {
       await settlePaidCheckout(p.registration_id, p.paymongo_checkout_session_id);
     }
   }

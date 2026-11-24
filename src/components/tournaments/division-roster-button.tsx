@@ -151,9 +151,11 @@ export function DivisionRosterButton({
   const [flowStep, setFlowStep] = useState<FlowStep>("roster");
   const [payState, setPayState] = useState<{
     registrationId: string;
-    checkoutUrl: string;
+    qrImageUrl: string;
+    checkoutUrl?: string | null;
     amountCents: number;
     paymentHoldExpiresAt?: string | null;
+    qrExpiresAt?: string | null;
   } | null>(null);
   const [payLoading, setPayLoading] = useState(false);
   const [successKind, setSuccessKind] = useState<"waitlist" | "venue" | "free" | "paid" | null>(null);
@@ -236,28 +238,37 @@ export function DivisionRosterButton({
 
   async function beginPayFlow(
     registrationId: string,
-    knownCheckout?: string,
+    knownQr?: { qrImageUrl: string; checkoutUrl?: string | null; qrExpiresAt?: string | null },
     amountCents = feeCents,
     paymentHoldExpiresAt?: string | null
   ) {
     setFlowStep("pay");
     setPayLoading(true);
-    let checkoutUrl = knownCheckout?.trim() || "";
+    let qrImageUrl = knownQr?.qrImageUrl?.trim() || "";
+    let checkoutUrl = knownQr?.checkoutUrl?.trim() || "";
+    let qrExpiresAt = knownQr?.qrExpiresAt ?? null;
     let holdEnds = paymentHoldExpiresAt ?? null;
     if (!holdEnds && !allowPayAtVenue) {
       const status = await getMyRegistrationPaymentStatusAction(registrationId);
       if (!("error" in status) && status.paymentHoldExpiresAt) holdEnds = status.paymentHoldExpiresAt;
     }
-    if (!checkoutUrl) {
+    if (!qrImageUrl) {
       try {
         const res = await fetch("/api/payments/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ registrationId }),
         });
-        const json = (await res.json()) as { checkoutUrl?: string; error?: string };
-        if (!res.ok || !json.checkoutUrl) throw new Error(json.error ?? "Couldn't start checkout");
-        checkoutUrl = json.checkoutUrl;
+        const json = (await res.json()) as {
+          qrImageUrl?: string;
+          checkoutUrl?: string;
+          expiresAt?: string;
+          error?: string;
+        };
+        if (!res.ok || !json.qrImageUrl) throw new Error(json.error ?? "Couldn't start checkout");
+        qrImageUrl = json.qrImageUrl;
+        checkoutUrl = json.checkoutUrl ?? "";
+        qrExpiresAt = json.expiresAt ?? null;
       } catch (e) {
         setPayLoading(false);
         setFlowStep("roster");
@@ -265,7 +276,14 @@ export function DivisionRosterButton({
         return;
       }
     }
-    setPayState({ registrationId, checkoutUrl, amountCents, paymentHoldExpiresAt: holdEnds });
+    setPayState({
+      registrationId,
+      qrImageUrl,
+      checkoutUrl: checkoutUrl || null,
+      amountCents,
+      paymentHoldExpiresAt: holdEnds,
+      qrExpiresAt,
+    });
     setPayLoading(false);
   }
 
@@ -273,7 +291,11 @@ export function DivisionRosterButton({
     if (result.kind === "pay") {
       await beginPayFlow(
         result.registrationId,
-        result.checkoutUrl || undefined,
+        {
+          qrImageUrl: result.qrImageUrl,
+          checkoutUrl: result.checkoutUrl,
+          qrExpiresAt: result.qrExpiresAt,
+        },
         result.amountCents,
         result.paymentHoldExpiresAt
       );
@@ -488,7 +510,9 @@ export function DivisionRosterButton({
                   </div>
                 ) : (
                   <CheckoutQrPanel
+                    qrImageUrl={payState.qrImageUrl}
                     checkoutUrl={payState.checkoutUrl}
+                    qrExpiresAt={payState.qrExpiresAt}
                     registrationId={payState.registrationId}
                     amountCents={payState.amountCents}
                     currency={currency}

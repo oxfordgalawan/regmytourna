@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
+import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { relationOne } from "@/lib/supabase/relations";
 import { isCaptainOf } from "@/lib/registrations/team-changes";
@@ -38,7 +37,6 @@ export async function POST(request: NextRequest) {
   if ((await getRegistrationMode(registration.tournament_id)) === "bracket_only") {
     return NextResponse.json({ error: "This event doesn't take payments." }, { status: 409 });
   }
-  // payment is only taken for an entry that holds a slot — never for the waitlist
   if (registration.payment_status === "paid") {
     return NextResponse.json({ error: "This entry is already paid." }, { status: 409 });
   }
@@ -62,29 +60,20 @@ export async function POST(request: NextRequest) {
   } | null;
   const fee = division?.entry_fee_cents ?? tournament.entry_fee_cents;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const checkout = await createCheckoutSession({
+  const payment = await startRegistrationQrphPayment({
+    registrationId: registration.id,
+    userId: user.id,
+    tournamentId: registration.tournament_id,
+    tournamentName: tournament.name,
+    tournamentSlug: tournament.slug,
     amountCents: fee,
-    description: `${tournament.name} registration (non-refundable)`,
-    successUrl: `${appUrl}/tournaments/${tournament.slug}/register/success?registration=${registration.id}`,
-    cancelUrl: `${appUrl}/tournaments/${tournament.slug}`,
-    metadata: {
-      registration_id: registration.id,
-      tournament_id: registration.tournament_id,
-      user_id: user.id,
-    },
+    idempotencyKey: `reg-${registration.id}-${Date.now()}`,
   });
 
-  const admin = createAdminClient();
-  await admin.from("payments").insert({
-    registration_id: registration.id,
-    user_id: user.id,
-    amount_cents: fee,
-    currency: "PHP",
-    status: "pending",
-    paymongo_checkout_session_id: checkout.sessionId,
-    idempotency_key: `reg-${registration.id}-${Date.now()}`,
+  return NextResponse.json({
+    qrImageUrl: payment.qrImageUrl,
+    paymentIntentId: payment.paymentIntentId,
+    expiresAt: payment.expiresAt,
+    checkoutUrl: payment.checkoutUrl,
   });
-
-  return NextResponse.json({ checkoutUrl: checkout.checkoutUrl });
 }

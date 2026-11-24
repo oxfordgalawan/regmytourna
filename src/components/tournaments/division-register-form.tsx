@@ -28,7 +28,9 @@ export type DivisionRegisterComplete =
   | {
       kind: "pay";
       registrationId: string;
-      checkoutUrl: string;
+      qrImageUrl: string;
+      checkoutUrl?: string | null;
+      qrExpiresAt?: string | null;
       amountCents: number;
       paymentHoldExpiresAt?: string | null;
     }
@@ -133,7 +135,7 @@ export function DivisionRegisterForm({
           ? result.existingRegistrationId
           : null;
       if (existingId) {
-        onComplete({ kind: "pay", registrationId: existingId, checkoutUrl: "", amountCents: feeCents });
+        onComplete({ kind: "pay", registrationId: existingId, qrImageUrl: "", amountCents: feeCents });
         return;
       }
       showError(typeof result.error === "string" ? result.error : "Registration failed", {
@@ -157,11 +159,16 @@ export function DivisionRegisterForm({
       onComplete({ kind: "venue", registrationId });
       return;
     }
-    if ("checkoutUrl" in result && result.checkoutUrl && registrationId) {
+    const qrImageUrl =
+      "qrImageUrl" in result && typeof result.qrImageUrl === "string" ? result.qrImageUrl : "";
+    if (registrationId && qrImageUrl) {
       onComplete({
         kind: "pay",
         registrationId,
-        checkoutUrl: result.checkoutUrl,
+        qrImageUrl,
+        checkoutUrl: "checkoutUrl" in result ? (result.checkoutUrl as string | null) : null,
+        qrExpiresAt:
+          "expiresAt" in result && typeof result.expiresAt === "string" ? result.expiresAt : null,
         amountCents: feeCents,
         paymentHoldExpiresAt:
           "paymentHoldExpiresAt" in result && typeof result.paymentHoldExpiresAt === "string"

@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isPayMongoConfigured } from "@/lib/env/server";
-import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
+import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { checkPartnerEmailConflict, normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
@@ -363,34 +363,23 @@ export async function createRegistrationAction(params: {
       });
     }
     const idempotencyKey = `reg-${registration.id}-${Date.now()}`;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const checkout = await createCheckoutSession({
+    const payment = await startRegistrationQrphPayment({
+      registrationId: registration.id,
+      userId: user.id,
+      tournamentId: tournament.id,
+      tournamentName: tournament.name,
+      tournamentSlug: tournament.slug,
       amountCents: fee,
-      description: `${tournament.name} registration (non-refundable)`,
-      successUrl: `${appUrl}/tournaments/${tournament.slug}/register/success?registration=${registration.id}`,
-      cancelUrl: `${appUrl}/tournaments/${tournament.slug}?cancelled=1`,
-      metadata: {
-        registration_id: registration.id,
-        tournament_id: tournament.id,
-        user_id: user.id,
-      },
-    });
-    await admin.from("payments").insert({
-      registration_id: registration.id,
-      user_id: user.id,
-      amount_cents: fee,
-      currency: "PHP",
-      status: "pending",
-      paymongo_checkout_session_id: checkout.sessionId,
-      idempotency_key: idempotencyKey,
+      idempotencyKey,
     });
     await notifyRegistrantAfterRegistration(registration.id, {
-      checkoutUrl: checkout.checkoutUrl,
+      checkoutUrl: payment.checkoutUrl ?? null,
     });
     revalidate();
     return withWarnings({
       registrationId: registration.id,
-      checkoutUrl: checkout.checkoutUrl,
+      qrImageUrl: payment.qrImageUrl,
+      checkoutUrl: payment.checkoutUrl ?? null,
       paymentHoldExpiresAt: holdExpires,
     });
   }

@@ -17,9 +17,18 @@ export function PayNowButton({ registrationId, label = "Pay now" }: { registrati
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ registrationId }),
       });
-      const json = (await res.json()) as { checkoutUrl?: string; error?: string };
-      if (!res.ok || !json.checkoutUrl) throw new Error(json.error ?? "Couldn't start checkout");
-      window.location.href = json.checkoutUrl;
+      const json = (await res.json()) as { checkoutUrl?: string; qrImageUrl?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Couldn't start checkout");
+      if (json.checkoutUrl) {
+        window.location.href = json.checkoutUrl;
+        return;
+      }
+      if (json.qrImageUrl) {
+        toast.success("Open WHO'S IN on your category to scan the QR and pay.");
+        setLoading(false);
+        return;
+      }
+      throw new Error("Couldn't start checkout");
     } catch (e) {
       setLoading(false);
       toast.error(e instanceof Error ? e.message : "Couldn't start checkout");

@@ -156,6 +156,16 @@ export function RegisterSection({
       window.location.href = result.checkoutUrl;
       return;
     }
+    if (
+      "qrImageUrl" in result &&
+      typeof result.qrImageUrl === "string" &&
+      result.qrImageUrl &&
+      "registrationId" in result &&
+      result.registrationId
+    ) {
+      router.push(`/tournaments/${slug}`);
+      return;
+    }
     if ("payAtVenue" in result && result.payAtVenue && "registrationId" in result) {
       router.push(`/tournaments/${slug}/register/success?registration=${result.registrationId}&venue=1`);
       return;

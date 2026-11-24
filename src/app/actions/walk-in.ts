@@ -5,8 +5,8 @@ import { promoteFromWaitlist } from "@/lib/registrations/waitlist";
 import { expireSubstitutions } from "@/lib/registrations/team-changes";
 import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAppUrl, isPayMongoConfigured } from "@/lib/env/server";
-import { createCheckoutSession } from "@/lib/services/paymongo/paymongo-service";
+import { isPayMongoConfigured } from "@/lib/env/server";
+import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
@@ -121,8 +121,10 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
   }
 }
 
-/** Creates a PayMongo checkout for this entry, shown as a QR code for the player to scan. */
-export async function createDeskQrAction(registrationId: string): Promise<Result & { checkoutUrl?: string; amountCents?: number }> {
+/** Creates a PayMongo QR Ph session for this entry (scannable bank / Maya apps). */
+export async function createDeskQrAction(
+  registrationId: string
+): Promise<Result & { qrImageUrl?: string; checkoutUrl?: string; amountCents?: number; expiresAt?: string }> {
   try {
     if (!isPayMongoConfigured()) return { error: "QR payments need PayMongo set up. Take cash for now." };
     const found = await loadRegistration(registrationId);
@@ -133,26 +135,26 @@ export async function createDeskQrAction(registrationId: string): Promise<Result
     if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
     if (feeCents <= 0) return { error: "This category is free — nothing to collect." };
 
-    const appUrl = getAppUrl();
-    const checkout = await createCheckoutSession({
+    const payment = await startRegistrationQrphPayment({
+      registrationId,
+      userId: reg.entry_source === "desk" ? null : reg.registered_by,
+      tournamentId: reg.tournament_id,
+      tournamentName: tournament.name,
+      tournamentSlug: tournament.slug,
       amountCents: feeCents,
-      description: `${tournament.name} — ${division?.name ?? "Entry"}`,
-      successUrl: `${appUrl}/tournaments/${tournament.slug}/register/success?registration=${registrationId}`,
-      cancelUrl: `${appUrl}/tournaments/${tournament.slug}`,
-      metadata: { registration_id: registrationId, tournament_id: reg.tournament_id, source: "desk_qr" },
-    });
-    await createAdminClient().from("payments").insert({
-      registration_id: registrationId,
-      user_id: reg.entry_source === "desk" ? null : reg.registered_by,
-      amount_cents: feeCents,
-      currency: "PHP",
-      status: "pending",
+      idempotencyKey: `qr-${registrationId}-${Date.now()}`,
       method: "qr",
-      recorded_by: user.id,
-      paymongo_checkout_session_id: checkout.sessionId,
-      idempotency_key: `qr-${registrationId}-${Date.now()}`,
+      recordedBy: user.id,
+      metadataExtra: { source: "desk_qr" },
+      description: `${tournament.name} — ${division?.name ?? "Entry"}`,
     });
-    return { ok: true, checkoutUrl: checkout.checkoutUrl, amountCents: feeCents };
+    return {
+      ok: true,
+      qrImageUrl: payment.qrImageUrl,
+      checkoutUrl: payment.checkoutUrl,
+      amountCents: feeCents,
+      expiresAt: payment.expiresAt,
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't create the QR checkout" };
   }

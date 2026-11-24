@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import QRCode from "qrcode";
+import { qrContentToDataUrl } from "@/lib/payments/qrph-image";
 import { Banknote, Check, Loader2, QrCode, UserPlus } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import {
@@ -53,12 +53,12 @@ export function CollectPaymentDialog({
     if (!target) return;
     setBusy(true);
     const res = await createDeskQrAction(target.id);
-    if (res.error || !res.checkoutUrl) {
+    if (res.error || !res.qrImageUrl) {
       setBusy(false);
       toast.error(res.error ?? "Couldn't create the QR");
       return;
     }
-    setQr(await QRCode.toDataURL(res.checkoutUrl, { width: 320, margin: 2 }));
+    setQr(await qrContentToDataUrl(res.qrImageUrl));
     setBusy(false);
     setStep("qr");
   }

@@ -4,8 +4,9 @@
 
 Until the StarPago merchant API is approved and wired in the product:
 
-- **Online registration:** PayMongo hosted checkout (`checkout.session.payment.paid` webhook).
-- **Desk / walk-in QR:** PayMongo checkout URL encoded as a QR in the organizer app ([`CollectPaymentDialog`](../src/components/organizer/walk-in-dialogs.tsx)).
+- **Online registration (in-drawer Pay QR):** PayMongo **QR Ph** payment intent (`qrph` attach → `paymongo_qr_image_url`; webhooks `payment_intent.succeeded` and `checkout.session.payment.paid`).
+- **Desk / walk-in QR:** Same QR Ph image in [`CollectPaymentDialog`](../src/components/organizer/walk-in-dialogs.tsx) — not a checkout URL encoded as QR.
+- **Browser fallback:** Optional PayMongo hosted checkout (`checkoutUrl`) for card / GCash via **Open checkout in browser** in [`CheckoutQrPanel`](../src/components/payments/checkout-qr-panel.tsx).
 
 Configure keys and webhooks per [README](../README.md) (PayMongo section).
 
@@ -16,7 +17,9 @@ When an organizer uses **Show QR**, the app displays a notice ([`qrph-desk-copy.
 - **Does not work in GCash.**
 - Works with **Maya**, **GoTyme**, **Maribank**, and other **bank / InstaPay QR Ph** apps.
 
-Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the desk QR disclaimer applies only to the in-app QR flow.
+Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the in-app QR is **QR Ph** (bank / Maya apps).
+
+**PayMongo dashboard:** Subscribe the webhook to `payment_intent.succeeded` (and keep `checkout.session.payment.paid` for browser checkout). Enable **QR Ph** on the merchant account.
 
 ## Withdrawals
 
