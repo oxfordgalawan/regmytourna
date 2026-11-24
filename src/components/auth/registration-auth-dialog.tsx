@@ -6,11 +6,12 @@ import { RegistrationAuthPanel } from "@/components/auth/registration-auth-panel
 export function RegistrationAuthDialog({
   open,
   onOpenChange,
+  initialTab = "login",
   onAuthenticated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  next?: string;
+  initialTab?: "login" | "signup";
   onAuthenticated?: () => void;
 }) {
   return (
@@ -19,6 +20,8 @@ export function RegistrationAuthDialog({
         <DialogTitle className="sr-only">Log in or create an account</DialogTitle>
         <DialogDescription className="sr-only">Sign in to continue registration</DialogDescription>
         <RegistrationAuthPanel
+          key={open ? initialTab : "closed"}
+          defaultTab={initialTab}
           onAuthenticated={() => {
             onOpenChange(false);
             onAuthenticated?.();

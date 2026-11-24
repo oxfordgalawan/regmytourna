@@ -7,8 +7,14 @@ import { cn } from "@/lib/utils";
 
 type AuthTab = "login" | "signup";
 
-export function RegistrationAuthPanel({ onAuthenticated }: { onAuthenticated?: () => void }) {
-  const [tab, setTab] = useState<AuthTab>("login");
+export function RegistrationAuthPanel({
+  onAuthenticated,
+  defaultTab = "login",
+}: {
+  onAuthenticated?: () => void;
+  defaultTab?: AuthTab;
+}) {
+  const [tab, setTab] = useState<AuthTab>(defaultTab);
 
   return (
     <div className="space-y-5">

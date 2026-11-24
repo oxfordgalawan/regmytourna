@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Clock,
   ExternalLink,
-  LogIn,
   MapPin,
   ScrollText,
   UserRound,
@@ -17,6 +16,10 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { getOptionalUser } from "@/lib/auth/require-user";
 import { RegisterSection } from "@/components/tournaments/register-section";
+import {
+  TournamentRegisterGuestAuth,
+  TournamentRegisterNowLink,
+} from "@/components/tournaments/tournament-register-guest-auth";
 import { DivisionRosterButton } from "@/components/tournaments/division-roster-button";
 import { TournamentCoverHero } from "@/components/tournaments/tournament-cover-hero";
 import { relationOne } from "@/lib/supabase/relations";
@@ -116,9 +119,6 @@ export default async function TournamentDetailPage({
       ? formatPhp(minFee, tournament.currency)
       : `${formatPhp(minFee, tournament.currency)} – ${formatPhp(maxFee, tournament.currency)}`;
   const countdown = daysUntil(tournament.start_date);
-  const returnTo = `/tournaments/${slug}#register`;
-  const loginHref = `/login?next=${encodeURIComponent(returnTo)}`;
-  const signupHref = `/signup?next=${encodeURIComponent(returnTo)}`;
   const showBracketSoon =
     draws.length === 0 &&
     (tournament.status === "in_progress" || tournament.status === "registration_closed");
@@ -369,23 +369,7 @@ export default async function TournamentDetailPage({
                   divisions={divisions.map((d) => ({ ...d, taken: counts[d.id]?.taken ?? 0 }))}
                 />
               ) : (
-                <div>
-                  <p className="text-sm leading-relaxed text-bone/75">
-                    Log in or create a free account to pick a category and pay. It takes about a
-                    minute.
-                  </p>
-                  <div className="mt-5 grid gap-2">
-                    <Button size="lg" asChild>
-                      <Link href={loginHref}>
-                        <LogIn />
-                        Log in to register
-                      </Link>
-                    </Button>
-                    <Button size="lg" variant="outline" asChild>
-                      <Link href={signupHref}>Create an account</Link>
-                    </Button>
-                  </div>
-                </div>
+                <TournamentRegisterGuestAuth variant="sidebar" />
               )}
             </div>
           </div>
@@ -417,9 +401,7 @@ export default async function TournamentDetailPage({
               <p className="eyebrow">Entry from</p>
               <p className="font-mono text-bone">{formatPhp(minFee, tournament.currency)}</p>
             </div>
-            <Button size="lg" asChild>
-              <Link href={user ? "#register" : loginHref}>Register now</Link>
-            </Button>
+            {user ? <TournamentRegisterNowLink /> : <TournamentRegisterGuestAuth variant="mobile" />}
           </div>
         </div>
       )}
