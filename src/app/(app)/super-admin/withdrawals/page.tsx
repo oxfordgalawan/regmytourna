@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { methodTypeLabel, type PayoutMethodType } from "@/lib/payout-methods/config";
 import { CopyField, WithdrawalReviewActions } from "@/components/super-admin/withdrawal-review-actions";
+import { WithdrawalRetryPayout } from "@/components/super-admin/withdrawal-retry-payout";
 import { MethodMark } from "@/components/wallet/payout-method-ui";
 import { PlayerAvatar } from "@/components/players/player-avatar";
 import { cn } from "@/lib/utils";
@@ -224,18 +225,29 @@ export default async function SuperAdminWithdrawalsPage({
                       />
                     </>
                   ) : (
-                    <span
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs",
-                        row.status === "approved" ? "text-bone" : "text-[#e58a72]"
-                      )}
-                    >
-                      {row.status === "approved" ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-                      {row.status === "approved" ? "Sent" : row.status === "rejected" ? "Declined" : row.status}
-                      {row.reviewed_at ? ` · ${formatDateTime(row.reviewed_at)}` : ""}
-                      {row.paymongo_transfer_id ? ` · ${row.paymongo_transfer_id}` : ""}
-                      {row.admin_note ? ` · “${row.admin_note}”` : ""}
-                    </span>
+                    <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                      <span
+                        className={cn(
+                          "flex items-center gap-1.5 text-xs",
+                          row.status === "approved" ? "text-bone" : "text-[#e58a72]"
+                        )}
+                      >
+                        {row.status === "approved" ? <Check className="size-3.5" /> : <X className="size-3.5" />}
+                        {row.status === "approved" ? "Sent" : row.status === "rejected" ? "Declined" : row.status}
+                        {row.reviewed_at ? ` · ${formatDateTime(row.reviewed_at)}` : ""}
+                        {row.paymongo_transfer_id ? ` · ${row.paymongo_transfer_id}` : ""}
+                        {row.admin_note ? ` · “${row.admin_note}”` : ""}
+                      </span>
+                      {row.status === "approved" &&
+                        !row.paymongo_transfer_id &&
+                        paymongoWalletConfigured() && (
+                          <WithdrawalRetryPayout
+                            requestId={row.id}
+                            amountCents={row.amount_cents}
+                            organizerName={name}
+                          />
+                        )}
+                    </div>
                   )}
                 </div>
               </article>

@@ -135,3 +135,84 @@ export async function reviewWithdrawalRequest(input: {
   revalidatePath("/organizer/wallet");
   return { success: true as const };
 }
+
+function nextPaymongoPayoutAttempt(adminNote: string | null) {
+  const matches = adminNote?.match(/PayMongo attempt (\d+)/g) ?? [];
+  return matches.length + 1;
+}
+
+function mergeAdminNote(existing: string | null, transferId: string, attempt: number, refNote?: string) {
+  const parts = [existing?.trim(), refNote?.trim(), `PayMongo attempt ${attempt}`, `PayMongo: ${transferId}`].filter(Boolean);
+  return parts.join(" · ") || null;
+}
+
+/** PayMongo InstaPay for approvals that were marked sent without a transfer (manual approve). */
+export async function retryPaymongoWithdrawalPayout(input: {
+  requestId: string;
+  note?: string;
+}): Promise<{ success?: true; error?: string; transferId?: string }> {
+  await requireSuperAdmin();
+  if (!paymongoWalletConfigured()) {
+    return { error: "PayMongo wallet is not configured on the server." };
+  }
+
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("withdrawal_requests")
+    .select("id, status, amount_cents, payout_snapshot, paymongo_transfer_id, admin_note, user_id")
+    .eq("id", input.requestId)
+    .maybeSingle();
+
+  if (!row) return { error: "Withdrawal not found." };
+  if (row.status !== "approved") {
+    return { error: "Only approved withdrawals can be retried." };
+  }
+  if (row.paymongo_transfer_id) {
+    return { error: "This withdrawal already has a PayMongo transfer." };
+  }
+
+  const attempt = nextPaymongoPayoutAttempt(row.admin_note);
+  const payout = await sendPaymongoWithdrawalPayout({
+    requestId: row.id,
+    amountCents: row.amount_cents,
+    payoutSnapshot: (row.payout_snapshot ?? {}) as Record<string, unknown>,
+    attempt,
+  });
+
+  if ("error" in payout && payout.error) {
+    const failNote = [row.admin_note?.trim(), `PayMongo attempt ${attempt} failed: ${payout.error}`]
+      .filter(Boolean)
+      .join(" · ");
+    await admin.from("withdrawal_requests").update({ admin_note: failNote || null }).eq("id", row.id);
+    revalidatePath("/super-admin/withdrawals");
+    return { error: payout.error };
+  }
+
+  if (!("transferId" in payout) || !payout.transferId) {
+    return { error: "PayMongo payout did not return a transfer id." };
+  }
+
+  const adminNote = mergeAdminNote(row.admin_note, payout.transferId, attempt, input.note?.trim());
+  await admin
+    .from("withdrawal_requests")
+    .update({ paymongo_transfer_id: payout.transferId, admin_note: adminNote })
+    .eq("id", row.id);
+
+  const { data: u } = await admin.auth.admin.getUserById(row.user_id);
+  if (u?.user?.email) {
+    const snap = (row.payout_snapshot ?? {}) as { label?: string };
+    const mail = withdrawalReviewedEmail({
+      approved: true,
+      amountCents: row.amount_cents,
+      methodLabel: snap.label ?? "your payout method",
+      note: adminNote,
+      walletUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/organizer/wallet`,
+    });
+    await sendRegistrationEmail({ to: u.user.email, ...mail }).catch(() => undefined);
+  }
+
+  revalidatePath("/super-admin/withdrawals");
+  revalidatePath("/super-admin");
+  revalidatePath("/organizer/wallet");
+  return { success: true, transferId: payout.transferId };
+}
