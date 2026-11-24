@@ -31,6 +31,7 @@ import { formatPhp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { showError } from "@/lib/ui/error-dialog";
 import { normalizePhilippineMobile, parsePhilippineMobileRequired } from "@/lib/validations/phone";
+import { useSyncRegisterFee } from "@/components/tournaments/register-fee-context";
 
 type Division = {
   id: string;
@@ -131,6 +132,8 @@ export function RegisterSection({
   const closed = full && !waitlistEnabled;
   const venue = !waitlist && allowPayAtVenue && fee > 0 && payment === "venue";
   const isDoubles = selected?.format === "doubles";
+  const dueCents = waitlist ? 0 : fee;
+  useSyncRegisterFee(dueCents);
 
   const runPartnerPreview = useCallback(async () => {
     if (!isDoubles || !partnerEmail.trim() || !divisionId) {

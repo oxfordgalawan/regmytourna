@@ -16,10 +16,9 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { getOptionalUser } from "@/lib/auth/require-user";
 import { RegisterSection } from "@/components/tournaments/register-section";
-import {
-  TournamentRegisterGuestAuth,
-  TournamentRegisterNowLink,
-} from "@/components/tournaments/tournament-register-guest-auth";
+import { TournamentRegisterGuestAuth } from "@/components/tournaments/tournament-register-guest-auth";
+import { RegisterFeeProvider } from "@/components/tournaments/register-fee-context";
+import { TournamentMobileRegisterBar } from "@/components/tournaments/tournament-mobile-register-bar";
 import { DivisionRosterButton } from "@/components/tournaments/division-roster-button";
 import { TournamentCoverHero } from "@/components/tournaments/tournament-cover-hero";
 import { relationOne } from "@/lib/supabase/relations";
@@ -118,6 +117,9 @@ export default async function TournamentDetailPage({
     minFee === maxFee
       ? formatPhp(minFee, tournament.currency)
       : `${formatPhp(minFee, tournament.currency)} – ${formatPhp(maxFee, tournament.currency)}`;
+  const defaultSelectedFee =
+    divisions[0]?.entry_fee_cents ?? tournament.entry_fee_cents;
+  const syncMobileFee = isOpen && !bracketOnly;
   const countdown = daysUntil(tournament.start_date);
   const showBracketSoon =
     draws.length === 0 &&
@@ -150,7 +152,7 @@ export default async function TournamentDetailPage({
     },
   ];
 
-  return (
+  const page = (
     <div className="pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-24">
       <TournamentCoverHero coverUrl={tournament.cover_image_url} tournamentName={tournament.name}>
         <div className="pointer-events-none mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pt-10 pb-16 sm:px-6 sm:pb-20 lg:pb-24 lg:pt-14 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
@@ -393,18 +395,15 @@ export default async function TournamentDetailPage({
         </section>
       )}
 
-      {/* Mobile action bar */}
-      {isOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div>
-              <p className="eyebrow">Entry from</p>
-              <p className="font-mono text-bone">{formatPhp(minFee, tournament.currency)}</p>
-            </div>
-            {user ? <TournamentRegisterNowLink /> : <TournamentRegisterGuestAuth variant="mobile" />}
-          </div>
-        </div>
-      )}
+      {syncMobileFee && <TournamentMobileRegisterBar isSignedIn={Boolean(user)} />}
     </div>
+  );
+
+  if (!syncMobileFee) return page;
+
+  return (
+    <RegisterFeeProvider initialFeeCents={defaultSelectedFee} currency={tournament.currency}>
+      {page}
+    </RegisterFeeProvider>
   );
 }
