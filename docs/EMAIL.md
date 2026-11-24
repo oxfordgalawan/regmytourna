@@ -45,6 +45,10 @@ Use the exact format `Display Name <email@domain.com>`.
 
 Emails link to your site using `NEXT_PUBLIC_APP_URL` — set that to your real URL on Vercel (e.g. `https://www.regmytourna.com`) so links in emails are correct.
 
+## Organizer entry notifications
+
+When a registration becomes **paid** or **confirmed** (including free categories), the event **owner** and **co-organizers** receive an email via [`organizer-entry-notify.ts`](../src/lib/registrations/organizer-entry-notify.ts) (template: [`organizer-registration-email.ts`](../src/lib/email/organizer-registration-email.ts)). Sent on online/QR settlement, desk cash, free signup, and free walk-in — not on bulk player import.
+
 ## Password reset emails
 
 When `RESEND_API_KEY` is set, forgot-password uses **Resend** with the branded template in [`password-reset-email.ts`](../src/lib/email/password-reset-email.ts) (same look as registration mail). Links go through `/auth/callback?next=/reset-password`.

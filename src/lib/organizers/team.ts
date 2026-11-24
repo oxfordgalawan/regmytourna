@@ -5,6 +5,7 @@ import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { sendRegistrationEmail } from "@/lib/email/send";
 import { organizerInviteEmail } from "@/lib/email/organizer-email";
 import { getAppUrl } from "@/lib/env/server";
+import { emailsForUserIds } from "@/lib/organizers/organizer-emails";
 
 /**
  * Co-organizers. The owner invites people by email or with a share link;
@@ -30,24 +31,6 @@ export function migrationMessage(message: string) {
     : message;
 }
 
-async function emailsFor(ids: string[]) {
-  const admin = createAdminClient();
-  const map = new Map<string, string>();
-  if (!ids.length) return map;
-  const { data, error } = await admin.rpc("auth_emails_for_users", { p_ids: ids });
-  if (!error && Array.isArray(data)) {
-    for (const r of data as Array<{ id: string; email: string | null }>) if (r.email) map.set(r.id, r.email);
-    return map;
-  }
-  await Promise.all(
-    ids.map(async (id) => {
-      const { data: u } = await admin.auth.admin.getUserById(id);
-      if (u?.user?.email) map.set(id, u.user.email);
-    })
-  );
-  return map;
-}
-
 export async function isOwner(tournamentId: string, userId: string) {
   const { data } = await createAdminClient().from("tournaments").select("owner_id").eq("id", tournamentId).maybeSingle();
   return data?.owner_id === userId;
@@ -63,7 +46,7 @@ export async function loadTeam(tournamentId: string) {
   if (!t) return null;
   const ownerProfile = relationOne(t.profiles as never) as { full_name: string | null; avatar_url: string | null } | null;
   const others = (members ?? []).filter((m) => m.user_id !== t.owner_id);
-  const emails = await emailsFor([t.owner_id, ...others.map((m) => m.user_id)]);
+  const emails = await emailsForUserIds([t.owner_id, ...others.map((m) => m.user_id)]);
 
   const team: TeamMember[] = [
     {

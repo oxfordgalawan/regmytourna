@@ -10,6 +10,7 @@ import { isPayMongoConfigured } from "@/lib/env/server";
 import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
+import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-entry-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry";
@@ -121,6 +122,7 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
     revalidateEvent(reg.tournament_id, tournament.slug);
     await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
     await notifyPartnerAfterRegistration(registrationId);
+    await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);
     return { ok: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't record payment" };
@@ -246,6 +248,9 @@ export async function addWalkInEntryAction(
     ]);
 
     revalidateEvent(tournamentId, tournament.slug);
+    if (feeCents <= 0) {
+      await notifyOrganizersEntryConfirmed(reg.id).catch(() => undefined);
+    }
     return { ok: true, registrationId: reg.id, feeCents };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't add the entry" };

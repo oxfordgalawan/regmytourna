@@ -12,6 +12,7 @@ import { checkCrossCategoryEligibility } from "@/lib/registrations/cross-categor
 import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
 import { joinPersonName } from "@/lib/validations/person-name";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
+import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-entry-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
 import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
@@ -423,6 +424,7 @@ export async function createRegistrationAction(params: {
   revalidate();
   await notifyRegistrantAfterRegistration(registration.id);
   await notifyPartnerAfterRegistration(registration.id);
+  await notifyOrganizersEntryConfirmed(registration.id).catch(() => undefined);
   return withWarnings({ registrationId: registration.id, confirmed: true });
 }
 

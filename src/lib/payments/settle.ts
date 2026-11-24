@@ -4,6 +4,7 @@ import { isPaymentIntentPaid } from "@/lib/services/paymongo/paymongo-qrph";
 import { persistPaymongoSettlementOnPayment } from "@/lib/payments/persist-settlement";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
+import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-entry-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { isPayMongoConfigured } from "@/lib/env/server";
@@ -77,6 +78,7 @@ export async function settlePaidPayment(
   if (!alreadyPaid) {
     await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" }).catch(() => undefined);
     await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
+    await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);
   }
   return { settled: true, credited: credit.credited };
 }
