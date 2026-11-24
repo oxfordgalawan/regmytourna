@@ -14,6 +14,12 @@ const PUBLIC_STATUSES = [
   "completed",
 ] as const;
 
+/** Browse tabs on /tournaments and /explore (not the home-page date filter). */
+export const PUBLIC_STATUS_TAB = {
+  upcoming: ["published", "registration_open"],
+  live: ["in_progress"],
+} as const;
+
 /** Search words, stripped of characters that would break a PostgREST filter. */
 function searchWords(search?: string) {
   return (search ?? "")
@@ -61,7 +67,15 @@ export async function listPublicTournaments(filters?: {
   }
   if (filters?.sport) query = query.eq("sport", filters.sport);
   if (filters?.city) query = query.ilike("city", `%${filters.city}%`);
-  if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.status) {
+    if (filters.status === "upcoming") {
+      query = query.in("status", [...PUBLIC_STATUS_TAB.upcoming]);
+    } else if (filters.status === "live") {
+      query = query.eq("status", "in_progress");
+    } else {
+      query = query.eq("status", filters.status);
+    }
+  }
   if (filters?.upcoming) {
     const today = manilaToday();
     query = query

@@ -4,6 +4,13 @@ import Form from "next/form";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { ArrowLeft, ArrowRight, Search, SearchX, X } from "lucide-react";
 import { closeMatchTournaments, listPublicTournaments } from "@/lib/tournaments/queries";
+import {
+  DEFAULT_PUBLIC_LIST_STATUS,
+  effectivePublicListStatus,
+  hasNonDefaultListFilters,
+  PUBLIC_LIST_STATUS_TABS,
+  statusForListQuery,
+} from "@/lib/tournaments/public-list-tabs";
 import { isSupabaseConfigured } from "@/lib/env/server";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -22,19 +29,15 @@ type Params = {
   page?: string;
 };
 
-const statusFilters = [
-  { value: "", label: "All" },
-  { value: "registration_open", label: "Open for entries" },
-  { value: "published", label: "Announced" },
-  { value: "in_progress", label: "Live now" },
-  { value: "completed", label: "Completed" },
-];
-
 function hrefWith(params: Params, patch: Partial<Params>) {
+  const merged = { ...params, ...patch };
+  const tab = effectivePublicListStatus(merged.status);
   const next = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...params, ...patch })) {
-    if (v) next.set(k, v);
-  }
+  if (merged.q) next.set("q", merged.q);
+  if (merged.city) next.set("city", merged.city);
+  if (merged.sport) next.set("sport", merged.sport);
+  if (merged.page && merged.page !== "1") next.set("page", merged.page);
+  if (tab !== DEFAULT_PUBLIC_LIST_STATUS) next.set("status", tab);
   const qs = next.toString();
   return qs ? `/tournaments?${qs}` : "/tournaments";
 }
@@ -46,7 +49,8 @@ export default async function TournamentsPage({
 }) {
   const params = await searchParams;
   const page = Number(params.page ?? "1") || 1;
-  const hasFilters = Boolean(params.q || params.city || params.sport || params.status);
+  const tabStatus = effectivePublicListStatus(params.status);
+  const hasFilters = hasNonDefaultListFilters(params);
 
   if (!isSupabaseConfigured()) {
     return (
@@ -72,7 +76,11 @@ export default async function TournamentsPage({
 
       <div className="sticky top-16 z-30 -mx-4 mt-10 border-y border-line bg-ink/90 px-4 py-4 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border sm:px-4">
         <Form action="/tournaments" scroll={false} className="grid gap-2 sm:grid-cols-[1fr_14rem_auto]" role="search">
-          {params.status && <input type="hidden" name="status" value={params.status} />}
+          <input
+            type="hidden"
+            name="status"
+            value={tabStatus === "all" ? "all" : tabStatus}
+          />
           <label className="relative">
             <span className="sr-only">Search tournaments</span>
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -97,10 +105,10 @@ export default async function TournamentsPage({
           <FilterChips
             label="Filter by status"
             className="flex-1"
-            chips={statusFilters.map((f) => ({
-              key: f.value || "all",
+            chips={PUBLIC_LIST_STATUS_TABS.map((f) => ({
+              key: f.value,
               label: f.label,
-              active: (params.status ?? "") === f.value,
+              active: tabStatus === f.value,
               href: hrefWith(params, { status: f.value, page: undefined }),
             }))}
           />
@@ -117,36 +125,38 @@ export default async function TournamentsPage({
         </div>
       </div>
 
-      {/* keyed so each new search shows the skeleton while the header and filters stay put */}
-      <Suspense key={hrefWith(params, {})} fallback={<SkeletonCards className="mt-8" />}>
-        <Results params={params} page={page} hasFilters={hasFilters} />
+      <Suspense
+        key={`${params.q ?? ""}|${params.city ?? ""}|${tabStatus}|${page}`}
+        fallback={<SkeletonCards className="mt-8" />}
+      >
+        <Results params={params} page={page} tabStatus={tabStatus} hasFilters={hasFilters} />
       </Suspense>
     </div>
   );
 }
 
-
 async function Results({
   params,
   page,
+  tabStatus,
   hasFilters,
 }: {
   params: Params;
   page: number;
+  tabStatus: string;
   hasFilters: boolean;
 }) {
   const { data, count } = await listPublicTournaments({
     search: params.q,
     sport: params.sport,
     city: params.city,
-    status: params.status,
+    status: statusForListQuery(tabStatus),
     page,
   });
 
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / 12));
 
-  // nothing exact (often a typo): offer the closest events instead of a dead end
   const close = !data.length && params.q ? await closeMatchTournaments(params.q) : [];
   if (close.length) {
     return (
@@ -164,11 +174,18 @@ async function Results({
     );
   }
 
+  const countSuffix =
+    tabStatus === DEFAULT_PUBLIC_LIST_STATUS && !hasFilters
+      ? " upcoming"
+      : hasFilters
+        ? " match your filters"
+        : " listed";
+
   return (
     <div className="mt-8 animate-in fade-in-0 duration-500">
       <p className="mb-5 font-mono text-sm text-muted-foreground" aria-live="polite">
         {total} {total === 1 ? "event" : "events"}
-        {hasFilters ? " match your filters" : " listed"}
+        {countSuffix}
       </p>
       {data.length ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
