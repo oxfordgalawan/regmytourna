@@ -70,7 +70,7 @@ export function BalanceCard({
             </p>
             {balanceCents < 0 && (
               <p className="mt-1 text-xs text-bone/70">
-                Platform fees on cash entries — settled from your next online payments.
+                Convenience fees on cash entries — settled from your next online payments.
               </p>
             )}
           </div>
@@ -456,7 +456,7 @@ export function ActivityList({ activity }: { activity: WalletActivity[] }) {
                   )}
                   {a.kind === "cash_fee" && a.grossCents !== null && (
                     <p className="truncate font-mono text-[0.65rem] text-muted-foreground/80">
-                      {formatPhp(a.grossCents)} cash kept by you · platform fee deducted here
+                      {formatPhp(a.grossCents)} cash kept by you · convenience fee deducted here
                     </p>
                   )}
                 </div>

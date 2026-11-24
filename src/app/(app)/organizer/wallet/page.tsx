@@ -29,7 +29,7 @@ export default async function OrganizerWalletPage() {
       <PageHeader
         eyebrow="Organizer"
         title="Wallet"
-        description={`Online and QR entry payments land here after a ${feePercent}% platform fee. Withdraw any time — an admin approves each payout.`}
+        description={`Online and QR entry payments land here after a ${feePercent}% convenience fee. Withdraw any time — an admin approves each payout.`}
       />
 
       <BalanceCard
