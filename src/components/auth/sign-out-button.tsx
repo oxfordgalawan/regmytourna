@@ -27,6 +27,7 @@ export function SignOutButton({
     if (result.error) {
       setBusy(false);
       console.error("[sign-out]", result.error);
+      window.location.assign("/");
     }
   }
 

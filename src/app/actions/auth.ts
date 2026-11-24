@@ -208,7 +208,7 @@ export async function updatePassword(formData: FormData) {
   redirect("/login?message=password_updated");
 }
 
-/** Clears Supabase auth cookies on the server (client-only signOut often leaves session cookies). */
+/** @deprecated Prefer `POST /api/auth/sign-out` — server actions on protected pages break after client cookies clear. */
 export async function signOutAction() {
   if (!isSupabaseConfigured()) {
     return { error: "Supabase is not configured." };

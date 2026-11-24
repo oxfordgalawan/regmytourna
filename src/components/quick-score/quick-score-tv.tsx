@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AutoRefresh } from "@/components/display/auto-refresh";
+import { TvFullscreenButton } from "@/components/quick-score/tv-fullscreen-button";
 import { cn } from "@/lib/utils";
 
 type TvPayload = {
@@ -50,22 +50,22 @@ export function QuickScoreTv({ token }: { token: string }) {
 
   if (error && !data) {
     return (
-      <div className="grain flex min-h-dvh flex-col items-center justify-center gap-4 bg-ink px-8 text-center text-bone">
+      <div className="grain relative flex min-h-dvh flex-col items-center justify-center gap-4 bg-ink px-8 text-center text-bone">
+        <TvFullscreenButton />
         <p className="display text-5xl sm:text-6xl">{error}</p>
-        <AutoRefresh seconds={5} clock={false} />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="grain flex min-h-dvh items-center justify-center bg-ink text-bone">
+      <div className="grain relative flex min-h-dvh items-center justify-center bg-ink text-bone">
+        <TvFullscreenButton />
         <p className="eyebrow animate-pulse">Loading live score…</p>
       </div>
     );
   }
 
-  const done = data.status === "completed";
   const showGames = data.gamesWonA + data.gamesWonB > 0;
   const sides = [
     { name: data.teamALabel, score: data.scoreA, games: data.gamesWonA, lead: data.scoreA > data.scoreB },
@@ -74,22 +74,19 @@ export function QuickScoreTv({ token }: { token: string }) {
 
   return (
     <div className="grain relative flex min-h-dvh flex-col bg-ink text-bone">
-      <header className="flex items-end justify-between gap-8 border-b border-umber px-8 py-6 sm:px-10">
-        <div className="min-w-0">
-          <p className="eyebrow flex items-center gap-2 text-bone/80">
-            {!done && <span className="size-2 animate-pulse-dot rounded-full bg-rust" />}
-            {done ? "Final" : "Live score"}
-          </p>
-          <h1 className="display mt-2 truncate text-5xl sm:text-6xl">{data.title ?? "Pickleball"}</h1>
-          {!done && (
-            <p className="mt-2 font-mono text-sm text-bone/50">Game {data.currentGame}</p>
-          )}
-        </div>
-        <AutoRefresh seconds={3} />
-      </header>
-
-      <main className="flex flex-1 flex-col justify-center px-6 py-10 sm:px-12">
+      <TvFullscreenButton />
+      <main id="main" className="flex flex-1 flex-col justify-center px-6 py-10 sm:px-12">
         <article className="overflow-hidden rounded-3xl border border-bone/40 bg-espresso">
+          {data.title ? (
+            <p className="truncate border-b border-line px-8 py-4 text-center text-lg text-bone/60 sm:px-12 sm:text-xl">
+              {data.title}
+              {data.status !== "completed" ? (
+                <span className="font-mono text-bone/40"> · Game {data.currentGame}</span>
+              ) : (
+                <span className="font-mono text-bone/40"> · Final</span>
+              )}
+            </p>
+          ) : null}
           {sides.map((s, i) => (
             <div
               key={i}

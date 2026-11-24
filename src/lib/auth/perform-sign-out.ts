@@ -1,6 +1,5 @@
 "use client";
 
-import { signOutAction } from "@/app/actions/auth";
 import { isSupabaseConfigured } from "@/lib/env/client";
 import { createClient } from "@/lib/supabase/client";
 
@@ -9,15 +8,22 @@ export async function performSignOut(): Promise<{ error?: string }> {
   if (!isSupabaseConfigured()) {
     return { error: "Supabase is not configured." };
   }
-  const supabase = createClient();
-  const { error: clientError } = await supabase.auth.signOut();
-  if (clientError) {
-    return { error: clientError.message };
+
+  try {
+    const res = await fetch("/api/auth/sign-out", { method: "POST", credentials: "include", cache: "no-store" });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+    if (!res.ok) {
+      return { error: body.error ?? "Could not sign out on the server." };
+    }
+  } catch {
+    return { error: "Could not reach the server to sign out." };
   }
 
-  const result = await signOutAction();
-  if (result?.error) {
-    return { error: result.error };
+  try {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+  } catch {
+    // cookies already cleared — still go home
   }
 
   window.location.assign("/");

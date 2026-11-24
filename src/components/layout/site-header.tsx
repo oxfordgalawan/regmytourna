@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/tournaments", label: "Tournaments" },
-  { href: "/umpire-tool", label: "Umpire tool" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#for-organizers", label: "For organizers" },
+  { href: "/umpire-tool", label: "Umpire tool" },
 ];
 
 export function SiteHeader() {

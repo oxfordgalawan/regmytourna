@@ -82,6 +82,7 @@ export function UserAccountMenu({ size = "md" }: { size?: "sm" | "md" }) {
     if (result.error) {
       console.error("[sign-out]", result.error);
       setSigningOut(false);
+      window.location.assign("/");
     }
   }
 
