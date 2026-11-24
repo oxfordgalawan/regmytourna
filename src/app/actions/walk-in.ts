@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isPayMongoConfigured } from "@/lib/env/server";
 import { startRegistrationQrphPayment } from "@/lib/payments/start-paymongo-qrph";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
+import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry";
@@ -101,7 +102,8 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
 
     await admin.from("registrations").update({ status: "confirmed", payment_status: "paid" }).eq("id", registrationId);
 
-    const { platformFeeCents } = splitPaymentAmount(feeCents);
+    const walletPolicy = await loadOrganizerWalletPolicy(admin, tournament.owner_id);
+    const { platformFeeCents } = splitPaymentAmount(feeCents, walletPolicy.feePercent);
     if (platformFeeCents > 0) {
       const { error: feeError } = await admin.rpc("charge_cash_platform_fee", {
         p_user_id: tournament.owner_id,

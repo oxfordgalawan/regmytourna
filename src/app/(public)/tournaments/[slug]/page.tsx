@@ -30,6 +30,9 @@ import { PublicDraw } from "@/components/draw/public-draw";
 import { AutoRefresh } from "@/components/display/auto-refresh";
 import { daysUntil, formatDateRange, formatDateTime, formatPhp } from "@/lib/format";
 import { isRegistrationWindowOpen, registrationWindowOpensAt } from "@/lib/tournaments/registration-window";
+import { buildTournamentPageMetadata } from "@/lib/tournaments/share-metadata";
+
+const metadataBase = new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000");
 
 export async function generateMetadata({
   params,
@@ -38,7 +41,27 @@ export async function generateMetadata({
 }) {
   const { slug } = await params;
   const { data } = await getTournamentBySlug(slug);
-  return { title: data?.name ?? "Tournament" };
+  if (!data) return { title: "Tournament" };
+  return buildTournamentPageMetadata(
+    {
+      name: data.name,
+      slug: data.slug,
+      description: data.description,
+      cover_image_url: data.cover_image_url,
+      currency: data.currency,
+      entry_fee_cents: data.entry_fee_cents,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      venue_name: data.venue_name,
+      city: data.city,
+      venue_address: data.venue_address,
+      status: data.status,
+      registration_opens_at: data.registration_opens_at,
+      registration_closes_at: data.registration_closes_at,
+      tournament_divisions: (data.tournament_divisions ?? []) as Array<{ entry_fee_cents: number | null }>,
+    },
+    metadataBase
+  );
 }
 
 export default async function TournamentDetailPage({

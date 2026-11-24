@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isCheckoutSessionPaid } from "@/lib/services/paymongo/paymongo-service";
 import { isPaymentIntentPaid } from "@/lib/services/paymongo/paymongo-qrph";
+import { persistPaymongoSettlementOnPayment } from "@/lib/payments/persist-settlement";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
@@ -62,6 +63,12 @@ export async function settlePaidPayment(
       .update({ status: "confirmed", payment_status: "paid", payment_hold_expires_at: null })
       .eq("id", registrationId);
   }
+
+  await persistPaymongoSettlementOnPayment(admin as never, {
+    registrationId,
+    sessionId,
+    intentId,
+  });
 
   // idempotent: credits each payment once
   const credit = await creditOrganizerFromRegistration(admin as never, registrationId);

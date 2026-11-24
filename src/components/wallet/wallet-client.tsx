@@ -450,8 +450,15 @@ export function ActivityList({ activity }: { activity: WalletActivity[] }) {
                   </p>
                   {a.kind === "entry" && a.grossCents !== null && (
                     <p className="truncate font-mono text-[0.65rem] text-muted-foreground/80">
-                      {formatPhp(a.grossCents)} paid {a.channel === "qr" ? "by QR at the desk" : "online"} · −
-                      {formatPhp(a.feeCents ?? 0)} fee
+                      {formatPhp(a.grossCents)} paid {a.channel === "qr" ? "by QR at the desk" : "online"}
+                      {a.settlementCents !== null ? (
+                        <> · settlement {formatPhp(a.settlementCents)}</>
+                      ) : null}
+                      {a.paymongoFeeCents != null && a.paymongoFeeCents > 0 ? (
+                        <> · PayMongo −{formatPhp(a.paymongoFeeCents)}</>
+                      ) : null}
+                      {" · −"}
+                      {formatPhp(a.feeCents ?? 0)} convenience fee
                     </p>
                   )}
                   {a.kind === "cash_fee" && a.grossCents !== null && (

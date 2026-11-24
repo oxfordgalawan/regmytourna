@@ -597,10 +597,12 @@ export type Database = {
           organizer_net_cents: number | null
           paid_at: string | null
           paymongo_checkout_session_id: string | null
+          paymongo_fee_cents: number | null
           paymongo_payment_id: string | null
           paymongo_payment_intent_id: string | null
           platform_fee_cents: number | null
           registration_id: string
+          settlement_cents: number | null
           status: Database["public"]["Enums"]["payment_status"]
           updated_at: string
           user_id: string
@@ -616,10 +618,12 @@ export type Database = {
           organizer_net_cents?: number | null
           paid_at?: string | null
           paymongo_checkout_session_id?: string | null
+          paymongo_fee_cents?: number | null
           paymongo_payment_id?: string | null
           paymongo_payment_intent_id?: string | null
           platform_fee_cents?: number | null
           registration_id: string
+          settlement_cents?: number | null
           status?: Database["public"]["Enums"]["payment_status"]
           updated_at?: string
           user_id: string
@@ -635,10 +639,12 @@ export type Database = {
           organizer_net_cents?: number | null
           paid_at?: string | null
           paymongo_checkout_session_id?: string | null
+          paymongo_fee_cents?: number | null
           paymongo_payment_id?: string | null
           paymongo_payment_intent_id?: string | null
           platform_fee_cents?: number | null
           registration_id?: string
+          settlement_cents?: number | null
           status?: Database["public"]["Enums"]["payment_status"]
           updated_at?: string
           user_id?: string
@@ -725,7 +731,9 @@ export type Database = {
           phone: string | null
           place_label: string | null
           place_psgc_code: string | null
+          platform_fee_percent: number | null
           updated_at: string
+          wallet_credit_settlement: boolean
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"]
@@ -736,7 +744,9 @@ export type Database = {
           phone?: string | null
           place_label?: string | null
           place_psgc_code?: string | null
+          platform_fee_percent?: number | null
           updated_at?: string
+          wallet_credit_settlement?: boolean
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
@@ -747,7 +757,9 @@ export type Database = {
           phone?: string | null
           place_label?: string | null
           place_psgc_code?: string | null
+          platform_fee_percent?: number | null
           updated_at?: string
+          wallet_credit_settlement?: boolean
         }
         Relationships: [
           {
@@ -1387,8 +1399,10 @@ export type Database = {
           p_gross_cents: number
           p_organizer_net_cents: number
           p_payment_id: string
+          p_paymongo_fee_cents?: number
           p_platform_fee_cents: number
           p_registration_id: string
+          p_settlement_cents?: number
           p_tournament_id: string
           p_user_id: string
         }

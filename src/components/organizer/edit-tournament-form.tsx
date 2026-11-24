@@ -265,7 +265,11 @@ export function EditTournamentForm({ tournament: t, bracketOnly }: { tournament:
         <Field id="rules" label="Rules & eligibility" className="sm:col-span-2">
           <Textarea id="rules" name="rules" rows={4} defaultValue={t.rules ?? ""} />
         </Field>
-        <Field label="Cover photo" hint="Shown at the top of your tournament page." className="sm:col-span-2">
+        <Field
+          label="Cover photo"
+          hint="Shown at the top of your tournament page and when the event link is shared (e.g. Facebook). Use a wide poster around 1200×630 px for best results."
+          className="sm:col-span-2"
+        >
           <CoverImageUpload defaultUrl={t.cover_image_url} />
         </Field>
         {!bracketOnly && (

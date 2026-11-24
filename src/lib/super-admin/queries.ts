@@ -70,13 +70,15 @@ export type OrganizerRow = {
   accountType: string;
   tournamentCount: number;
   lastActivity: string | null;
+  platformFeePercent: number | null;
+  walletCreditSettlement: boolean;
 };
 
 export async function listPlatformOrganizers(admin: AdminClient): Promise<OrganizerRow[]> {
   const emailMap = await fetchAuthEmailMap(admin);
 
   const [{ data: profiles }, { data: tournaments }] = await Promise.all([
-    admin.from("profiles").select("id, full_name, account_type, updated_at"),
+    admin.from("profiles").select("id, full_name, account_type, updated_at, platform_fee_percent, wallet_credit_settlement"),
     admin.from("tournaments").select("owner_id, updated_at"),
   ]);
 
@@ -107,6 +109,8 @@ export async function listPlatformOrganizers(admin: AdminClient): Promise<Organi
       accountType: profile?.account_type ?? "—",
       tournamentCount: s?.count ?? 0,
       lastActivity: s?.lastActivity ?? profile?.updated_at ?? null,
+      platformFeePercent: profile?.platform_fee_percent ?? null,
+      walletCreditSettlement: Boolean(profile?.wallet_credit_settlement),
     });
   }
 

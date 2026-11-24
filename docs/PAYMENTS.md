@@ -21,9 +21,20 @@ Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the 
 
 **PayMongo dashboard:** Subscribe the webhook to `payment_intent.succeeded` (and keep `checkout.session.payment.paid` for browser checkout). Enable **QR Ph** on the merchant account.
 
+## Organizer wallet & convenience fee
+
+- Default **convenience fee** is `PLATFORM_FEE_PERCENT` (env, usually 5%). Applied to **online / desk QR** entry payments when crediting the organizer wallet (`gross − fee`).
+- **Cash at the desk:** money stays with the organizer; the convenience fee is debited from the wallet via `charge_cash_platform_fee` (balance may go negative until online income offsets it).
+- **Per-organizer overrides** on `profiles`:
+  - `platform_fee_percent` — `NULL` uses the global default; set `0` for no RegMyTourna convenience fee.
+  - `wallet_credit_settlement` — when `true`, online/QR credits use **PayMongo settlement** (net after PayMongo’s MDR), not the player’s full entry amount. Shown in wallet activity as **settlement** vs **gross**.
+- Example: player pays **₱1,000**, PayMongo settles **₱985.05**, Neil-style account (0% + settlement) credits **₱985.05** to the ledger so withdrawals stay aligned with PayMongo cash.
+
+Super admins see overrides on `/super-admin/organizers` (read-only).
+
 ## Withdrawals
 
-Organizer wallet withdrawals are **ledger + manual payout**: organizers request from `/organizer/wallet`; super admins approve at `/super-admin/withdrawals` and transfer outside the app. No PayMongo Payout API in v1.
+Organizers request from `/organizer/wallet`; super admins approve at `/super-admin/withdrawals`. When PayMongo wallet env is set, approval can InstaPay from the merchant wallet; otherwise mark paid manually.
 
 ## StarPago (deferred)
 

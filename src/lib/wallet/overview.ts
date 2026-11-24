@@ -15,6 +15,8 @@ export type WalletActivity = {
   amountCents: number;
   grossCents: number | null;
   feeCents: number | null;
+  settlementCents: number | null;
+  paymongoFeeCents: number | null;
   channel: "online" | "qr" | "cash" | null;
   title: string;
   subtitle: string | null;
@@ -55,7 +57,13 @@ export type WithdrawalRow = {
   methodType: PayoutMethodType | null;
 };
 
-type TxMeta = { gross_cents?: number; platform_fee_cents?: number; status?: string };
+type TxMeta = {
+  gross_cents?: number;
+  platform_fee_cents?: number;
+  settlement_cents?: number;
+  paymongo_fee_cents?: number;
+  status?: string;
+};
 
 export async function loadWalletOverview(userId: string) {
   const admin = createAdminClient();
@@ -144,6 +152,8 @@ export async function loadWalletOverview(userId: string) {
         amountCents: tx.amount_cents,
         grossCents: gross,
         feeCents: fee,
+        settlementCents: meta.settlement_cents ?? null,
+        paymongoFeeCents: meta.paymongo_fee_cents ?? null,
         channel,
         title: team ?? "Entry payment",
         subtitle: category,
@@ -175,6 +185,8 @@ export async function loadWalletOverview(userId: string) {
         amountCents: tx.amount_cents,
         grossCents: gross,
         feeCents: fee,
+        settlementCents: null,
+        paymongoFeeCents: null,
         channel: "cash",
         title: team ? `Cash entry · ${team}` : "Platform fee on cash entry",
         subtitle: category,
@@ -190,6 +202,8 @@ export async function loadWalletOverview(userId: string) {
         amountCents: tx.amount_cents,
         grossCents: null,
         feeCents: null,
+        settlementCents: null,
+        paymongoFeeCents: null,
         channel: null,
         title: "Withdrawal",
         subtitle: tx.description,
@@ -204,6 +218,8 @@ export async function loadWalletOverview(userId: string) {
       amountCents: tx.amount_cents,
       grossCents: null,
       feeCents: null,
+      settlementCents: null,
+      paymongoFeeCents: null,
       channel: null,
       title: tx.description ?? (tx.type === "refund" ? "Refund" : "Adjustment"),
       subtitle: null,

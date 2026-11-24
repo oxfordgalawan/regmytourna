@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { listPlatformOrganizers } from "@/lib/super-admin/queries";
 import { PageHeader } from "@/components/layout/page-header";
 import { formatDateTime } from "@/lib/format";
+import { getPlatformFeePercent } from "@/lib/env/server";
 import {
   Table,
   TableBody,
@@ -22,6 +23,7 @@ export default async function SuperAdminOrganizersPage() {
 
   const admin = createAdminClient();
   const rows = await listPlatformOrganizers(admin);
+  const defaultFee = getPlatformFeePercent();
 
   return (
     <div className="space-y-8">
@@ -40,13 +42,14 @@ export default async function SuperAdminOrganizersPage() {
               <TableHead>Account</TableHead>
               <TableHead className="text-right">Events</TableHead>
               <TableHead>Last activity</TableHead>
+              <TableHead>Wallet</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                   No organizers yet.
                 </TableCell>
               </TableRow>
@@ -59,6 +62,10 @@ export default async function SuperAdminOrganizersPage() {
                   <TableCell className="text-right font-mono">{row.tournamentCount}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {row.lastActivity ? formatDateTime(row.lastActivity) : "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[11rem] text-xs text-muted-foreground">
+                    {row.platformFeePercent !== null ? `${row.platformFeePercent}% fee` : `Default ${defaultFee}%`}
+                    {row.walletCreditSettlement ? " · settlement credit" : ""}
                   </TableCell>
                   <TableCell className="text-right">
                     <ViewAsOrganizerButton organizerId={row.id} />

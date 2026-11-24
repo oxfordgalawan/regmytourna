@@ -401,7 +401,11 @@ export function TournamentForm() {
             placeholder="Rally scoring to 11, win by 2. Players must be DUPR-rated within the category range."
           />
         </Field>
-        <Field label="Cover photo" hint="Optional. Shown at the top of your tournament page." className="sm:col-span-2">
+        <Field
+          label="Cover photo"
+          hint="Optional. Shown on your public page and in Facebook/Messenger previews. A 1200×630 poster works best."
+          className="sm:col-span-2"
+        >
           <CoverImageUpload />
         </Field>
         {!bracketOnly && (
