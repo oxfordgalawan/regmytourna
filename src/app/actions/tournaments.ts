@@ -204,6 +204,7 @@ export async function createTournamentAction(formData: FormData) {
     coverImageUrl: formData.get("coverImageUrl") || "",
     isPublic: formData.get("isPublic") === "on",
     waitlistEnabled: formData.get("waitlistEnabled") === "on",
+    waitlistMax: formData.get("waitlistMax") ?? "",
   });
 
   if (!parsed.success) {
@@ -230,6 +231,7 @@ export async function createTournamentAction(formData: FormData) {
     v.registrationClosesAt = undefined;
     v.entryFeeCents = 0;
     v.waitlistEnabled = false;
+    v.waitlistMax = undefined;
     if (!["draft", "published"].includes(v.status)) v.status = "published";
     for (const c of categories.data) c.entryFeeCents = 0;
   }
@@ -266,6 +268,7 @@ export async function createTournamentAction(formData: FormData) {
       cover_image_url: v.coverImageUrl || null,
       is_public: v.isPublic,
       waitlist_enabled: v.waitlistEnabled,
+      waitlist_max: v.waitlistEnabled ? (v.waitlistMax ?? null) : null,
       allow_walk_in_payment: !bracketOnly && formData.get("allowWalkInPayment") === "on",
       // only sent when needed, so regular events still save before the migration is applied
       ...(bracketOnly ? { registration_mode: "bracket_only" } : {}),
@@ -349,6 +352,7 @@ export async function updateTournamentAction(
     coverImageUrl: formData.get("coverImageUrl") || "",
     isPublic: formData.get("isPublic") === "on",
     waitlistEnabled: formData.get("waitlistEnabled") === "on",
+    waitlistMax: formData.get("waitlistMax") ?? "",
   });
   if (!parsed.success) {
     const first = Object.entries(parsed.error.flatten().fieldErrors)[0];
@@ -361,6 +365,7 @@ export async function updateTournamentAction(
     v.registrationOpensAt = undefined;
     v.registrationClosesAt = undefined;
     v.waitlistEnabled = false;
+    v.waitlistMax = undefined;
   }
   const scheduleError = Object.values(validateSchedule(v))[0];
   if (scheduleError) return { error: scheduleError };
@@ -389,6 +394,7 @@ export async function updateTournamentAction(
       cover_image_url: v.coverImageUrl || null,
       is_public: v.isPublic,
       waitlist_enabled: v.waitlistEnabled,
+      waitlist_max: v.waitlistEnabled ? (v.waitlistMax ?? null) : null,
       ...(bracketOnly ? {} : { allow_walk_in_payment: formData.get("allowWalkInPayment") === "on" }),
     })
     .eq("id", tournamentId);

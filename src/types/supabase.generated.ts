@@ -1133,6 +1133,7 @@ export type Database = {
           venue_address: string | null
           venue_name: string | null
           waitlist_enabled: boolean
+          waitlist_max: number | null
         }
         Insert: {
           challonge_last_synced_at?: string | null
@@ -1168,6 +1169,7 @@ export type Database = {
           venue_address?: string | null
           venue_name?: string | null
           waitlist_enabled?: boolean
+          waitlist_max?: number | null
         }
         Update: {
           challonge_last_synced_at?: string | null
@@ -1203,6 +1205,7 @@ export type Database = {
           venue_address?: string | null
           venue_name?: string | null
           waitlist_enabled?: boolean
+          waitlist_max?: number | null
         }
         Relationships: [
           {

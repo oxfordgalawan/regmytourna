@@ -259,12 +259,14 @@ export default async function TournamentDetailPage({
                         registrationOpen={isOpen}
                         isSignedIn={Boolean(user)}
                         waitlistEnabled={waitlistOn}
+                        waitlistMax={tournament.waitlist_max}
                         entryFeeCents={d.entry_fee_cents}
                         defaultFeeCents={tournament.entry_fee_cents}
                         currency={tournament.currency}
                         allowPayAtVenue={Boolean(tournament.allow_walk_in_payment)}
                         capacity={d.capacity}
                         taken={counts[d.id]?.taken ?? 0}
+                        waitlistCount={counts[d.id]?.waitlist ?? 0}
                       />
                       {!bracketOnly && (
                         <span className="font-mono text-bone">
@@ -368,7 +370,12 @@ export default async function TournamentDetailPage({
                   defaultFeeCents={tournament.entry_fee_cents}
                   allowPayAtVenue={Boolean(tournament.allow_walk_in_payment)}
                   waitlistEnabled={waitlistOn}
-                  divisions={divisions.map((d) => ({ ...d, taken: counts[d.id]?.taken ?? 0 }))}
+                  waitlistMax={tournament.waitlist_max}
+                  divisions={divisions.map((d) => ({
+                    ...d,
+                    taken: counts[d.id]?.taken ?? 0,
+                    waitlist: counts[d.id]?.waitlist ?? 0,
+                  }))}
                 />
               ) : (
                 <TournamentRegisterGuestAuth variant="sidebar" />

@@ -41,10 +41,25 @@ type Division = {
   capacity?: number | null;
   /** entries currently holding a slot */
   taken?: number;
+  /** current waitlisted entries */
+  waitlist?: number;
 };
 
 function isFull(d: Division | undefined) {
   return Boolean(d?.capacity && (d.taken ?? 0) >= d.capacity);
+}
+
+function divisionWaitlistState(
+  d: Division | undefined,
+  waitlistEnabled: boolean,
+  waitlistMax: number | null | undefined
+) {
+  const full = isFull(d);
+  const waitlistFull =
+    full && waitlistEnabled && waitlistMax != null && (d?.waitlist ?? 0) >= waitlistMax;
+  const waitlist = full && waitlistEnabled && !waitlistFull;
+  const closed = (full && !waitlistEnabled) || waitlistFull;
+  return { waitlist, closed, waitlistFull };
 }
 
 export function RegisterSection({
@@ -54,11 +69,14 @@ export function RegisterSection({
   defaultFeeCents = 0,
   allowPayAtVenue = false,
   waitlistEnabled = false,
+  waitlistMax = null,
 }: {
   slug: string;
   divisions: Division[];
   /** full categories take waitlist entries (no payment until a slot opens) */
   waitlistEnabled?: boolean;
+  /** max waitlisted entries per category; null = unlimited */
+  waitlistMax?: number | null;
   /** tournament lets players pay in cash / QR on the day */
   allowPayAtVenue?: boolean;
   currency?: string;
@@ -128,9 +146,7 @@ export function RegisterSection({
   const selected = divisions.find((d) => d.id === divisionId);
   const fee = selected?.entry_fee_cents ?? defaultFeeCents;
   const [payment, setPayment] = useState<"online" | "venue">("online");
-  const full = isFull(selected);
-  const waitlist = full && waitlistEnabled;
-  const closed = full && !waitlistEnabled;
+  const { waitlist, closed, waitlistFull } = divisionWaitlistState(selected, waitlistEnabled, waitlistMax);
   const venue = !waitlist && allowPayAtVenue && fee > 0 && payment === "venue";
   const isDoubles = selected?.format === "doubles";
   const dueCents = waitlist ? 0 : fee;
@@ -484,7 +500,11 @@ export function RegisterSection({
                   </span>
                   {isFull(d) ? (
                     <span className="rounded-full border border-brass/40 px-2 text-[0.65rem] leading-5 text-brass">
-                      {waitlistEnabled ? "Full · waitlist" : "Full"}
+                      {divisionWaitlistState(d, waitlistEnabled, waitlistMax).waitlistFull
+                        ? "Waitlist full"
+                        : waitlistEnabled
+                          ? "Full · waitlist"
+                          : "Full"}
                     </span>
                   ) : d.capacity && d.capacity - (d.taken ?? 0) <= 3 ? (
                     <span className="text-[0.65rem] text-brass">
@@ -651,7 +671,7 @@ export function RegisterSection({
               {waitlist ? "Saving your place…" : venue ? "Reserving your slot…" : "Preparing checkout…"}
             </>
           ) : closed ? (
-            "Category full"
+            waitlistFull ? "Waitlist full" : "Category full"
           ) : waitlist ? (
             "Join the waitlist"
           ) : venue ? (
@@ -664,7 +684,9 @@ export function RegisterSection({
         </Button>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           {closed ? (
-            "No slots left in this category. Try another one."
+            waitlistFull
+              ? "The waitlist for this category is full. Try another one."
+              : "No slots left in this category. Try another one."
           ) : waitlist ? (
             "You'll get an email the moment a slot opens."
           ) : venue ? (

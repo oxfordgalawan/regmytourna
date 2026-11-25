@@ -117,12 +117,14 @@ export function DivisionRosterButton({
   registrationOpen = false,
   isSignedIn = false,
   waitlistEnabled = false,
+  waitlistMax = null,
   entryFeeCents,
   defaultFeeCents = 0,
   currency = "PHP",
   allowPayAtVenue = false,
   capacity = null,
   taken = 0,
+  waitlistCount = 0,
 }: {
   tournamentSlug: string;
   tournamentId: string;
@@ -131,12 +133,14 @@ export function DivisionRosterButton({
   registrationOpen?: boolean;
   isSignedIn?: boolean;
   waitlistEnabled?: boolean;
+  waitlistMax?: number | null;
   entryFeeCents?: number | null;
   defaultFeeCents?: number;
   currency?: string;
   allowPayAtVenue?: boolean;
   capacity?: number | null;
   taken?: number;
+  waitlistCount?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -238,6 +242,13 @@ export function DivisionRosterButton({
   const slotCapacity = roster?.capacity ?? capacity ?? 0;
   const showSlotGrid = slotCapacity > 0;
   const categoryFull = Boolean(showSlotGrid && roster && roster.slots.length >= slotCapacity);
+  const activeWaitlistCount = roster?.waitlist.length ?? waitlistCount;
+  const waitlistFull = Boolean(
+    categoryFull &&
+      waitlistEnabled &&
+      waitlistMax != null &&
+      activeWaitlistCount >= waitlistMax
+  );
   const signedOut = !sessionActive;
   const alreadyEntered = Boolean(sessionActive && elig && elig.reason !== "not_registered");
   const invitePending = Boolean(elig?.reason === "invite_pending" && elig.inviteToken);
@@ -371,6 +382,10 @@ export function DivisionRosterButton({
     }
     if (categoryFull && !waitlistEnabled) {
       showError("This category is full — no more slots.", { title: "Category full" });
+      return;
+    }
+    if (waitlistFull) {
+      showError("The waitlist for this category is full.", { title: "Waitlist full" });
       return;
     }
     if (signedOut) {
@@ -510,9 +525,11 @@ export function DivisionRosterButton({
                 feeCents={feeCents}
                 currency={currency}
                 waitlistEnabled={waitlistEnabled}
+                waitlistMax={waitlistMax}
                 allowPayAtVenue={allowPayAtVenue}
                 capacity={capacity ?? roster?.capacity ?? null}
                 taken={roster?.taken ?? taken}
+                waitlist={activeWaitlistCount}
                 blockNewRegistration={Boolean(alreadyEntered && !needsUnpaidPay)}
                 crossCategoryBlock={crossCategoryBlock}
                 onComplete={handleRegisterComplete}
@@ -619,11 +636,14 @@ export function DivisionRosterButton({
                     {q && roster.slots.every((e) => !matches(e)) && (
                       <p className="text-sm text-muted-foreground">No player matches &ldquo;{query}&rdquo;.</p>
                     )}
-                    {categoryFull && registrationOpen && waitlistEnabled && (
+                    {categoryFull && registrationOpen && waitlistEnabled && !waitlistFull && (
                       <Button type="button" className="w-full" variant="secondary" onClick={startRegistrationFlow}>
                         <Ticket className="size-4" />
                         Join the waitlist
                       </Button>
+                    )}
+                    {waitlistFull && registrationOpen && (
+                      <p className="text-center text-sm text-muted-foreground">Waitlist full for this category.</p>
                     )}
                   </>
                 ) : roster.slots.length === 0 ? (

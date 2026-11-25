@@ -15,7 +15,7 @@ import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-noti
 import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-entry-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { relationOne } from "@/lib/supabase/relations";
-import { nextWaitlistPosition, takenInDivision } from "@/lib/registrations/waitlist";
+import { nextWaitlistPosition, takenInDivision, waitlistInDivision } from "@/lib/registrations/waitlist";
 import { cancelEntry, isCaptainOf, loadTeam } from "@/lib/registrations/team-changes";
 import { getRegistrationMode } from "@/lib/tournaments/mode";
 import { isRegistrationWindowOpen } from "@/lib/tournaments/registration-window";
@@ -183,7 +183,7 @@ export async function createRegistrationAction(params: {
   const { data: tournament } = await supabase
     .from("tournaments")
     .select(
-      "id, slug, name, entry_fee_cents, status, registration_opens_at, registration_closes_at, max_capacity, allow_walk_in_payment, waitlist_enabled"
+      "id, slug, name, entry_fee_cents, status, registration_opens_at, registration_closes_at, max_capacity, allow_walk_in_payment, waitlist_enabled, waitlist_max"
     )
     .eq("slug", params.tournamentSlug)
     .single();
@@ -257,6 +257,12 @@ export async function createRegistrationAction(params: {
   const full = Boolean(division.capacity && (await takenInDivision(division.id, admin)) >= division.capacity);
   if (full && !tournament.waitlist_enabled) {
     return { error: "This category is full." };
+  }
+  if (full && tournament.waitlist_enabled && tournament.waitlist_max != null) {
+    const onWaitlist = await waitlistInDivision(division.id, admin);
+    if (onWaitlist >= tournament.waitlist_max) {
+      return { error: "The waitlist for this category is full." };
+    }
   }
 
   const { data: dup } = await admin

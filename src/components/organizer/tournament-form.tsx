@@ -80,11 +80,13 @@ function Toggle({
   label,
   hint,
   defaultChecked,
+  onCheckedChange,
 }: {
   name: string;
   label: string;
   hint: string;
   defaultChecked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
 }) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4 transition-colors hover:border-bone/25 sm:col-span-2">
@@ -93,7 +95,13 @@ function Toggle({
         <span className="block text-sm text-muted-foreground">{hint}</span>
       </span>
       <span className="relative mt-0.5 inline-flex shrink-0">
-        <input type="checkbox" name={name} defaultChecked={defaultChecked} className="peer sr-only" />
+        <input
+          type="checkbox"
+          name={name}
+          defaultChecked={defaultChecked}
+          className="peer sr-only"
+          onChange={(e) => onCheckedChange?.(e.target.checked)}
+        />
         <span className="h-6 w-11 rounded-full bg-surface-2 ring-1 ring-line transition-colors peer-checked:bg-bone peer-focus-visible:ring-2 peer-focus-visible:ring-brass" />
         <span className="absolute top-1 left-1 size-4 rounded-full bg-bone/70 transition-all peer-checked:translate-x-5 peer-checked:bg-ink" />
       </span>
@@ -125,6 +133,7 @@ export function TournamentForm() {
       setSchedule((s) => ({ ...s, [key]: value }));
   const deadline = schedule.startDate ? registrationDeadline(schedule.startDate) : undefined;
   const [place, setPlace] = useState<PlaceSelection | null>(null);
+  const [waitlistOn, setWaitlistOn] = useState(false);
 
   const effectiveSlug = slugEdited ? slug : slugify(name);
 
@@ -409,11 +418,32 @@ export function TournamentForm() {
           <CoverImageUpload />
         </Field>
         {!bracketOnly && (
-          <Toggle
-            name="waitlistEnabled"
-            label="Waitlist when full"
-            hint="Extra entries queue up instead of being turned away."
-          />
+          <>
+            <Toggle
+              name="waitlistEnabled"
+              label="Waitlist when full"
+              hint="Extra entries queue up instead of being turned away."
+              onCheckedChange={setWaitlistOn}
+            />
+            {waitlistOn && (
+              <Field
+                id="waitlistMax"
+                label="Waitlist size per category"
+                hint="Max entries on the waitlist in each category. Leave blank for no limit."
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="waitlistMax"
+                  name="waitlistMax"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="e.g. 10"
+                />
+              </Field>
+            )}
+          </>
         )}
       </FormSection>
 

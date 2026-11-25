@@ -53,9 +53,11 @@ export function DivisionRegisterForm({
   feeCents,
   currency = "PHP",
   waitlistEnabled,
+  waitlistMax = null,
   allowPayAtVenue,
   capacity,
   taken = 0,
+  waitlist = 0,
   blockNewRegistration,
   crossCategoryBlock,
   onComplete,
@@ -67,9 +69,11 @@ export function DivisionRegisterForm({
   feeCents: number;
   currency?: string;
   waitlistEnabled: boolean;
+  waitlistMax?: number | null;
   allowPayAtVenue: boolean;
   capacity?: number | null;
   taken?: number;
+  waitlist?: number;
   blockNewRegistration?: boolean;
   crossCategoryBlock?: string | null;
   onComplete: (result: DivisionRegisterComplete) => void;
@@ -95,9 +99,11 @@ export function DivisionRegisterForm({
   }, []);
 
   const full = isFull(capacity, taken);
-  const waitlist = full && waitlistEnabled;
-  const closed = full && !waitlistEnabled;
-  const venue = !waitlist && allowPayAtVenue && feeCents > 0 && payment === "venue";
+  const waitlistFull =
+    full && waitlistEnabled && waitlistMax != null && waitlist >= waitlistMax;
+  const joinWaitlist = full && waitlistEnabled && !waitlistFull;
+  const closed = (full && !waitlistEnabled) || waitlistFull;
+  const venue = !joinWaitlist && allowPayAtVenue && feeCents > 0 && payment === "venue";
   const isDoubles = format === "doubles";
 
   const runPartnerPreview = useCallback(async () => {
@@ -331,9 +337,9 @@ export function DivisionRegisterForm({
       )}
 
       {allowPayAtVenue && feeCents > 0 && !closed && (
-        <fieldset disabled={waitlist} aria-disabled={waitlist}>
+        <fieldset disabled={joinWaitlist} aria-disabled={joinWaitlist}>
           <legend className="eyebrow mb-3">How will you pay?</legend>
-          <div className={cn("grid grid-cols-2 gap-2", waitlist && "pointer-events-none opacity-40")} role="radiogroup">
+          <div className={cn("grid grid-cols-2 gap-2", joinWaitlist && "pointer-events-none opacity-40")} role="radiogroup">
             {(
               [
                 ["online", "Pay online now", "QR, card or browser"],
@@ -344,11 +350,11 @@ export function DivisionRegisterForm({
                 key={value}
                 type="button"
                 role="radio"
-                aria-checked={!waitlist && payment === value}
+                aria-checked={!joinWaitlist && payment === value}
                 onClick={() => setPayment(value)}
                 className={cn(
                   "rounded-xl border px-3 py-3 text-left transition-all",
-                  !waitlist && payment === value ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
+                  !joinWaitlist && payment === value ? "border-bone bg-bone/[0.06]" : "border-line hover:border-bone/30"
                 )}
               >
                 <span className="block text-sm font-medium text-bone">{label}</span>
@@ -359,7 +365,7 @@ export function DivisionRegisterForm({
         </fieldset>
       )}
 
-      {waitlist && (
+      {joinWaitlist && (
         <div className="flex gap-3 rounded-xl border border-brass/40 bg-brass/[0.06] p-4 text-sm">
           <Clock className="mt-0.5 size-4 shrink-0 text-brass" aria-hidden />
           <p className="text-bone/70">
@@ -367,13 +373,16 @@ export function DivisionRegisterForm({
           </p>
         </div>
       )}
+      {waitlistFull && (
+        <p className="text-sm text-muted-foreground">The waitlist for this category is full.</p>
+      )}
 
       <div className="rounded-xl border border-line bg-ink/40 p-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">{waitlist ? "Due now" : venue ? "Pay at the desk" : "Total due"}</span>
-          <span className="display text-3xl text-bone">{formatPhp(waitlist ? 0 : feeCents, currency)}</span>
+          <span className="text-muted-foreground">{joinWaitlist ? "Due now" : venue ? "Pay at the desk" : "Total due"}</span>
+          <span className="display text-3xl text-bone">{formatPhp(joinWaitlist ? 0 : feeCents, currency)}</span>
         </div>
-        {!waitlist && !closed && feeCents > 0 && (
+        {!joinWaitlist && !closed && feeCents > 0 && (
           <p className="mt-3 flex gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-bone/75">
             <Info className="mt-0.5 size-3.5 shrink-0 text-brass" aria-hidden />
             Entry fees are non-refundable.
@@ -395,11 +404,11 @@ export function DivisionRegisterForm({
           {loading ? (
             <>
               <Loader2 className="animate-spin" />
-              {waitlist ? "Saving your place…" : venue ? "Reserving your slot…" : "Submitting…"}
+              {joinWaitlist ? "Saving your place…" : venue ? "Reserving your slot…" : "Submitting…"}
             </>
           ) : closed ? (
-            "Category full"
-          ) : waitlist ? (
+            waitlistFull ? "Waitlist full" : "Category full"
+          ) : joinWaitlist ? (
             "Join the waitlist"
           ) : venue ? (
             "Reserve my slot"
@@ -409,7 +418,7 @@ export function DivisionRegisterForm({
             "Confirm registration"
           )}
         </Button>
-        {!waitlist && feeCents > 0 && !venue && (
+        {!joinWaitlist && feeCents > 0 && !venue && (
           <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Lock className="size-3" aria-hidden />
             Secure checkout by PayMongo

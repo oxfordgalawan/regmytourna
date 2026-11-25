@@ -155,7 +155,14 @@ export default async function OrganizerTournamentOverviewPage({
             { label: "Venue", value: t.venue_name ?? "—" },
             { label: "City", value: t.city ?? "—" },
             { label: "Listing", value: t.is_public ? "Public" : "Unlisted" },
-            { label: "Waitlist", value: t.waitlist_enabled ? "On" : "Off" },
+            {
+              label: "Waitlist",
+              value: t.waitlist_enabled
+                ? t.waitlist_max != null
+                  ? `On (${t.waitlist_max} per category)`
+                  : "On (unlimited)"
+                : "Off",
+            },
           ].map((row) => (
             <div key={row.label} className="bg-surface px-5 py-4">
               <dt className="eyebrow">{row.label}</dt>

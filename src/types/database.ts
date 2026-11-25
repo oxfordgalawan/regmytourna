@@ -46,6 +46,7 @@ export type Tournament = {
   cover_image_url: string | null;
   scoring_config: Record<string, unknown>;
   waitlist_enabled: boolean;
+  waitlist_max: number | null;
   challonge_tournament_id: string | null;
   challonge_url: string | null;
   challonge_sync_status: string | null;

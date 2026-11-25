@@ -32,6 +32,10 @@ export const tournamentFormSchema = z.object({
   coverImageUrl: z.string().url().optional().or(z.literal("")),
   isPublic: z.boolean().default(true),
   waitlistEnabled: z.boolean().default(false),
+  waitlistMax: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? undefined : val),
+    z.coerce.number().int().min(1).optional()
+  ),
 });
 
 export const divisionSchema = z.object({

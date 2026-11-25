@@ -30,6 +30,15 @@ export async function slotCounts(tournamentId: string, admin: Admin = createAdmi
   return counts;
 }
 
+export async function waitlistInDivision(divisionId: string, admin: Admin = createAdminClient()) {
+  const { count } = await admin
+    .from("registrations")
+    .select("id", { count: "exact", head: true })
+    .eq("division_id", divisionId)
+    .eq("status", "waitlisted");
+  return count ?? 0;
+}
+
 export async function takenInDivision(divisionId: string, admin: Admin = createAdminClient()) {
   const { expireStalePaymentHolds } = await import("@/lib/registrations/payment-hold");
   await expireStalePaymentHolds({ divisionId }).catch(() => undefined);

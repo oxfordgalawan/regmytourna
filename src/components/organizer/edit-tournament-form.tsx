@@ -34,6 +34,7 @@ export type EditableTournament = {
   cover_image_url: string | null;
   is_public: boolean;
   waitlist_enabled: boolean;
+  waitlist_max?: number | null;
   allow_walk_in_payment?: boolean | null;
 };
 
@@ -97,7 +98,19 @@ function Field({
   );
 }
 
-function Toggle({ name, label, hint, defaultChecked }: { name: string; label: string; hint: string; defaultChecked?: boolean }) {
+function Toggle({
+  name,
+  label,
+  hint,
+  defaultChecked,
+  onCheckedChange,
+}: {
+  name: string;
+  label: string;
+  hint: string;
+  defaultChecked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+}) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4 transition-colors hover:border-bone/25 sm:col-span-2">
       <span>
@@ -105,7 +118,13 @@ function Toggle({ name, label, hint, defaultChecked }: { name: string; label: st
         <span className="block text-sm text-muted-foreground">{hint}</span>
       </span>
       <span className="relative mt-0.5 inline-flex shrink-0">
-        <input type="checkbox" name={name} defaultChecked={defaultChecked} className="peer sr-only" />
+        <input
+          type="checkbox"
+          name={name}
+          defaultChecked={defaultChecked}
+          className="peer sr-only"
+          onChange={(e) => onCheckedChange?.(e.target.checked)}
+        />
         <span className="h-6 w-11 rounded-full bg-surface-2 ring-1 ring-line transition-colors peer-checked:bg-bone peer-focus-visible:ring-2 peer-focus-visible:ring-brass" />
         <span className="absolute top-1 left-1 size-4 rounded-full bg-bone/70 transition-all peer-checked:translate-x-5 peer-checked:bg-ink" />
       </span>
@@ -129,6 +148,7 @@ export function EditTournamentForm({
     registrationOpensAt: toFormDateTime(t.registration_opens_at),
     registrationClosesAt: toFormDateTime(t.registration_closes_at),
   });
+  const [waitlistOn, setWaitlistOn] = useState(t.waitlist_enabled);
   const [place, setPlace] = useState<PlaceSelection | null>(
     t.city
       ? {
@@ -284,7 +304,27 @@ export function EditTournamentForm({
               label="Waitlist when full"
               hint="Extra entries queue up instead of being turned away."
               defaultChecked={t.waitlist_enabled}
+              onCheckedChange={setWaitlistOn}
             />
+            {waitlistOn && (
+              <Field
+                id="waitlistMax"
+                label="Waitlist size per category"
+                hint="Max entries on the waitlist in each category. Leave blank for no limit."
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="waitlistMax"
+                  name="waitlistMax"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="e.g. 10"
+                  defaultValue={t.waitlist_max ?? ""}
+                />
+              </Field>
+            )}
             <Toggle
               name="allowWalkInPayment"
               label="Allow walk-in payment"
