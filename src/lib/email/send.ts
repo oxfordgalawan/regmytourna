@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { getResendFrom, isResendConfigured } from "@/lib/env/server";
 import { partnerAddedEmail, partnerDeclinedEmail } from "@/lib/email/partner-email";
+import { manualEntryEmail } from "@/lib/email/manual-entry-email";
 import {
   passwordResetEmailHtml,
   passwordResetEmailSubject,
@@ -37,6 +38,12 @@ export async function sendPartnerAddedEmail(params: Parameters<typeof partnerAdd
 export async function sendPartnerDeclinedEmail(params: Parameters<typeof partnerDeclinedEmail>[0] & { to: string }) {
   const { to, ...content } = params;
   const { subject, html } = partnerDeclinedEmail(content);
+  return sendRegistrationEmail({ to, subject, html });
+}
+
+export async function sendManualEntryEmail(params: Parameters<typeof manualEntryEmail>[0] & { to: string }) {
+  const { to, ...content } = params;
+  const { subject, html } = manualEntryEmail(content);
   return sendRegistrationEmail({ to, subject, html });
 }
 

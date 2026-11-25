@@ -17,6 +17,13 @@ import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry
 import { notifyPlayersOrganizerRemovedEntry } from "@/lib/registrations/organizer-removal-notify";
 import { reverseOrganizerWalletOnRemoval } from "@/lib/wallet/reverse-organizer-on-removal";
 import { getFeeDueCents, getRegistrationBalance } from "@/lib/registrations/payment-balance";
+import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
+import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
+import {
+  assertManualEntryEmailAllowed,
+  linkGuestPlayerRow,
+  notifyManualEntryPlayer,
+} from "@/lib/registrations/manual-entry-link";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -211,9 +218,33 @@ export async function getEntryPaymentStatusAction(registrationId: string): Promi
   return { paid: found.reg.payment_status === "paid" };
 }
 
+function parseOptionalEmail(raw: string | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return null;
+  const email = normalizePartnerEmail(trimmed);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
+}
+
+async function afterManualPlayerRow(
+  admin: ReturnType<typeof createAdminClient>,
+  rowId: string,
+  email: string | null
+) {
+  if (!email) return;
+  const { data: userId } = await admin.rpc("auth_user_id_for_email", { p_email: email });
+  if (userId) {
+    const linked = await linkGuestPlayerRow(rowId, userId);
+    if (linked.error) console.error("[manual-entry-link]", linked.error);
+    revalidatePath("/entries");
+    return;
+  }
+  await notifyManualEntryPlayer(rowId).catch(() => undefined);
+}
+
 /**
- * Adds an entry at the desk (players may not have accounts). The organizer is
- * recorded as the registrant; player names are stored as guests.
+ * Organizer-added entry (desk). Players may not have accounts; optional email
+ * links on signup/login or immediately when the account already exists.
  */
 export async function addWalkInEntryAction(
   tournamentId: string,
@@ -221,8 +252,12 @@ export async function addWalkInEntryAction(
     divisionId: string;
     playerFirstName: string;
     playerLastName: string;
+    playerPhone: string;
+    playerEmail?: string;
     partnerFirstName?: string;
     partnerLastName?: string;
+    partnerPhone?: string;
+    partnerEmail?: string;
   }
 ): Promise<Result & { registrationId?: string; feeCents?: number }> {
   try {
@@ -230,6 +265,10 @@ export async function addWalkInEntryAction(
     const playerJoined = joinPersonName(input.playerFirstName, input.playerLastName);
     if (!playerJoined.ok) return { error: playerJoined.error };
     const playerName = playerJoined.value;
+    const playerPhone = parsePhilippineMobileRequired(input.playerPhone);
+    if (!playerPhone.ok) return { error: playerPhone.error };
+    const playerEmail = input.playerEmail?.trim() ? parseOptionalEmail(input.playerEmail) : null;
+    if (input.playerEmail?.trim() && !playerEmail) return { error: "Enter a valid email for player 1 or leave it blank." };
 
     const admin = createAdminClient();
     const [{ data: tournament }, { data: division }] = await Promise.all([
@@ -247,10 +286,28 @@ export async function addWalkInEntryAction(
     }
     const doubles = division.format === "doubles";
     let partnerName: string | null = null;
+    let partnerPhone: string | null = null;
+    let partnerEmail: string | null = null;
     if (doubles) {
       const partnerJoined = joinPersonName(input.partnerFirstName ?? "", input.partnerLastName ?? "");
       if (!partnerJoined.ok) return { error: partnerJoined.error };
       partnerName = partnerJoined.value;
+      const pPhone = parsePhilippineMobileRequired(input.partnerPhone ?? "");
+      if (!pPhone.ok) return { error: pPhone.error };
+      partnerPhone = pPhone.value;
+      partnerEmail = input.partnerEmail?.trim() ? parseOptionalEmail(input.partnerEmail) : null;
+      if (input.partnerEmail?.trim() && !partnerEmail) return { error: "Enter a valid email for player 2 or leave it blank." };
+    }
+
+    const emails = [playerEmail, partnerEmail].filter((e): e is string => Boolean(e));
+    if (new Set(emails).size !== emails.length) return { error: "Each player needs a different email." };
+    for (const email of emails) {
+      const allowed = await assertManualEntryEmailAllowed(admin, {
+        divisionId: division.id,
+        tournamentId,
+        email,
+      });
+      if ("error" in allowed) return { error: allowed.error };
     }
 
     const { count } = await admin
@@ -277,12 +334,37 @@ export async function addWalkInEntryAction(
       .single();
     if (error || !reg) return { error: error?.message ?? "Couldn't add the entry" };
 
-    await admin.from("registration_players").insert([
-      { registration_id: reg.id, guest_name: playerName, is_primary: true },
-      ...(doubles && partnerName ? [{ registration_id: reg.id, guest_name: partnerName, is_primary: false }] : []),
-    ]);
+    const { data: playerRows, error: playersError } = await admin
+      .from("registration_players")
+      .insert([
+        {
+          registration_id: reg.id,
+          guest_name: playerName,
+          guest_phone: playerPhone.value,
+          guest_email: playerEmail,
+          is_primary: true,
+        },
+        ...(doubles && partnerName
+          ? [
+              {
+                registration_id: reg.id,
+                guest_name: partnerName,
+                guest_phone: partnerPhone,
+                guest_email: partnerEmail,
+                is_primary: false,
+              },
+            ]
+          : []),
+      ])
+      .select("id, guest_email");
+    if (playersError) return { error: playersError.message };
+
+    for (const row of playerRows ?? []) {
+      await afterManualPlayerRow(admin, row.id, row.guest_email);
+    }
 
     revalidateEvent(tournamentId, tournament.slug);
+    revalidatePath("/entries");
     if (feeCents <= 0) {
       await notifyOrganizersEntryConfirmed(reg.id).catch(() => undefined);
     }
@@ -291,6 +373,9 @@ export async function addWalkInEntryAction(
     return { error: e instanceof Error ? e.message : "Couldn't add the entry" };
   }
 }
+
+/** @alias Desk / manual organizer-added entry */
+export const addManualEntryAction = addWalkInEntryAction;
 
 /** Frees an entry's slot (unpaid no-show or paid removal by the organizer). */
 export async function cancelEntryAction(registrationId: string): Promise<Result> {

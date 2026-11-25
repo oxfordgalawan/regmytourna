@@ -27,6 +27,8 @@ export function PartnerLine({ entry: e }: { entry: PlayerEntry }) {
       ? { icon: CheckCircle2, text: "Joined", tone: "text-brass" }
       : p.state === "invited"
         ? { icon: Mail, text: "Invite sent", tone: "text-muted-foreground" }
+        : p.state === "guest"
+          ? { icon: UserRound, text: "Guest on entry", tone: "text-muted-foreground" }
         : p.state === "declined"
           ? { icon: UserX, text: "Said it's not them", tone: "text-[#e58a72]" }
           : { icon: UserRound, text: "No email", tone: "text-muted-foreground" };

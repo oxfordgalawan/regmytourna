@@ -29,6 +29,7 @@ import {
   QRPH_DESK_SCAN_REMINDER,
 } from "@/lib/payments/qrph-desk-copy";
 import { cn } from "@/lib/utils";
+import { normalizePhilippineMobile } from "@/lib/validations/phone";
 
 /** feeCents = amount to collect now (balance due, not always full category fee). */
 export type CollectTarget = { id: string; player: string; division: string; feeCents: number };
@@ -242,29 +243,54 @@ export function AddWalkInDialog({
   const [playerLast, setPlayerLast] = useState("");
   const [partnerFirst, setPartnerFirst] = useState("");
   const [partnerLast, setPartnerLast] = useState("");
+  const [playerPhone, setPlayerPhone] = useState("");
+  const [playerEmail, setPlayerEmail] = useState("");
+  const [partnerPhone, setPartnerPhone] = useState("");
+  const [partnerEmail, setPartnerEmail] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const category = categories.find((c) => c.id === divisionId);
   const doubles = category?.format === "doubles";
 
+  const namesOk =
+    Boolean(playerFirst.trim() && playerLast.trim()) &&
+    (!doubles || (partnerFirst.trim() && partnerLast.trim()));
+  const phonesOk =
+    Boolean(normalizePhilippineMobile(playerPhone)) &&
+    (!doubles || Boolean(normalizePhilippineMobile(partnerPhone)));
+  const formOk = namesOk && phonesOk;
+
+  function resetForm() {
+    setPlayerFirst("");
+    setPlayerLast("");
+    setPartnerFirst("");
+    setPartnerLast("");
+    setPlayerPhone("");
+    setPlayerEmail("");
+    setPartnerPhone("");
+    setPartnerEmail("");
+  }
+
   async function add(pay: "cash" | "qr" | "later") {
     if (!category) return toast.error("Choose a category.");
+    if (!formOk) return toast.error("Enter names and valid 09 mobile numbers.");
     setBusy(pay);
     const res = await addWalkInEntryAction(tournamentId, {
       divisionId,
       playerFirstName: playerFirst,
       playerLastName: playerLast,
+      playerPhone,
+      playerEmail: playerEmail.trim() || undefined,
       partnerFirstName: doubles ? partnerFirst : undefined,
       partnerLastName: doubles ? partnerLast : undefined,
+      partnerPhone: doubles ? partnerPhone : undefined,
+      partnerEmail: doubles ? partnerEmail.trim() || undefined : undefined,
     });
     setBusy(null);
     if (res.error || !res.registrationId) return toast.error(res.error ?? "Couldn't add the entry");
     const p1 = [playerFirst.trim(), playerLast.trim()].filter(Boolean).join(" ");
     const p2 = [partnerFirst.trim(), partnerLast.trim()].filter(Boolean).join(" ");
     const name = doubles && p2 ? `${p1} / ${p2}` : p1;
-    setPlayerFirst("");
-    setPlayerLast("");
-    setPartnerFirst("");
-    setPartnerLast("");
+    resetForm();
     router.refresh();
     onClose();
     if (pay !== "later" && (res.feeCents ?? 0) > 0) {
@@ -278,8 +304,11 @@ export function AddWalkInDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-lg">Add a walk-in</DialogTitle>
-          <DialogDescription>For players registering at the venue. No account needed.</DialogDescription>
+          <DialogTitle className="text-lg">Add players manually</DialogTitle>
+          <DialogDescription>
+            Add an entry any time before or during the event. Phone is required; with an email, the player can link the
+            entry when they sign up or log in.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -339,6 +368,25 @@ export function AddWalkInDialog({
                   autoComplete="off"
                 />
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  id="walkin-player-phone"
+                  type="tel"
+                  inputMode="numeric"
+                  value={playerPhone}
+                  onChange={(e) => setPlayerPhone(e.target.value)}
+                  placeholder="Mobile (09XXXXXXXXX)"
+                  autoComplete="tel"
+                />
+                <Input
+                  id="walkin-player-email"
+                  type="email"
+                  value={playerEmail}
+                  onChange={(e) => setPlayerEmail(e.target.value)}
+                  placeholder="Email (optional)"
+                  autoComplete="email"
+                />
+              </div>
             </div>
             {doubles && (
               <div className="animate-in fade-in-0 space-y-2">
@@ -359,6 +407,25 @@ export function AddWalkInDialog({
                     autoComplete="off"
                   />
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    id="walkin-partner-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    value={partnerPhone}
+                    onChange={(e) => setPartnerPhone(e.target.value)}
+                    placeholder="Mobile (09XXXXXXXXX)"
+                    autoComplete="tel"
+                  />
+                  <Input
+                    id="walkin-partner-email"
+                    type="email"
+                    value={partnerEmail}
+                    onChange={(e) => setPartnerEmail(e.target.value)}
+                    placeholder="Email (optional)"
+                    autoComplete="email"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -368,38 +435,16 @@ export function AddWalkInDialog({
           <Button
             variant="ghost"
             onClick={() => add("later")}
-            disabled={
-              busy !== null ||
-              !playerFirst.trim() ||
-              !playerLast.trim() ||
-              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
-            }
+            disabled={busy !== null || !formOk}
           >
             {busy === "later" ? <Loader2 className="animate-spin" /> : <UserPlus />}
             Add, pay later
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => add("qr")}
-            disabled={
-              busy !== null ||
-              !playerFirst.trim() ||
-              !playerLast.trim() ||
-              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
-            }
-          >
+          <Button variant="outline" onClick={() => add("qr")} disabled={busy !== null || !formOk}>
             {busy === "qr" ? <Loader2 className="animate-spin" /> : <QrCode />}
             Add & show QR
           </Button>
-          <Button
-            onClick={() => add("cash")}
-            disabled={
-              busy !== null ||
-              !playerFirst.trim() ||
-              !playerLast.trim() ||
-              (doubles && (!partnerFirst.trim() || !partnerLast.trim()))
-            }
-          >
+          <Button onClick={() => add("cash")} disabled={busy !== null || !formOk}>
             {busy === "cash" ? <Loader2 className="animate-spin" /> : <Banknote />}
             Add & take cash
           </Button>

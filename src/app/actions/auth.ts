@@ -13,6 +13,7 @@ import { normalizePartnerEmail } from "@/lib/registrations/partner-conflicts";
 import { acceptSubstitution, findSubstitution } from "@/lib/registrations/team-changes";
 import { parsePhilippineMobileRequired } from "@/lib/validations/phone";
 import { joinPersonName } from "@/lib/validations/person-name";
+import { linkOrganizerGuestEntriesByEmail } from "@/lib/registrations/manual-entry-link";
 
 // Platform role (super_admin) is set only via service role — never via signup.
 
@@ -30,6 +31,7 @@ export async function signInWithPassword(formData: FormData) {
   if (error) return { error: error.message };
   const user = data.user;
   if (!user) return { error: "Sign in failed" };
+  await linkOrganizerGuestEntriesByEmail(user.id, email).catch(() => undefined);
   if (embedded) return { ok: true as const };
   redirect(getPostLoginPath(user, next));
 }
@@ -117,6 +119,8 @@ export async function signUp(formData: FormData) {
         await acceptSubstitution(subToken, data.user.id).catch(() => undefined);
       }
     }
+
+    await linkOrganizerGuestEntriesByEmail(data.user.id, email).catch(() => undefined);
   }
 
   const embedded = formData.get("embedded") === "1";

@@ -59,7 +59,7 @@ export type PlayerEntry = {
   partner: {
     name: string | null;
     email: string | null;
-    state: "joined" | "invited" | "declined" | "no_email";
+    state: "joined" | "invited" | "declined" | "guest" | "no_email";
   } | null;
   /** partner can still be changed by the registrant (draw not started) */
   canChangePartner: boolean;
@@ -103,7 +103,9 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
       .or(`team_a_registration_id.in.(${ids.join(",")}),team_b_registration_id.in.(${ids.join(",")})`),
     admin
       .from("registration_players")
-      .select("registration_id, user_id, is_primary, guest_name, guest_email, partner_invite_status, profiles(full_name, avatar_url)")
+      .select(
+        "registration_id, user_id, is_primary, guest_name, guest_email, partner_invite_status, partner_invite_token, profiles(full_name, avatar_url)"
+      )
       .in("registration_id", ids),
     admin
       .from("entry_substitutions")
@@ -181,6 +183,9 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
       const mateName = profileOf(mate)?.full_name || mate?.guest_name || null;
       const locked = Boolean(d?.bracket_state && d.bracket_state !== "not_started");
       const sub = (subs ?? []).find((x) => x.registration_id === r.id);
+      const onlinePartnerInvite =
+        Boolean(mate?.partner_invite_token) ||
+        (r.entry_source === "online" && Boolean(mate?.guest_email) && mate?.partner_invite_status === "pending");
       const partner: PlayerEntry["partner"] = mate
         ? {
             name: mateName,
@@ -190,7 +195,9 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
               : mate.partner_invite_status === "declined"
                 ? "declined"
                 : mate.guest_email
-                  ? "invited"
+                  ? onlinePartnerInvite
+                    ? "invited"
+                    : "guest"
                   : "no_email",
           }
         : null;

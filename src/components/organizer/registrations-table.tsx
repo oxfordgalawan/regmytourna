@@ -74,7 +74,7 @@ const PARTNER_LABEL = {
 const SOURCE_LABEL: Record<RegistrationRow["source"], string> = {
   online: "Online",
   pay_at_venue: "Pays at venue",
-  desk: "Walk-in",
+  desk: "Manual",
 };
 const PAID_LABEL: Record<NonNullable<RegistrationRow["paidVia"]>, string> = {
   online: "Online",
@@ -180,7 +180,7 @@ export function RegistrationsTable({
           </Button>
           <Button onClick={() => setAdding(true)} disabled={!categories.length}>
             <UserPlus />
-            Add walk-in
+            Add players manually
           </Button>
         </div>
       </div>
@@ -400,7 +400,7 @@ export function RegistrationsTable({
             {!filtered.length && (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  {visible.length ? "No entries match." : "No entries yet. Online registrations and walk-ins appear here."}
+                  {visible.length ? "No entries match." : "No entries yet. Online registrations and manual entries appear here."}
                 </TableCell>
               </TableRow>
             )}
