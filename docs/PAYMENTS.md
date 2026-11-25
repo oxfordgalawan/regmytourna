@@ -30,7 +30,9 @@ Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the 
   - `wallet_credit_settlement` — when `true` **and** `platform_fee_percent = 0`, online/QR credits use **PayMongo wallet receive** after **Instant Settlement** (e.g. ₱492.52 on a ₱500 QR entry), not payment-intent `net_amount` alone (≈ ₱497.50) and not player gross.
   - **Super admins** who own tournaments get the same **0% + instant-settlement credit** policy automatically when crediting the wallet.
 - **Everyone else** stays on **5% convenience fee** on entry **gross** (`organizer_net = gross − 5%`); no instant-settlement wallet lookup.
-- Example (eligible): player pays **₱500** QR → PayMongo wallet shows **₱492.52** receive → wallet credits **₱492.52** at **0%** platform fee.
+- **Wallet instant settlement is the source of truth** for eligible organizers’ `payments.settlement_cents` and wallet “By event” income lines. Payment-intent `net_amount` can be higher (e.g. **₱995** on ₱1,000) than the wallet receive (**₱985.05**); the app prefers wallet net when reconciling and on credit.
+- Examples (eligible): **₱500** QR → wallet **₱492.52**; **₱1,000** QR → wallet **₱985.05** (not ₱995 from the payment intent alone).
+- If a row was credited from stale payment-intent net, opening **Organizer wallet** runs a reconcile that corrects settlement fields and, when needed, posts a small balance adjustment (metadata `settlement_reconcile`).
 
 Super admins see overrides on `/super-admin/organizers` (read-only).
 

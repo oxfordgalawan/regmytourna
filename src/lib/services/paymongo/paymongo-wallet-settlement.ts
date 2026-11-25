@@ -68,8 +68,10 @@ function pickWalletReceiveTx(
 
     let score = 0;
     const ref = (attrs?.reference_number ?? "").toLowerCase();
-    if (intentNeedle && ref.includes(intentNeedle)) score += 100;
-    if (gross !== undefined && Math.abs(cents - gross) <= gross * 0.03) score += 20;
+    if (intentNeedle && ref.includes(intentNeedle)) score += 1000;
+    if (gross !== undefined && gross > 0) {
+      score += Math.round((cents / gross) * 80);
+    }
 
     const created = attrs?.created_at;
     if (!Number.isNaN(paidMs) && typeof created === "number") {
@@ -78,12 +80,54 @@ function pickWalletReceiveTx(
       else if (delta <= 24 * 60 * 60 * 1000) score += 10;
     }
 
-    if (!best || score > best.score || (score === best.score && cents < best.cents)) {
+    if (!best || score > best.score || (score === best.score && cents > best.cents)) {
       best = { score, cents };
     }
   }
 
   return best?.cents ?? null;
+}
+
+type WalletTxRow = { id?: string; attributes?: WalletTxAttrs };
+
+async function fetchWalletReceiveRows(
+  walletId: string,
+  opts: { paidAt?: string | null }
+): Promise<WalletTxRow[]> {
+  const rows: WalletTxRow[] = [];
+  const params = new URLSearchParams({ limit: "250" });
+  if (opts.paidAt) {
+    const after = new Date(opts.paidAt);
+    after.setMinutes(after.getMinutes() - 30);
+    params.set("created_after", after.toISOString());
+  }
+
+  let afterId: string | undefined;
+  for (let page = 0; page < 2; page++) {
+    const query = new URLSearchParams(params);
+    if (afterId) query.set("after", afterId);
+
+    const res = await fetch(
+      `${PAYMONGO_API}/wallets/${encodeURIComponent(walletId)}/wallet_transactions?${query}`,
+      {
+        headers: { Authorization: walletAuthHeader() },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) break;
+
+    const json = (await res.json()) as {
+      data?: WalletTxRow[];
+      has_more?: boolean;
+    };
+    const batch = json.data ?? [];
+    rows.push(...batch);
+    if (!json.has_more || batch.length === 0) break;
+    afterId = batch[batch.length - 1]?.id;
+    if (!afterId) break;
+  }
+
+  return rows;
 }
 
 /** Net credited to the PayMongo merchant wallet after Instant Settlement (if enabled). */
@@ -100,26 +144,8 @@ export async function resolveWalletInstantSettlement(opts: {
     const walletId = await fetchMerchantWalletId();
     if (!walletId) return null;
 
-    const params = new URLSearchParams({ limit: "100" });
-    if (opts.paidAt) {
-      const after = new Date(opts.paidAt);
-      after.setMinutes(after.getMinutes() - 10);
-      params.set("created_after", after.toISOString());
-    }
-
-    const res = await fetch(
-      `${PAYMONGO_API}/wallets/${encodeURIComponent(walletId)}/wallet_transactions?${params}`,
-      {
-        headers: { Authorization: walletAuthHeader() },
-        cache: "no-store",
-      }
-    );
-    if (!res.ok) return null;
-
-    const json = (await res.json()) as {
-      data?: Array<{ attributes?: WalletTxAttrs }>;
-    };
-    const settlementCents = pickWalletReceiveTx(json.data ?? [], opts);
+    const walletRows = await fetchWalletReceiveRows(walletId, opts);
+    const settlementCents = pickWalletReceiveTx(walletRows, opts);
     if (settlementCents === null) return null;
 
     return {

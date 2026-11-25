@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase.generated";
-import { resolvePaymongoSettlement } from "@/lib/services/paymongo/paymongo-settlement";
-import { splitPaymentAmount } from "@/lib/wallet/fees";
+import {
+  organizerNetFromResolvedSettlement,
+  resolveOrganizerSettlementForPayment,
+} from "@/lib/payments/resolve-organizer-settlement";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 import { relationOne } from "@/lib/supabase/relations";
 
@@ -40,29 +42,36 @@ export async function persistPaymongoSettlementOnPayment(
     .maybeSingle();
 
   if (!payment) return;
-  if (payment.settlement_cents !== null && payment.credited_to_user_id) return;
+  if (payment.credited_to_user_id) return;
 
-  const intentId = opts.intentId?.trim() || payment.paymongo_payment_intent_id;
-  const sessionId = opts.sessionId?.trim() || payment.paymongo_checkout_session_id;
-
-  const resolved = await resolvePaymongoSettlement({
-    intentId,
-    sessionId,
-    grossCents: payment.amount_cents,
-    paidAt: payment.paid_at,
-    useWalletInstantSettlement: true,
-  });
+  const resolved = await resolveOrganizerSettlementForPayment(
+    {
+      ...payment,
+      paymongo_payment_intent_id:
+        opts.intentId?.trim() || payment.paymongo_payment_intent_id,
+      paymongo_checkout_session_id:
+        opts.sessionId?.trim() || payment.paymongo_checkout_session_id,
+    },
+    policy
+  );
 
   if (!resolved) return;
 
-  const { platformFeeCents } = splitPaymentAmount(payment.amount_cents, policy.feePercent);
+  const stored = payment.settlement_cents;
+  if (stored !== null && resolved.settlementCents >= stored) return;
+
+  const { organizerNetCents } = organizerNetFromResolvedSettlement(
+    resolved.settlementCents,
+    payment.amount_cents,
+    policy
+  );
 
   await admin
     .from("payments")
     .update({
       settlement_cents: resolved.settlementCents,
       paymongo_fee_cents: resolved.paymongoFeeCents,
-      organizer_net_cents: Math.max(0, resolved.settlementCents - platformFeeCents),
+      organizer_net_cents: organizerNetCents,
     })
     .eq("id", payment.id);
 }

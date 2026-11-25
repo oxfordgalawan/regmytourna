@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase.generated";
-import { resolvePaymongoSettlement } from "@/lib/services/paymongo/paymongo-settlement";
+import {
+  organizerNetFromResolvedSettlement,
+  resolveOrganizerSettlementForPayment,
+} from "@/lib/payments/resolve-organizer-settlement";
 import { splitPaymentAmount } from "@/lib/wallet/fees";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 import { relationOne } from "@/lib/supabase/relations";
@@ -56,20 +59,22 @@ export async function creditOrganizerFromRegistration(
   let settlementCents: number | null = payment.settlement_cents;
   let paymongoFeeCents: number | null = payment.paymongo_fee_cents;
 
-  if (policy.creditSettlement && settlementCents === null) {
-    const resolved = await resolvePaymongoSettlement({
-      intentId: payment.paymongo_payment_intent_id,
-      sessionId: payment.paymongo_checkout_session_id,
-      grossCents,
-    });
+  if (policy.creditSettlement) {
+    const resolved = await resolveOrganizerSettlementForPayment(payment, policy);
     if (resolved) {
       settlementCents = resolved.settlementCents;
       paymongoFeeCents = resolved.paymongoFeeCents;
+      const { organizerNetCents: resolvedNet } = organizerNetFromResolvedSettlement(
+        resolved.settlementCents,
+        grossCents,
+        policy
+      );
       await admin
         .from("payments")
         .update({
           settlement_cents: settlementCents,
           paymongo_fee_cents: paymongoFeeCents,
+          organizer_net_cents: resolvedNet,
         })
         .eq("id", payment.id);
     }
@@ -77,7 +82,7 @@ export async function creditOrganizerFromRegistration(
 
   let organizerNetCents: number;
   if (policy.creditSettlement && settlementCents !== null) {
-    organizerNetCents = Math.max(0, settlementCents - platformFeeCents);
+    organizerNetCents = organizerNetFromResolvedSettlement(settlementCents, grossCents, policy).organizerNetCents;
   } else if (policy.creditSettlement && settlementCents === null) {
     console.warn(
       `wallet_credit_settlement: no PayMongo settlement for payment ${payment.id}; falling back to gross − fee`

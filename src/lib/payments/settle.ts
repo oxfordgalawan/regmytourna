@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isCheckoutSessionPaid } from "@/lib/services/paymongo/paymongo-service";
 import { isPaymentIntentPaid } from "@/lib/services/paymongo/paymongo-qrph";
 import { persistPaymongoSettlementOnPayment } from "@/lib/payments/persist-settlement";
+import { reconcileStalePaymentSettlements } from "@/lib/payments/reconcile-payment-settlements";
 import { creditOrganizerFromRegistration } from "@/lib/wallet/credit-organizer-from-payment";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-entry-notify";
@@ -169,4 +170,8 @@ export async function reconcileOrganizerWallet(userId: string) {
       await settlePaidCheckout(p.registration_id, p.paymongo_checkout_session_id);
     }
   }
+
+  await reconcileStalePaymentSettlements(admin as never, userId, policy).catch((err) => {
+    console.warn("reconcile_stale_payment_settlements:", err);
+  });
 }
