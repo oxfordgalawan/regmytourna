@@ -27,12 +27,11 @@ Online PayMongo checkout may still offer GCash on PayMongo’s hosted page; the 
 - **Cash at the desk:** money stays with the organizer; the convenience fee is debited from the wallet via `charge_cash_platform_fee` (balance may go negative until online income offsets it).
 - **Per-organizer overrides** on `profiles` (or super-admin tournament owners):
   - `platform_fee_percent` — `NULL` uses the global default (**5%**); set `0` only for whitelisted accounts (e.g. Neil).
-  - `wallet_credit_settlement` — when `true` **and** `platform_fee_percent = 0`, online/QR credits use **PayMongo wallet receive** after **Instant Settlement** (e.g. ₱492.52 on a ₱500 QR entry), not payment-intent `net_amount` alone (≈ ₱497.50) and not player gross.
-  - **Super admins** who own tournaments get the same **0% + instant-settlement credit** policy automatically when crediting the wallet.
-- **Everyone else** stays on **5% convenience fee** on entry **gross** (`organizer_net = gross − 5%`); no instant-settlement wallet lookup.
-- **Wallet instant settlement is the source of truth** for eligible organizers’ `payments.settlement_cents` and wallet “By event” income lines. Payment-intent `net_amount` can be higher (e.g. **₱995** on ₱1,000) than the wallet receive (**₱985.05**); the app prefers wallet net when reconciling and on credit.
-- Examples (eligible): **₱500** QR → wallet **₱492.52**; **₱1,000** QR → wallet **₱985.05** (not ₱995 from the payment intent alone).
-- If a row was credited from stale payment-intent net, opening **Organizer wallet** runs a reconcile that corrects settlement fields and, when needed, posts a small balance adjustment (metadata `settlement_reconcile`).
+  - `wallet_credit_settlement` — when `true` **and** `platform_fee_percent = 0`, online/QR wallet credits use a **fixed 1.495% PayMongo processing deduction** from entry gross (not the 5% platform convenience fee and not PayMongo API `net_amount`, which can differ e.g. ₱995 vs ₱985.05 on ₱1,000).
+  - **Super admins** who own tournaments get the same **0% convenience + fixed 1.495% PayMongo processing** policy automatically.
+- **Everyone else** stays on **5% convenience fee** on entry **gross** (`organizer_net = gross − 5%`).
+- Formula: `paymongo_fee = round(gross × 1.495%)`, `settlement = gross − paymongo_fee`, `organizer_net = settlement` at 0% platform fee. Examples: **₱500** → **₱492.52**; **₱1,000** → **₱985.05**.
+- Opening **Organizer wallet** reconciles stored `payments.settlement_cents` and credited amounts to this formula when needed (metadata `settlement_reconcile` on balance adjustments).
 
 Super admins see overrides on `/super-admin/organizers` (read-only).
 

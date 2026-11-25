@@ -39,7 +39,7 @@ export default async function OrganizerWalletPage() {
       ? `This account uses a ${feePercent}% convenience fee (not the default site rate).`
       : `Online and QR entry payments land here after a ${feePercent}% convenience fee.`,
     creditSettlement
-      ? "Online credits match PayMongo settlement after their processing fees — not always the full entry amount players paid."
+      ? "Online credits use a fixed 1.495% PayMongo processing deduction from what players pay (0% convenience fee on your account)."
       : null,
     "Withdraw any time — an admin approves each payout.",
   ].filter(Boolean);

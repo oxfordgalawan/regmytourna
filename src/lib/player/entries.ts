@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
+import { computeRegistrationBalance, getFeeDueCents } from "@/lib/registrations/payment-balance";
 
 /**
  * Everything a player needs about their own entries: where/when, payment
@@ -29,6 +30,8 @@ export type PlayerEntry = {
   /** the event lets players pay at the venue (cash / QR) */
   allowPayAtVenue: boolean;
   feeCents: number;
+  paidCents: number;
+  balanceDueCents: number;
   categoryName: string;
   teamName: string;
   tournament: {
@@ -84,7 +87,8 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
   const ids = [...new Set((asPlayer ?? []).map((r) => r.registration_id))];
   if (!ids.length) return [];
 
-  const [{ data: regs }, { data: matches }, { data: players }, { data: subs }] = await Promise.all([
+  const [{ data: regs }, { data: matches }, { data: players }, { data: subs }, { data: paidRows }] =
+    await Promise.all([
     admin
       .from("registrations")
       .select(
@@ -106,7 +110,17 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
       .select("registration_id, requested_by, substitute_name, substitute_email")
       .in("registration_id", ids)
       .eq("status", "pending"),
+    admin
+      .from("payments")
+      .select("registration_id, amount_cents")
+      .in("registration_id", ids)
+      .eq("status", "paid"),
   ]);
+
+  const paidByReg = new Map<string, number>();
+  for (const p of paidRows ?? []) {
+    paidByReg.set(p.registration_id, (paidByReg.get(p.registration_id) ?? 0) + p.amount_cents);
+  }
 
   const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
 
@@ -202,7 +216,21 @@ export async function loadPlayerEntries(userId: string): Promise<PlayerEntry[]> 
         entrySource: r.entry_source ?? "online",
         waitlistPosition: r.waitlist_position ?? null,
         allowPayAtVenue: Boolean(t.allow_walk_in_payment),
-        feeCents: d?.entry_fee_cents ?? t.entry_fee_cents,
+        feeCents: (() => {
+          const feeDue = getFeeDueCents({
+            divisionEntryFeeCents: d?.entry_fee_cents,
+            tournamentEntryFeeCents: t.entry_fee_cents,
+          });
+          return feeDue;
+        })(),
+        paidCents: paidByReg.get(r.id) ?? 0,
+        balanceDueCents: (() => {
+          const feeDue = getFeeDueCents({
+            divisionEntryFeeCents: d?.entry_fee_cents,
+            tournamentEntryFeeCents: t.entry_fee_cents,
+          });
+          return computeRegistrationBalance(feeDue, paidByReg.get(r.id) ?? 0).balanceDueCents;
+        })(),
         categoryName: d?.name ?? "Category",
         teamName: registrationName(r),
         tournament: {

@@ -41,6 +41,7 @@ export async function creditOrganizerFromRegistration(
     )
     .eq("registration_id", registrationId)
     .eq("status", "paid")
+    .is("credited_to_user_id", null)
     .order("paid_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -60,7 +61,7 @@ export async function creditOrganizerFromRegistration(
   let paymongoFeeCents: number | null = payment.paymongo_fee_cents;
 
   if (policy.creditSettlement) {
-    const resolved = await resolveOrganizerSettlementForPayment(payment, policy);
+    const resolved = resolveOrganizerSettlementForPayment(payment, policy);
     if (resolved) {
       settlementCents = resolved.settlementCents;
       paymongoFeeCents = resolved.paymongoFeeCents;

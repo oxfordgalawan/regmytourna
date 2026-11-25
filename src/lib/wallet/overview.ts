@@ -3,6 +3,7 @@ import { relationOne } from "@/lib/supabase/relations";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import type { PayoutMethodType } from "@/lib/payout-methods/config";
 import { loadOrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
+import { computePaymongoFixedSettlement } from "@/lib/wallet/paymongo-fixed-settlement";
 
 /**
  * Everything the organizer wallet shows: balance, where the money came from
@@ -119,12 +120,25 @@ function incomeNetCents(
   amountCents: number,
   meta: TxMeta,
   pay: PaymentJoin | null,
-  settlementEligible: boolean
+  settlementEligible: boolean,
+  entryGross?: number | null
 ): number {
   if (!settlementEligible) return amountCents;
-  const settlement = pay?.settlement_cents ?? meta.settlement_cents ?? null;
-  if (settlement !== null && settlement >= 0) return settlement;
-  return amountCents;
+  const gross = entryGross ?? meta.gross_cents ?? amountCents;
+  return computePaymongoFixedSettlement(gross).settlementCents;
+}
+
+function incomeSettlementDisplayCents(
+  entryGross: number,
+  settlementEligible: boolean,
+  pay: PaymentJoin | null,
+  meta: TxMeta,
+  fallbackNet: number
+): number {
+  if (!settlementEligible) {
+    return pay?.settlement_cents ?? meta.settlement_cents ?? fallbackNet;
+  }
+  return computePaymongoFixedSettlement(entryGross).settlementCents;
 }
 
 function divisionFromReg(reg: RegistrationJoin | null) {
@@ -309,8 +323,8 @@ export async function loadWalletOverview(userId: string) {
     const fee = meta.platform_fee_cents ?? null;
 
     if (row.type === "entry_payment") {
-      const creditedNet = incomeNetCents(row.amount_cents, meta, pay, settlementEligible);
       const entryGross = gross ?? row.amount_cents;
+      const creditedNet = incomeNetCents(row.amount_cents, meta, pay, settlementEligible, entryGross);
       const entryFee =
         settlementEligible && creditedNet !== row.amount_cents
           ? Math.max(0, entryGross - creditedNet)
@@ -334,7 +348,13 @@ export async function loadWalletOverview(userId: string) {
           label: team ?? "Entry payment",
           netCents: creditedNet,
           grossCents: entryGross,
-          settlementCents: pay?.settlement_cents ?? meta.settlement_cents ?? creditedNet,
+          settlementCents: incomeSettlementDisplayCents(
+            entryGross,
+            settlementEligible,
+            pay,
+            meta,
+            creditedNet
+          ),
           createdAt: row.created_at,
           status: "active",
         });
@@ -366,7 +386,7 @@ export async function loadWalletOverview(userId: string) {
       const reversedGross =
         origMeta.gross_cents ?? meta.original_amount_cents ?? Math.abs(row.amount_cents);
       const reversedNet = original
-        ? incomeNetCents(original.amount_cents, origMeta, origPay, settlementEligible)
+        ? incomeNetCents(original.amount_cents, origMeta, origPay, settlementEligible, reversedGross)
         : Math.abs(row.amount_cents);
       const refundNet = -reversedNet;
       const reversedFee =
@@ -406,8 +426,13 @@ export async function loadWalletOverview(userId: string) {
               label: origTeam,
               netCents: reversedNet,
               grossCents: reversedGross,
-              settlementCents:
-                origPay?.settlement_cents ?? origMeta.settlement_cents ?? reversedNet,
+              settlementCents: incomeSettlementDisplayCents(
+                reversedGross,
+                settlementEligible,
+                origPay,
+                origMeta,
+                reversedNet
+              ),
               createdAt: row.created_at,
               status: "removed_refunded",
             });
@@ -445,14 +470,18 @@ export async function loadWalletOverview(userId: string) {
 
     if (row.type === "entry_payment") {
       const channel = pay?.method === "qr" ? "qr" : "online";
+      const entryGross = gross ?? row.amount_cents;
+      const fixed = settlementEligible ? computePaymongoFixedSettlement(entryGross) : null;
       return {
         id: row.id,
         kind: "entry",
         amountCents: row.amount_cents,
         grossCents: gross,
         feeCents: fee,
-        settlementCents: pay?.settlement_cents ?? meta.settlement_cents ?? null,
-        paymongoFeeCents: pay?.paymongo_fee_cents ?? meta.paymongo_fee_cents ?? null,
+        settlementCents:
+          fixed?.settlementCents ?? pay?.settlement_cents ?? meta.settlement_cents ?? null,
+        paymongoFeeCents:
+          fixed?.paymongoFeeCents ?? pay?.paymongo_fee_cents ?? meta.paymongo_fee_cents ?? null,
         channel,
         title: team ?? "Entry payment",
         subtitle: category,
@@ -492,7 +521,7 @@ export async function loadWalletOverview(userId: string) {
         const reversedGross =
           origMeta.gross_cents ?? meta.original_amount_cents ?? Math.abs(row.amount_cents);
         const reversedNet = original
-          ? incomeNetCents(original.amount_cents, origMeta, origPay, settlementEligible)
+          ? incomeNetCents(original.amount_cents, origMeta, origPay, settlementEligible, reversedGross)
           : Math.abs(row.amount_cents);
         const reversedFee =
           settlementEligible && reversedNet !== Math.abs(row.amount_cents)

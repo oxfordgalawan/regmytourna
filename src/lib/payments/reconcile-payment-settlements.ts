@@ -9,9 +9,9 @@ import type { OrganizerWalletPolicy } from "@/lib/wallet/organizer-fee-profile";
 type AdminClient = SupabaseClient<Database>;
 
 const SETTLEMENT_RECONCILE_DESCRIPTION =
-  "Instant settlement reconcile: correct PayMongo wallet net on entry";
+  "Fixed 1.495% PayMongo processing: correct settlement on entry";
 
-/** Backfill stale payment-intent net when wallet instant settlement is the source of truth. */
+/** Align stored settlement / credits with the fixed 1.495% PayMongo deduction model. */
 export async function reconcileStalePaymentSettlements(
   admin: AdminClient,
   userId: string,
@@ -19,7 +19,7 @@ export async function reconcileStalePaymentSettlements(
 ) {
   if (!policy.settlementEligible) return;
 
-  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const { data: events } = await admin.from("tournaments").select("id").eq("owner_id", userId);
   const tournamentIds = (events ?? []).map((t) => t.id);
   if (!tournamentIds.length) return;
@@ -41,14 +41,14 @@ export async function reconcileStalePaymentSettlements(
     .in("method", ["online", "qr"])
     .gte("paid_at", since)
     .order("paid_at", { ascending: false })
-    .limit(80);
+    .limit(120);
 
   for (const payment of payments ?? []) {
-    const resolved = await resolveOrganizerSettlementForPayment(payment, policy);
+    const resolved = resolveOrganizerSettlementForPayment(payment, policy);
     if (!resolved) continue;
 
     const stored = payment.settlement_cents;
-    if (stored !== null && stored <= resolved.settlementCents) continue;
+    if (stored !== null && stored === resolved.settlementCents) continue;
 
     const { organizerNetCents, platformFeeCents } = organizerNetFromResolvedSettlement(
       resolved.settlementCents,
@@ -98,6 +98,7 @@ export async function reconcileStalePaymentSettlements(
           p_admin_user_id: payment.credited_to_user_id,
           p_metadata: {
             settlement_reconcile: true,
+            fixed_paymongo_fee_bps: 1495,
             payment_id: payment.id,
             registration_id: payment.registration_id,
             old_organizer_net_cents: oldNet,

@@ -27,7 +27,7 @@ export function IncomeSources({
   ];
 
   const eventSubtitle = settlementDisplay
-    ? "PayMongo settlement (0% convenience fee)"
+    ? "PayMongo ~1.495% processing (0% convenience fee)"
     : `net after ${feePercent}% fee`;
 
   return (

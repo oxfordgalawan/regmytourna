@@ -9,6 +9,8 @@ import { notifyOrganizersEntryConfirmed } from "@/lib/registrations/organizer-en
 import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-notify";
 import { notifyRegistrantAfterRegistration } from "@/lib/registrations/registrant-notify";
 import { isPayMongoConfigured } from "@/lib/env/server";
+import { getFeeDueCents, getRegistrationBalance } from "@/lib/registrations/payment-balance";
+import { relationOne } from "@/lib/supabase/relations";
 
 /**
  * One place that turns "PayMongo says it's paid" into: payment marked paid,
@@ -27,7 +29,7 @@ export async function settlePaidPayment(
     .eq("id", registrationId)
     .maybeSingle();
   if (!before) return { settled: false };
-  const alreadyPaid = before.payment_status === "paid";
+  const wasFullyPaid = before.payment_status === "paid";
 
   const paidAt = new Date().toISOString();
   const sessionId = match.sessionId?.trim() || null;
@@ -50,7 +52,7 @@ export async function settlePaidPayment(
           .neq("status", "paid")
           .select("id")
       : { data: null };
-  if (!matched?.length && !alreadyPaid) {
+  if (!matched?.length && !wasFullyPaid) {
     await admin
       .from("payments")
       .update({ status: "paid", paid_at: paidAt })
@@ -60,12 +62,34 @@ export async function settlePaidPayment(
   // other open checkouts for this entry can no longer be used
   await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
 
-  if (!alreadyPaid) {
-    await admin
-      .from("registrations")
-      .update({ status: "confirmed", payment_status: "paid", payment_hold_expires_at: null })
-      .eq("id", registrationId);
-  }
+  const { data: regRow } = await admin
+    .from("registrations")
+    .select("status, tournaments(entry_fee_cents), tournament_divisions(entry_fee_cents)")
+    .eq("id", registrationId)
+    .maybeSingle();
+
+  const tournament = relationOne(regRow?.tournaments as never) as { entry_fee_cents: number } | null;
+  const division = relationOne(regRow?.tournament_divisions as never) as {
+    entry_fee_cents: number | null;
+  } | null;
+  const feeDueCents = getFeeDueCents({
+    divisionEntryFeeCents: division?.entry_fee_cents,
+    tournamentEntryFeeCents: tournament?.entry_fee_cents,
+  });
+  const balance = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+  const nextStatus =
+    regRow?.status === "awaiting_payment" || regRow?.status === "pending"
+      ? "confirmed"
+      : regRow?.status ?? "confirmed";
+
+  await admin
+    .from("registrations")
+    .update({
+      status: nextStatus,
+      payment_status: balance.fullyPaid ? "paid" : "partial",
+      payment_hold_expires_at: null,
+    })
+    .eq("id", registrationId);
 
   await persistPaymongoSettlementOnPayment(admin as never, {
     registrationId,
@@ -76,7 +100,7 @@ export async function settlePaidPayment(
   // idempotent: credits each payment once
   const credit = await creditOrganizerFromRegistration(admin as never, registrationId);
 
-  if (!alreadyPaid) {
+  if (balance.fullyPaid && !wasFullyPaid) {
     await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" }).catch(() => undefined);
     await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
     await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);

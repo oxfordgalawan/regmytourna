@@ -2,7 +2,8 @@
 
 import { startTransition, useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, Search, UserPlus, UserRoundPen, X } from "lucide-react";
+import { Banknote, MailWarning, Search, UserPlus, UserRoundPen, X } from "lucide-react";
+import { FeeCorrectionDialog } from "@/components/organizer/fee-correction-dialog";
 import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
 import { cancelEntryAction, setWalkInPaymentAction } from "@/app/actions/walk-in";
@@ -40,6 +41,8 @@ export type RegistrationRow = {
   source: "online" | "pay_at_venue" | "desk";
   paidVia: "online" | "cash" | "qr" | null;
   feeCents: number;
+  paidCents?: number;
+  balanceDueCents?: number;
   checkedIn: boolean;
   partner?: "on_platform" | "invited" | "declined" | "guest" | null;
   players?: Array<{
@@ -97,6 +100,7 @@ export function RegistrationsTable({
   const [adding, setAdding] = useState(false);
   const [walkIn, setWalkIn] = useState(allowWalkIn);
   const [replacing, setReplacing] = useState<ReplaceTarget | null>(null);
+  const [feeCorrectionOpen, setFeeCorrectionOpen] = useState(false);
 
   const visible = rows.filter((r) => r.status !== "cancelled");
   // deferred so typing stays snappy and the result swap can animate
@@ -121,7 +125,7 @@ export function RegistrationsTable({
 
   const checkedIn = visible.filter((r) => r.checkedIn).length;
   const toCollect = visible.filter((r) => r.payment_status !== "paid");
-  const owed = toCollect.reduce((n, r) => n + r.feeCents, 0);
+  const owed = toCollect.reduce((n, r) => n + (r.balanceDueCents ?? r.feeCents), 0);
 
   async function toggleWalkIn() {
     const next = !walkIn;
@@ -166,12 +170,23 @@ export function RegistrationsTable({
               {toCollect.length} to collect · {formatPhp(owed)}
             </span>
           )}
+          <Button variant="outline" onClick={() => setFeeCorrectionOpen(true)}>
+            <MailWarning />
+            Request balance payments
+          </Button>
           <Button onClick={() => setAdding(true)} disabled={!categories.length}>
             <UserPlus />
             Add walk-in
           </Button>
         </div>
       </div>
+
+      <FeeCorrectionDialog
+        tournamentId={tournamentId}
+        open={feeCorrectionOpen}
+        onOpenChange={setFeeCorrectionOpen}
+        onApplied={() => router.refresh()}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="relative w-full sm:w-72">

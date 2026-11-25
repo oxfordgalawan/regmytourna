@@ -15,6 +15,7 @@ const statusMeta: Record<string, { label: string; tone: Tone }> = {
   pending_payment: { label: "Awaiting payment", tone: "warn" },
   waitlisted: { label: "Waitlisted", tone: "warn" },
   paid: { label: "Paid", tone: "good" },
+  partial: { label: "Partial payment", tone: "warn" },
   unpaid: { label: "Unpaid", tone: "warn" },
   failed: { label: "Failed", tone: "bad" },
   refunded: { label: "Refunded", tone: "quiet" },

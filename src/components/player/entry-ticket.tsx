@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, MapPin, Swords } from "lucide-react";
 import { EntryPayActions } from "@/components/player/entry-pay-actions";
+import { EntryBalancePay } from "@/components/player/entry-balance-pay";
 import { PartnerLine } from "@/components/player/partner-line";
 import { ManageEntry } from "@/components/player/manage-entry";
 import { dateTile, formatDateRange, formatPhp } from "@/lib/format";
@@ -13,6 +14,9 @@ export function paymentState(e: PlayerEntry) {
   if (e.status === "cancelled") return { label: "Cancelled", tone: "quiet" as const };
   if (e.status === "waitlisted") {
     return { label: e.waitlistPosition ? `Waitlist #${e.waitlistPosition}` : "On the waitlist", tone: "quiet" as const };
+  }
+  if (e.paymentStatus === "partial" && e.balanceDueCents > 0) {
+    return { label: `Partial · ${formatPhp(e.balanceDueCents)} balance due`, tone: "warn" as const };
   }
   if (e.paymentStatus === "paid") return { label: "Paid · confirmed", tone: "good" as const };
   if (e.entrySource === "pay_at_venue" || e.entrySource === "desk") {
@@ -27,8 +31,18 @@ export function needsPaymentChoice(e: PlayerEntry) {
     e.isRegistrant &&
     e.status === "awaiting_payment" &&
     e.paymentStatus !== "paid" &&
+    e.paymentStatus !== "partial" &&
     e.entrySource === "online" &&
     e.feeCents > 0
+  );
+}
+
+export function needsBalancePayment(e: PlayerEntry) {
+  return (
+    e.isRegistrant &&
+    e.paymentStatus === "partial" &&
+    e.balanceDueCents > 0 &&
+    (e.entrySource === "online" || e.entrySource === "pay_at_venue" || e.entrySource === "desk")
   );
 }
 
@@ -46,6 +60,7 @@ export function EntryTicket({ entry: e, className }: { entry: PlayerEntry; class
   const tile = dateTile(e.tournament.startDate);
   const pay = paymentState(e);
   const needsPayment = needsPaymentChoice(e);
+  const needsBalance = needsBalancePayment(e);
   const match = e.liveMatch ?? e.nextMatch;
 
   return (
@@ -130,6 +145,22 @@ export function EntryTicket({ entry: e, className }: { entry: PlayerEntry; class
               feeCents={e.feeCents}
               allowPayAtVenue={e.allowPayAtVenue && e.isRegistrant}
             />
+          </div>
+        )}
+
+        {needsBalance && (
+          <div className="mt-4 rounded-xl border border-brass/30 bg-brass/5 px-3 py-3">
+            <p className="text-xs leading-relaxed text-bone">
+              The organizer updated the entry fee. Please pay the remaining balance to complete your registration.
+            </p>
+            <div className="mt-3">
+              <EntryBalancePay
+                registrationId={e.id}
+                feeDueCents={e.feeCents}
+                paidCents={e.paidCents}
+                balanceDueCents={e.balanceDueCents}
+              />
+            </div>
           </div>
         )}
 

@@ -123,7 +123,10 @@ export async function replacePlayerAction(
   if (isPartner) await admin.from("registrations").update({ needs_partner_since: null }).eq("id", registrationId);
 
   // new partner with an email hears they're in (once the entry holds a slot)
-  const holdsSlot = reg.payment_status === "paid" || (reg.entry_source !== "online" && reg.status !== "waitlisted");
+  const holdsSlot =
+    reg.payment_status === "paid" ||
+    reg.payment_status === "partial" ||
+    (reg.entry_source !== "online" && reg.status !== "waitlisted");
   if (isPartner && email && holdsSlot) {
     await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
   }
@@ -203,7 +206,10 @@ export async function updatePlayerEmailAction(
     .eq("id", row.id);
   if (error) return { error: error.message };
 
-  const holdsSlot = reg.payment_status === "paid" || (reg.entry_source !== "online" && reg.status !== "waitlisted");
+  const holdsSlot =
+    reg.payment_status === "paid" ||
+    reg.payment_status === "partial" ||
+    (reg.entry_source !== "online" && reg.status !== "waitlisted");
   if (isPartner && email && holdsSlot) {
     await notifyPartnerAfterRegistration(registrationId).catch(() => undefined);
   }

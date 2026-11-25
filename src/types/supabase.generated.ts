@@ -841,6 +841,7 @@ export type Database = {
             | null
           created_at: string
           division_id: string
+          fee_adjustment_notified_at: string | null
           id: string
           notes: string | null
           payment_status: Database["public"]["Enums"]["payment_status"]
@@ -860,6 +861,7 @@ export type Database = {
             | null
           created_at?: string
           division_id: string
+          fee_adjustment_notified_at?: string | null
           id?: string
           notes?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
@@ -879,6 +881,7 @@ export type Database = {
             | null
           created_at?: string
           division_id?: string
+          fee_adjustment_notified_at?: string | null
           id?: string
           notes?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"]
@@ -1464,7 +1467,7 @@ export type Database = {
         | "cancelled"
       organizer_role: "owner" | "admin"
       partner_invite_status: "pending" | "accepted" | "declined" | "expired"
-      payment_status: "pending" | "paid" | "failed" | "cancelled" | "refunded"
+      payment_status: "pending" | "paid" | "partial" | "failed" | "cancelled" | "refunded"
       payout_method_type: "gcash" | "maya" | "bank" | "other"
       ph_place_level: "city_municipality" | "barangay"
       registration_status:
@@ -1634,7 +1637,7 @@ export const Constants = {
       ],
       organizer_role: ["owner", "admin"],
       partner_invite_status: ["pending", "accepted", "declined", "expired"],
-      payment_status: ["pending", "paid", "failed", "cancelled", "refunded"],
+      payment_status: ["pending", "paid", "partial", "failed", "cancelled", "refunded"],
       payout_method_type: ["gcash", "maya", "bank", "other"],
       ph_place_level: ["city_municipality", "barangay"],
       registration_status: [

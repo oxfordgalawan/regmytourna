@@ -44,7 +44,7 @@ export async function persistPaymongoSettlementOnPayment(
   if (!payment) return;
   if (payment.credited_to_user_id) return;
 
-  const resolved = await resolveOrganizerSettlementForPayment(
+  const resolved = resolveOrganizerSettlementForPayment(
     {
       ...payment,
       paymongo_payment_intent_id:
@@ -58,7 +58,7 @@ export async function persistPaymongoSettlementOnPayment(
   if (!resolved) return;
 
   const stored = payment.settlement_cents;
-  if (stored !== null && resolved.settlementCents >= stored) return;
+  if (stored !== null && stored === resolved.settlementCents) return;
 
   const { organizerNetCents } = organizerNetFromResolvedSettlement(
     resolved.settlementCents,

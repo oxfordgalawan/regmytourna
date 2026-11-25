@@ -2,6 +2,7 @@ import { requireOrganizerForTournament } from "@/lib/auth/require-organizer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { REGISTRATION_PLAYERS_SELECT, registrationName } from "@/lib/registrations/name";
 import { relationOne } from "@/lib/supabase/relations";
+import { computeRegistrationBalance } from "@/lib/registrations/payment-balance";
 export type OrganizerRegistrationRow = {
   id: string;
   player: string;
@@ -11,6 +12,8 @@ export type OrganizerRegistrationRow = {
   source: "online" | "pay_at_venue" | "desk";
   paidVia: "online" | "cash" | "qr" | null;
   feeCents: number;
+  paidCents: number;
+  balanceDueCents: number;
   checkedIn: boolean;
   /** doubles partner's account status — informational, the entry never waits on it */
   partner: "on_platform" | "invited" | "declined" | "guest" | null;
@@ -64,7 +67,7 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
     admin
       .from("registrations")
       .select(
-        `id, status, payment_status, entry_source, division_id, needs_partner_since, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, format, entry_fee_cents), check_ins(id), payments(method, status), partner_rows:registration_players(id, is_primary, user_id, guest_name, guest_email, guest_phone, partner_invite_status, profiles(full_name, phone))`
+        `id, status, payment_status, entry_source, division_id, needs_partner_since, ${REGISTRATION_PLAYERS_SELECT}, tournament_divisions(name, format, entry_fee_cents), check_ins(id), payments(method, status, amount_cents), partner_rows:registration_players(id, is_primary, user_id, guest_name, guest_email, guest_phone, partner_invite_status, profiles(full_name, phone))`
       )
       .eq("tournament_id", tournamentId)
       .order("created_at", { ascending: false }),
@@ -103,7 +106,13 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
     const playerRows = ((r.partner_rows ?? []) as PlayerRow[])
       .slice()
       .sort((x, y) => Number(y.is_primary) - Number(x.is_primary));
-    const paid = ((r.payments ?? []) as Array<{ method: string; status: string }>).find((p) => p.status === "paid");
+    const paymentRows = (r.payments ?? []) as Array<{ method: string; status: string; amount_cents: number }>;
+    const paid = paymentRows.find((p) => p.status === "paid");
+    const paidCents = paymentRows
+      .filter((p) => p.status === "paid")
+      .reduce((sum, p) => sum + p.amount_cents, 0);
+    const feeCents = division?.entry_fee_cents ?? defaultFee;
+    const balanceDueCents = computeRegistrationBalance(feeCents, paidCents).balanceDueCents;
     const mate = playerRows.find((p) => !p.is_primary);
     return {
       id: r.id,
@@ -136,7 +145,9 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
       payment_status: r.payment_status,
       source: (r.entry_source ?? "online") as OrganizerRegistrationRow["source"],
       paidVia: (paid?.method as OrganizerRegistrationRow["paidVia"]) ?? null,
-      feeCents: division?.entry_fee_cents ?? defaultFee,
+      feeCents,
+      paidCents,
+      balanceDueCents,
       checkedIn: Array.isArray(r.check_ins) ? r.check_ins.length > 0 : Boolean(r.check_ins),
     };
   });
