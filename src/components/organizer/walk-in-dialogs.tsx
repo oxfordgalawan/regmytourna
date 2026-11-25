@@ -30,6 +30,7 @@ import {
 } from "@/lib/payments/qrph-desk-copy";
 import { cn } from "@/lib/utils";
 
+/** feeCents = amount to collect now (balance due, not always full category fee). */
 export type CollectTarget = { id: string; player: string; division: string; feeCents: number };
 
 type Step = "choose" | "cash" | "qr" | "paid";

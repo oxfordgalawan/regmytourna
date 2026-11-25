@@ -16,6 +16,7 @@ import { notifyPartnerAfterRegistration } from "@/lib/registrations/partner-noti
 import { applyBracketWithdrawalForRegistration } from "@/lib/draw/withdraw-entry";
 import { notifyPlayersOrganizerRemovedEntry } from "@/lib/registrations/organizer-removal-notify";
 import { reverseOrganizerWalletOnRemoval } from "@/lib/wallet/reverse-organizer-on-removal";
+import { getFeeDueCents, getRegistrationBalance } from "@/lib/registrations/payment-balance";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -72,13 +73,23 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
   try {
     const found = await loadRegistration(registrationId);
     if (!found) return { error: "Entry not found" };
-    const { reg, tournament, feeCents } = found;
+    const { reg, division, tournament } = found;
     const user = await requireOrganizerForTournament(reg.tournament_id);
     if (reg.payment_status === "paid") return { error: "This entry is already paid." };
     if (reg.status === "cancelled") return { error: "This entry was cancelled." };
     if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
 
     const admin = createAdminClient();
+    const feeDueCents = getFeeDueCents({
+      divisionEntryFeeCents: division?.entry_fee_cents,
+      tournamentEntryFeeCents: tournament.entry_fee_cents,
+    });
+    const balanceBefore = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+    if (balanceBefore.fullyPaid || balanceBefore.balanceDueCents <= 0) {
+      return { error: "No balance due on this entry." };
+    }
+    const collectCents = balanceBefore.balanceDueCents;
+
     // any abandoned online/QR checkout for this entry is superseded by the cash
     await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
 
@@ -88,24 +99,31 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
       .insert({
         registration_id: registrationId,
         user_id: reg.entry_source === "desk" ? null : reg.registered_by,
-        amount_cents: feeCents,
+        amount_cents: collectCents,
         currency: "PHP",
         status: "paid",
         paid_at: now,
         method: "cash",
         recorded_by: user.id,
-        idempotency_key: `cash-${registrationId}`,
+        idempotency_key: `cash-balance-${registrationId}-${Date.now()}`,
       })
       .select("id")
       .single();
     if (error || !payment) {
-      return { error: error?.code === "23505" ? "Cash was already recorded for this entry." : (error?.message ?? "Couldn't record payment") };
+      return { error: error?.message ?? "Couldn't record payment" };
     }
 
-    await admin.from("registrations").update({ status: "confirmed", payment_status: "paid" }).eq("id", registrationId);
+    const balanceAfter = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+    await admin
+      .from("registrations")
+      .update({
+        status: "confirmed",
+        payment_status: balanceAfter.fullyPaid ? "paid" : "partial",
+      })
+      .eq("id", registrationId);
 
     const walletPolicy = await loadOrganizerWalletPolicy(admin, tournament.owner_id);
-    const { platformFeeCents } = splitPaymentAmount(feeCents, walletPolicy.feePercent);
+    const { platformFeeCents } = splitPaymentAmount(collectCents, walletPolicy.feePercent);
     if (platformFeeCents > 0) {
       const { error: feeError } = await admin.rpc("charge_cash_platform_fee", {
         p_user_id: tournament.owner_id,
@@ -113,16 +131,18 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
         p_registration_id: registrationId,
         p_tournament_id: reg.tournament_id,
         p_platform_fee_cents: platformFeeCents,
-        p_gross_cents: feeCents,
+        p_gross_cents: collectCents,
         p_description: `Platform fee (cash): ${tournament.name}`,
       });
       if (feeError) console.error("charge_cash_platform_fee failed:", feeError.message);
     }
 
     revalidateEvent(reg.tournament_id, tournament.slug);
-    await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
-    await notifyPartnerAfterRegistration(registrationId);
-    await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);
+    if (balanceAfter.fullyPaid) {
+      await notifyRegistrantAfterRegistration(registrationId, { kind: "payment_confirmed" });
+      await notifyPartnerAfterRegistration(registrationId);
+      await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);
+    }
     return { ok: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't record payment" };
@@ -137,11 +157,22 @@ export async function createDeskQrAction(
     if (!isPayMongoConfigured()) return { error: "QR payments need PayMongo set up. Take cash for now." };
     const found = await loadRegistration(registrationId);
     if (!found) return { error: "Entry not found" };
-    const { reg, division, tournament, feeCents } = found;
+    const { reg, division, tournament } = found;
     const user = await requireOrganizerForTournament(reg.tournament_id);
     if (reg.payment_status === "paid") return { error: "This entry is already paid." };
     if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
-    if (feeCents <= 0) return { error: "This category is free — nothing to collect." };
+
+    const admin = createAdminClient();
+    const feeDueCents = getFeeDueCents({
+      divisionEntryFeeCents: division?.entry_fee_cents,
+      tournamentEntryFeeCents: tournament.entry_fee_cents,
+    });
+    const balance = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+    if (balance.fullyPaid || balance.balanceDueCents <= 0) {
+      return { error: "No balance due on this entry." };
+    }
+    const collectCents = balance.balanceDueCents;
+    const isBalance = balance.paidCents > 0;
 
     const payment = await startRegistrationQrphPayment({
       registrationId,
@@ -149,18 +180,22 @@ export async function createDeskQrAction(
       tournamentId: reg.tournament_id,
       tournamentName: tournament.name,
       tournamentSlug: tournament.slug,
-      amountCents: feeCents,
-      idempotencyKey: `qr-${registrationId}-${Date.now()}`,
+      amountCents: collectCents,
+      idempotencyKey: `${isBalance ? "qr-balance" : "qr"}-${registrationId}-${Date.now()}`,
       method: "qr",
       recordedBy: user.id,
-      metadataExtra: { source: "desk_qr" },
-      description: `${tournament.name} — ${division?.name ?? "Entry"}`,
+      metadataExtra: isBalance
+        ? { source: "desk_qr", payment_type: "balance" }
+        : { source: "desk_qr" },
+      description: isBalance
+        ? `${tournament.name} — remaining entry fee`
+        : `${tournament.name} — ${division?.name ?? "Entry"}`,
     });
     return {
       ok: true,
       qrImageUrl: payment.qrImageUrl,
       checkoutUrl: payment.checkoutUrl,
-      amountCents: feeCents,
+      amountCents: collectCents,
       expiresAt: payment.expiresAt,
     };
   } catch (e) {

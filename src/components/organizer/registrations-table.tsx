@@ -82,6 +82,10 @@ const PAID_LABEL: Record<NonNullable<RegistrationRow["paidVia"]>, string> = {
   qr: "QR",
 };
 
+function amountToCollect(r: RegistrationRow): number {
+  return r.balanceDueCents ?? Math.max(0, r.feeCents - (r.paidCents ?? 0));
+}
+
 export function RegistrationsTable({
   tournamentId,
   rows,
@@ -313,20 +317,26 @@ export function RegistrationsTable({
                     <StatusBadge status={r.status} />
                   </TableCell>
                   <TableCell>
-                    {unpaid && r.feeCents > 0 ? (
-                      <span className="flex items-center gap-1">
+                    {unpaid && amountToCollect(r) > 0 ? (
+                      <span className="flex flex-col items-start gap-1">
+                        <span className="flex items-center gap-1">
                         <Button
                           size="sm"
                           variant="umber"
                           onClick={() =>
                             setCollect({
-                              target: { id: r.id, player: r.player, division: r.division, feeCents: r.feeCents },
+                              target: {
+                                id: r.id,
+                                player: r.player,
+                                division: r.division,
+                                feeCents: amountToCollect(r),
+                              },
                               how: "choose",
                             })
                           }
                         >
                           <Banknote />
-                          Collect {formatPhp(r.feeCents)}
+                          Collect {formatPhp(amountToCollect(r))}
                         </Button>
                         {replaceButton}
                         <Button
@@ -338,6 +348,15 @@ export function RegistrationsTable({
                         >
                           <X />
                         </Button>
+                        </span>
+                        {r.payment_status === "partial" && (r.paidCents ?? 0) > 0 ? (
+                          <span className="flex flex-wrap items-center gap-2 pl-0.5">
+                            <StatusBadge status="partial" />
+                            <span className="font-mono text-[0.65rem] text-muted-foreground">
+                              Paid {formatPhp(r.paidCents ?? 0)} · due {formatPhp(amountToCollect(r))}
+                            </span>
+                          </span>
+                        ) : null}
                       </span>
                     ) : r.status === "waitlisted" ? (
                       <span className="flex items-center gap-1">
