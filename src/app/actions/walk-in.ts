@@ -76,13 +76,15 @@ export async function setWalkInPaymentAction(tournamentId: string, allow: boolea
  * Organizer took cash at the desk. Confirms the entry and charges the platform
  * fee to the organizer's wallet (cash never passes through the platform).
  */
-export async function recordCashPaymentAction(registrationId: string): Promise<Result> {
+export async function recordCashPaymentAction(
+  registrationId: string,
+  amountCents?: number
+): Promise<Result & { fullyPaid?: boolean; balanceDueCents?: number; recordedCents?: number }> {
   try {
     const found = await loadRegistration(registrationId);
     if (!found) return { error: "Entry not found" };
     const { reg, division, tournament } = found;
     const user = await requireOrganizerForTournament(reg.tournament_id);
-    if (reg.payment_status === "paid") return { error: "This entry is already paid." };
     if (reg.status === "cancelled") return { error: "This entry was cancelled." };
     if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
 
@@ -95,7 +97,16 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
     if (balanceBefore.fullyPaid || balanceBefore.balanceDueCents <= 0) {
       return { error: "No balance due on this entry." };
     }
-    const collectCents = balanceBefore.balanceDueCents;
+    const collectCents =
+      amountCents !== undefined
+        ? Math.round(amountCents)
+        : balanceBefore.balanceDueCents;
+    if (!Number.isFinite(collectCents) || collectCents <= 0) {
+      return { error: "Enter an amount greater than zero." };
+    }
+    if (collectCents > balanceBefore.balanceDueCents) {
+      return { error: `Amount can't exceed the balance due (${balanceBefore.balanceDueCents} cents).` };
+    }
 
     // any abandoned online/QR checkout for this entry is superseded by the cash
     await admin.from("payments").update({ status: "cancelled" }).eq("registration_id", registrationId).eq("status", "pending");
@@ -150,7 +161,12 @@ export async function recordCashPaymentAction(registrationId: string): Promise<R
       await notifyPartnerAfterRegistration(registrationId);
       await notifyOrganizersEntryConfirmed(registrationId).catch(() => undefined);
     }
-    return { ok: true };
+    return {
+      ok: true,
+      fullyPaid: balanceAfter.fullyPaid,
+      balanceDueCents: balanceAfter.balanceDueCents,
+      recordedCents: collectCents,
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't record payment" };
   }
@@ -166,7 +182,6 @@ export async function createDeskQrAction(
     if (!found) return { error: "Entry not found" };
     const { reg, division, tournament } = found;
     const user = await requireOrganizerForTournament(reg.tournament_id);
-    if (reg.payment_status === "paid") return { error: "This entry is already paid." };
     if (reg.status === "waitlisted") return { error: "This entry is on the waitlist — collect payment once it's moved into a slot." };
 
     const admin = createAdminClient();
@@ -210,12 +225,107 @@ export async function createDeskQrAction(
   }
 }
 
-/** Polled by the QR dialog until the PayMongo webhook marks the entry paid. */
-export async function getEntryPaymentStatusAction(registrationId: string): Promise<{ paid: boolean }> {
+/** Polled by the desk QR dialog until the entry is fully paid. */
+export async function getEntryPaymentStatusAction(registrationId: string): Promise<{
+  paid: boolean;
+  partial?: boolean;
+  balanceDueCents?: number;
+}> {
   const found = await loadRegistration(registrationId);
   if (!found) return { paid: false };
   await requireOrganizerForTournament(found.reg.tournament_id);
-  return { paid: found.reg.payment_status === "paid" };
+  const admin = createAdminClient();
+  const feeDueCents = getFeeDueCents({
+    divisionEntryFeeCents: found.division?.entry_fee_cents,
+    tournamentEntryFeeCents: found.tournament.entry_fee_cents,
+  });
+  const balance = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+  return {
+    paid: balance.fullyPaid,
+    partial: balance.paidCents > 0 && !balance.fullyPaid,
+    balanceDueCents: balance.balanceDueCents,
+  };
+}
+
+/** Undo all organizer-recorded desk payments (cash / QR) so the entry can be collected again. */
+export async function undoDeskPaymentsAction(registrationId: string): Promise<Result & { reversed?: number }> {
+  try {
+    const found = await loadRegistration(registrationId);
+    if (!found) return { error: "Entry not found" };
+    const { reg, division, tournament } = found;
+    await requireOrganizerForTournament(reg.tournament_id);
+    if (reg.status === "cancelled") return { error: "This entry was cancelled." };
+    if (reg.status === "waitlisted") return { error: "Waitlist entries aren't paid yet." };
+
+    const admin = createAdminClient();
+    const { data: paidDesk } = await admin
+      .from("payments")
+      .select("id, method")
+      .eq("registration_id", registrationId)
+      .eq("status", "paid")
+      .in("method", ["cash", "qr"])
+      .not("recorded_by", "is", null)
+      .order("paid_at", { ascending: false });
+
+    if (!paidDesk?.length) {
+      return { error: "No desk payment to undo on this entry (online payments stay as-is)." };
+    }
+
+    let reversed = 0;
+    for (const row of paidDesk) {
+      const { data: existingRefund } = await admin
+        .from("wallet_transactions")
+        .select("id")
+        .eq("payment_id", row.id)
+        .eq("type", "refund")
+        .maybeSingle();
+      if (existingRefund) continue;
+
+      const { error: rpcError } = await admin.rpc("reverse_payment_on_entry_removal", {
+        p_user_id: tournament.owner_id,
+        p_payment_id: row.id,
+        p_registration_id: registrationId,
+        p_tournament_id: reg.tournament_id,
+        p_description: `Desk payment undone: ${tournament.name}`,
+      });
+      if (rpcError) {
+        console.error("reverse_payment_on_entry_removal:", rpcError.message);
+        continue;
+      }
+      await admin.from("payments").update({ status: "cancelled" }).eq("id", row.id);
+      reversed++;
+    }
+
+    if (reversed === 0) {
+      return { error: "Those desk payments were already reversed." };
+    }
+
+    await admin
+      .from("payments")
+      .update({ status: "cancelled" })
+      .eq("registration_id", registrationId)
+      .eq("status", "pending")
+      .eq("method", "qr")
+      .not("recorded_by", "is", null);
+
+    const feeDueCents = getFeeDueCents({
+      divisionEntryFeeCents: division?.entry_fee_cents,
+      tournamentEntryFeeCents: tournament.entry_fee_cents,
+    });
+    const balance = await getRegistrationBalance(admin as never, registrationId, feeDueCents);
+    const payment_status = balance.fullyPaid ? "paid" : balance.paidCents > 0 ? "partial" : "pending";
+    let status = reg.status;
+    if (!balance.fullyPaid && feeDueCents > 0 && status === "confirmed") {
+      status = "awaiting_payment";
+    }
+
+    await admin.from("registrations").update({ payment_status, status }).eq("id", registrationId);
+
+    revalidateEvent(reg.tournament_id, tournament.slug);
+    return { ok: true, reversed };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't undo payment" };
+  }
 }
 
 function parseOptionalEmail(raw: string | undefined): string | null {

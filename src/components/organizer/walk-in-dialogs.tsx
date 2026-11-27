@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { qrContentToDataUrl } from "@/lib/payments/qrph-image";
 import { Banknote, Check, Loader2, QrCode, UserPlus } from "lucide-react";
 import { toast } from "@/lib/ui/app-toast";
 import {
@@ -11,6 +10,7 @@ import {
   getEntryPaymentStatusAction,
   recordCashPaymentAction,
 } from "@/app/actions/walk-in";
+import { CheckoutQrPanel } from "@/components/payments/checkout-qr-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,18 +23,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatPhp } from "@/lib/format";
-import {
-  QRPH_DESK_CHOOSE_HINT,
-  QRPH_DESK_COMPATIBILITY_NOTE,
-  QRPH_DESK_SCAN_REMINDER,
-} from "@/lib/payments/qrph-desk-copy";
+import { QRPH_DESK_CHOOSE_HINT } from "@/lib/payments/qrph-desk-copy";
 import { cn } from "@/lib/utils";
 import { normalizePhilippineMobile } from "@/lib/validations/phone";
 
 /** feeCents = amount to collect now (balance due, not always full category fee). */
 export type CollectTarget = { id: string; player: string; division: string; feeCents: number };
 
-type Step = "choose" | "cash" | "qr" | "paid";
+type Step = "choose" | "cash" | "qr" | "paid" | "partial";
+
+type QrSession = {
+  qrImageUrl: string;
+  checkoutUrl?: string | null;
+  amountCents: number;
+  expiresAt?: string | null;
+};
+
+function pesosToCents(raw: string): number {
+  return Math.max(0, Math.round((Number(raw.replace(/,/g, "")) || 0) * 100));
+}
 
 /** Take payment at the desk: cash, or a PayMongo QR the player scans. */
 export function CollectPaymentDialog({
@@ -47,55 +54,71 @@ export function CollectPaymentDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>(startWith === "qr" ? "choose" : startWith);
+  const [step, setStep] = useState<Step>(startWith === "qr" ? "choose" : startWith === "cash" ? "cash" : startWith);
   const [busy, setBusy] = useState(false);
-  const [qr, setQr] = useState<string | null>(null);
+  const [qrSession, setQrSession] = useState<QrSession | null>(null);
+  const [cashPesos, setCashPesos] = useState("");
+  const [paidMessage, setPaidMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!target) return;
+    setCashPesos((target.feeCents / 100).toFixed(2));
+    setPaidMessage(null);
+    setQrSession(null);
+    setStep(startWith === "qr" ? "choose" : startWith);
+  }, [target?.id, target?.feeCents, startWith]);
+
+  const pollDesk = useCallback(
+    (registrationId: string) => getEntryPaymentStatusAction(registrationId),
+    []
+  );
 
   async function showQr() {
     if (!target) return;
     setBusy(true);
     const res = await createDeskQrAction(target.id);
+    setBusy(false);
     if (res.error || !res.qrImageUrl) {
-      setBusy(false);
       toast.error(res.error ?? "Couldn't create the QR");
       return;
     }
-    setQr(await qrContentToDataUrl(res.qrImageUrl));
-    setBusy(false);
+    setQrSession({
+      qrImageUrl: res.qrImageUrl,
+      checkoutUrl: res.checkoutUrl,
+      amountCents: res.amountCents ?? target.feeCents,
+      expiresAt: res.expiresAt,
+    });
     setStep("qr");
   }
 
-  // open straight on the QR when asked to (e.g. right after adding a walk-in);
-  // the ref keeps a dev-mode double effect from creating two checkouts
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (startWith !== "qr" || autoStarted.current) return;
+    if (startWith !== "qr" || autoStarted.current || !target) return;
     autoStarted.current = true;
     void showQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on open
-  }, []);
-
-  // while the QR is up, check every few seconds whether the payment landed
-  useEffect(() => {
-    if (step !== "qr" || !target) return;
-    const id = window.setInterval(async () => {
-      if (document.visibilityState !== "visible") return;
-      const res = await getEntryPaymentStatusAction(target.id);
-      if (res.paid) {
-        setStep("paid");
-        router.refresh();
-      }
-    }, 3000);
-    return () => window.clearInterval(id);
-  }, [step, target, router]);
+  }, [target?.id]);
 
   async function cash() {
     if (!target) return;
+    const cents = pesosToCents(cashPesos);
+    if (cents <= 0) return toast.error("Enter how much cash you received.");
+    if (cents > target.feeCents) {
+      return toast.error(`Can't collect more than the balance due (${formatPhp(target.feeCents)}).`);
+    }
     setBusy(true);
-    const res = await recordCashPaymentAction(target.id);
+    const res = await recordCashPaymentAction(target.id, cents);
     setBusy(false);
     if (res.error) return toast.error(res.error);
-    setStep("paid");
+    if (res.fullyPaid) {
+      setPaidMessage(null);
+      setStep("paid");
+    } else {
+      setPaidMessage(
+        `Recorded ${formatPhp(res.recordedCents ?? cents)} — ${formatPhp(res.balanceDueCents ?? 0)} still due.`
+      );
+      setStep("partial");
+    }
     router.refresh();
   }
 
@@ -104,11 +127,12 @@ export function CollectPaymentDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg">{target.player}</DialogTitle>
           <DialogDescription>
-            {target.division} · <span className="font-mono text-bone">{amount}</span>
+            {target.division} · balance due{" "}
+            <span className="font-mono text-bone">{amount}</span>
           </DialogDescription>
         </DialogHeader>
 
@@ -121,19 +145,19 @@ export function CollectPaymentDialog({
             >
               <Banknote className="size-6 text-brass" />
               <span>
-                <span className="block font-medium text-bone">Paid in cash</span>
-                <span className="block text-xs text-muted-foreground">You received {amount}</span>
+                <span className="block font-medium text-bone">Pay in cash</span>
+                <span className="block text-xs text-muted-foreground">Enter amount received</span>
               </span>
             </button>
             <button
               type="button"
-              onClick={showQr}
+              onClick={() => void showQr()}
               disabled={busy}
               className="flex flex-col items-start gap-3 rounded-xl border border-line p-4 text-left transition-colors hover:border-bone/40 hover:bg-espresso/40 disabled:opacity-60"
             >
               {busy ? <Loader2 className="size-6 animate-spin text-brass" /> : <QrCode className="size-6 text-brass" />}
               <span>
-                <span className="block font-medium text-bone">Show QR</span>
+                <span className="block font-medium text-bone">Pay with QR Ph</span>
                 <span className="block text-xs text-muted-foreground">{QRPH_DESK_CHOOSE_HINT}</span>
               </span>
             </button>
@@ -141,37 +165,57 @@ export function CollectPaymentDialog({
         )}
 
         {step === "cash" && (
-          <div className="rounded-xl border border-line bg-ink/30 p-4 text-sm text-bone/85">
-            Confirm you received <span className="font-mono text-bone">{amount}</span> in cash from{" "}
-            {target.player}. The entry is confirmed straight away.
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="desk-cash-amount">Cash collected (PHP)</Label>
+              <Input
+                id="desk-cash-amount"
+                inputMode="decimal"
+                value={cashPesos}
+                onChange={(e) => setCashPesos(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Balance due: <span className="font-mono text-bone">{amount}</span>
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-brass"
+              onClick={() => setCashPesos((target.feeCents / 100).toFixed(2))}
+            >
+              Use full balance ({amount})
+            </Button>
           </div>
         )}
 
-        {step === "qr" && (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="rounded-2xl bg-white p-3">
-              {qr ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={qr} alt="Payment QR code" width={280} height={280} />
-              ) : (
-                <div className="flex size-[280px] items-center justify-center text-ink/60">
-                  <Loader2 className="animate-spin" />
-                </div>
-              )}
-            </div>
-            <p
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-sm text-bone/90"
-              role="note"
-            >
-              {QRPH_DESK_COMPATIBILITY_NOTE}
-            </p>
-            <p className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <Loader2 className="size-3.5 animate-spin" />
-                Waiting for payment — this updates by itself.
-              </span>
-              <span className="text-xs">{QRPH_DESK_SCAN_REMINDER}</span>
-            </p>
+        {step === "qr" && qrSession && (
+          <CheckoutQrPanel
+            qrImageUrl={qrSession.qrImageUrl}
+            checkoutUrl={qrSession.checkoutUrl}
+            registrationId={target.id}
+            amountCents={qrSession.amountCents}
+            qrExpiresAt={qrSession.expiresAt}
+            pollPaymentStatus={pollDesk}
+            payPrompt="for this entry"
+            paidSuccessTitle="Paid"
+            paidSuccessSubtitle={`${target.player} is confirmed.`}
+            onPaid={() => {
+              setStep("paid");
+              router.refresh();
+            }}
+            onPartial={(due) => {
+              toast.message(`Partial payment received — ${formatPhp(due)} still due.`);
+              router.refresh();
+            }}
+          />
+        )}
+
+        {step === "qr" && !qrSession && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="size-8 animate-spin text-brass" />
           </div>
         )}
 
@@ -185,15 +229,21 @@ export function CollectPaymentDialog({
           </div>
         )}
 
+        {step === "partial" && paidMessage && (
+          <div className="rounded-xl border border-line bg-ink/30 p-4 text-center text-sm text-bone/90">
+            {paidMessage}
+          </div>
+        )}
+
         <DialogFooter>
           {step === "cash" && (
             <>
               <Button variant="ghost" onClick={() => setStep("choose")}>
                 Back
               </Button>
-              <Button onClick={cash} disabled={busy}>
+              <Button onClick={() => void cash()} disabled={busy}>
                 {busy ? <Loader2 className="animate-spin" /> : <Banknote />}
-                Confirm {amount} cash
+                Record cash
               </Button>
             </>
           )}
@@ -202,9 +252,9 @@ export function CollectPaymentDialog({
               Back
             </Button>
           )}
-          {(step === "paid" || step === "choose") && (
-            <Button variant={step === "paid" ? "default" : "ghost"} onClick={onClose}>
-              {step === "paid" ? "Done" : "Later"}
+          {(step === "paid" || step === "partial" || step === "choose") && (
+            <Button variant={step === "paid" || step === "partial" ? "default" : "ghost"} onClick={onClose}>
+              {step === "paid" || step === "partial" ? "Done" : "Later"}
             </Button>
           )}
         </DialogFooter>
@@ -250,6 +300,7 @@ export function AddWalkInDialog({
   const [busy, setBusy] = useState<string | null>(null);
   const category = categories.find((c) => c.id === divisionId);
   const doubles = category?.format === "doubles";
+  const feeApplies = (category?.feeCents ?? 0) > 0;
 
   const namesOk =
     Boolean(playerFirst.trim() && playerLast.trim()) &&
@@ -293,10 +344,10 @@ export function AddWalkInDialog({
     resetForm();
     router.refresh();
     onClose();
-    if (pay !== "later" && (res.feeCents ?? 0) > 0) {
+    if (pay !== "later" && feeApplies) {
       onCollect({ id: res.registrationId, player: name, division: category.name, feeCents: res.feeCents ?? 0 }, pay);
     } else {
-      toast.success(`${name} added${(res.feeCents ?? 0) > 0 ? " — payment pending" : ""}`);
+      toast.success(`${name} added${feeApplies ? " — payment pending" : ""}`);
     }
   }
 
@@ -432,21 +483,22 @@ export function AddWalkInDialog({
         </div>
 
         <DialogFooter className="flex-wrap">
-          <Button
-            variant="ghost"
-            onClick={() => add("later")}
-            disabled={busy !== null || !formOk}
-          >
+          <Button variant="ghost" onClick={() => add("later")} disabled={busy !== null || !formOk}>
             {busy === "later" ? <Loader2 className="animate-spin" /> : <UserPlus />}
-            Add, pay later
+            Pay later
           </Button>
-          <Button variant="outline" onClick={() => add("qr")} disabled={busy !== null || !formOk}>
+          <Button
+            variant="outline"
+            onClick={() => add("qr")}
+            disabled={busy !== null || !formOk || !feeApplies}
+            title={!feeApplies ? "No entry fee for this category" : undefined}
+          >
             {busy === "qr" ? <Loader2 className="animate-spin" /> : <QrCode />}
-            Add & show QR
+            Pay with QR Ph
           </Button>
-          <Button onClick={() => add("cash")} disabled={busy !== null || !formOk}>
+          <Button onClick={() => add("cash")} disabled={busy !== null || !formOk || !feeApplies}>
             {busy === "cash" ? <Loader2 className="animate-spin" /> : <Banknote />}
-            Add & take cash
+            Pay in cash
           </Button>
         </DialogFooter>
       </DialogContent>

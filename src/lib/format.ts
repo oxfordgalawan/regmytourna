@@ -6,6 +6,16 @@ export function formatPhp(cents: number, currency = "PHP") {
   }).format(cents / 100);
 }
 
+/** Money text safe for PDF default fonts (no ₱ or locale-specific spaces). */
+export function formatPhpPdf(cents: number) {
+  const value = cents / 100;
+  const digits =
+    cents % 100 === 0
+      ? value.toLocaleString("en-US", { maximumFractionDigits: 0 })
+      : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `PHP ${digits}`;
+}
+
 /** Parses a `YYYY-MM-DD` date column as a local calendar date (no timezone shift). */
 function parseDay(value: string) {
   return new Date(`${value.slice(0, 10)}T00:00:00`);

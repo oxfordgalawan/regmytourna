@@ -9,8 +9,8 @@ export const REGISTRATION_PLAYERS_SELECT =
   "registration_players(guest_name, is_primary, profiles(full_name))";
 
 /** "Juan Dela Cruz / Maria Santos" for doubles, the player's name for singles. */
-export function registrationName(reg: { registration_players?: unknown }) {
-  const players = ((reg.registration_players ?? []) as PlayerRow[])
+export function registrationName(reg: { registration_players?: unknown; partner_rows?: unknown }) {
+  const players = ((reg.registration_players ?? reg.partner_rows ?? []) as PlayerRow[])
     .slice()
     .sort((x, y) => Number(Boolean(y.is_primary)) - Number(Boolean(x.is_primary)));
   return (

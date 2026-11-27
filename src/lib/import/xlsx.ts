@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { excelSheetNames } from "./sheet-names";
 import { readXlsxLite, type LiteSheet } from "./xlsx-lite";
 import { gridFromText, rowsFromCategoryGrid, rowsFromGrid, type ImportCategory, type RawRow } from "./players";
 
@@ -13,23 +14,14 @@ const UMBER = "FF45301A";
 const ESPRESSO = "FF1F1610";
 const HELP_SHEET = "How to fill";
 
-/** Excel tab names: max 31 chars, no : \ / ? * [ ], unique. */
-function sheetNames(categories: ImportCategory[]) {
-  const used = new Set<string>([HELP_SHEET.toLowerCase()]);
-  return categories.map((c) => {
-    const base = c.name.replace(/[:\\/?*[\]]/g, "-").replace(/^'+|'+$/g, "").slice(0, 31).trim() || "Category";
-    let name = base;
-    for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base.slice(0, 31 - ` (${n})`.length)} (${n})`;
-    used.add(name.toLowerCase());
-    return name;
-  });
-}
-
 export async function buildPlayersTemplate(event: { name: string }, categories: ImportCategory[]) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "RegMyTourna";
   wb.created = new Date();
-  const names = sheetNames(categories);
+  const names = excelSheetNames(
+    categories.map((c) => c.name),
+    [HELP_SHEET]
+  );
 
   categories.forEach((c, i) => {
     const doubles = c.format === "doubles";

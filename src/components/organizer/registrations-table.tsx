@@ -6,7 +6,7 @@ import { ArrowRightLeft, Banknote, MailWarning, Search, UserMinus, UserPlus, Use
 import { FeeCorrectionDialog } from "@/components/organizer/fee-correction-dialog";
 import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
-import { cancelEntryAction, setWalkInPaymentAction } from "@/app/actions/walk-in";
+import { cancelEntryAction, setWalkInPaymentAction, undoDeskPaymentsAction } from "@/app/actions/walk-in";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { CheckInButton } from "@/components/organizer/check-in-button";
@@ -25,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FilterChips } from "@/components/ui/filter-chips";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ReplacePlayerDialog, type ReplaceTarget } from "@/components/organizer/replace-player-dialog";
 import { MoveEntryDialog, type MoveEntryTarget } from "@/components/organizer/move-entry-dialog";
 import { clearPartnerFromEntryAction } from "@/app/actions/organizer-entry-moves";
@@ -43,6 +44,7 @@ export type RegistrationRow = {
   payment_status: string;
   source: "online" | "pay_at_venue" | "desk";
   paidVia: "online" | "cash" | "qr" | null;
+  hasDeskPaidPayment?: boolean;
   feeCents: number;
   paidCents?: number;
   balanceDueCents?: number;
@@ -91,11 +93,15 @@ function amountToCollect(r: RegistrationRow): number {
 
 export function RegistrationsTable({
   tournamentId,
+  tournamentSlug,
+  eventName,
   rows,
   categories,
   allowWalkIn,
 }: {
   tournamentId: string;
+  tournamentSlug: string;
+  eventName: string;
   rows: RegistrationRow[];
   categories: WalkInCategory[];
   allowWalkIn: boolean;
@@ -110,6 +116,7 @@ export function RegistrationsTable({
   const [replacing, setReplacing] = useState<ReplaceTarget | null>(null);
   const [moving, setMoving] = useState<MoveEntryTarget | null>(null);
   const [clearingPartner, setClearingPartner] = useState<string | null>(null);
+  const [undoingPayment, setUndoingPayment] = useState<string | null>(null);
   const [feeCorrectionOpen, setFeeCorrectionOpen] = useState(false);
 
   const visible = rows.filter((r) => r.status !== "cancelled");
@@ -179,6 +186,22 @@ export function RegistrationsTable({
     }
   }
 
+  async function markUnpaid(r: RegistrationRow) {
+    const message =
+      r.paidVia === "qr"
+        ? `Mark ${r.player} unpaid?\n\nThis reverses the desk QR payment in your wallet. The player must pay again (cash or QR at the desk).`
+        : `Mark ${r.player} unpaid?\n\nThis reverses the cash record and platform fee on your wallet. Collect payment again when ready.`;
+    if (!window.confirm(message)) return;
+    setUndoingPayment(r.id);
+    const res = await undoDeskPaymentsAction(r.id);
+    setUndoingPayment(null);
+    if (res.error) toast.error(res.error);
+    else {
+      toast.success("Desk payment reversed — entry is unpaid again.");
+      router.refresh();
+    }
+  }
+
   async function cancel(r: RegistrationRow) {
     const paid = r.payment_status === "paid" && r.status !== "waitlisted";
     const message = paid
@@ -230,7 +253,7 @@ export function RegistrationsTable({
         onApplied={() => router.refresh()}
       />
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <label className="relative w-full sm:w-72">
           <span className="sr-only">Search entries</span>
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -241,47 +264,78 @@ export function RegistrationsTable({
             className="h-10 w-full rounded-lg border border-input bg-ink/40 pr-3 pl-10 text-sm text-bone outline-none placeholder:text-muted-foreground hover:border-bone/30 focus-visible:border-brass"
           />
         </label>
-        <FilterChips
-          label="Show"
-          chips={views.map((v) => ({
-            key: v.value,
-            label: v.label,
-            active: view === v.value,
-            // a transition lets the table crossfade instead of snapping
-            onSelect: () => startTransition(() => setView(v.value)),
-          }))}
-        />
-        <div className="ml-auto flex items-center gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Show</Label>
+          <Select
+            value={view}
+            items={views.map((v) => ({ value: v.value, label: v.label }))}
+            onValueChange={(v) => {
+              if (!v) return;
+              startTransition(() => setView(v as (typeof views)[number]["value"]));
+            }}
+          >
+            <SelectTrigger className="h-10 w-full min-w-[10.5rem] sm:w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {views.map((v) => (
+                <SelectItem key={v.value} value={v.value}>
+                  {v.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {categories.length > 0 && (
+          <div className="min-w-0 space-y-1.5 sm:max-w-xs sm:flex-1">
+            <Label className="text-xs text-muted-foreground">Category</Label>
+            <Select
+              value={categoryFilter}
+              items={[
+                { value: "all", label: "All categories" },
+                ...categories.map((c) => {
+                  const count = visible.filter((r) => r.divisionId === c.id).length;
+                  return {
+                    value: c.id,
+                    label: count > 0 ? `${c.name} · ${count}` : c.name,
+                  };
+                }),
+              ]}
+              onValueChange={(v) => {
+                if (!v) return;
+                startTransition(() => setCategoryFilter(v));
+              }}
+            >
+              <SelectTrigger className="h-10 w-full min-w-[12rem]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((c) => {
+                  const count = visible.filter((r) => r.divisionId === c.id).length;
+                  return (
+                    <SelectItem key={c.id} value={c.id}>
+                      {count > 0 ? `${c.name} · ${count}` : c.name}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-4 pb-0.5">
           <span className="font-mono text-sm text-muted-foreground">
             {checkedIn}/{visible.length} checked in
           </span>
-          <ExportRegistrationsButton tournamentId={tournamentId} registrations={filtered} />
+          <ExportRegistrationsButton
+            tournamentId={tournamentId}
+            slug={tournamentSlug}
+            eventName={eventName}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+            registrations={filtered}
+          />
         </div>
       </div>
-
-      {categories.length > 0 && (
-        <FilterChips
-          label="Category"
-          className="max-w-full pb-1"
-          chips={[
-            {
-              key: "all",
-              label: "All categories",
-              active: categoryFilter === "all",
-              onSelect: () => startTransition(() => setCategoryFilter("all")),
-            },
-            ...categories.map((c) => {
-              const count = visible.filter((r) => r.divisionId === c.id).length;
-              return {
-                key: c.id,
-                label: count > 0 ? `${c.name} · ${count}` : c.name,
-                active: categoryFilter === c.id,
-                onSelect: () => startTransition(() => setCategoryFilter(c.id)),
-              };
-            }),
-          ]}
-        />
-      )}
 
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <Table>
@@ -456,6 +510,17 @@ export function RegistrationsTable({
                             <span className="font-mono text-[0.65rem] text-muted-foreground">
                               Paid {formatPhp(r.paidCents ?? 0)} · due {formatPhp(amountToCollect(r))}
                             </span>
+                            {r.hasDeskPaidPayment && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-muted-foreground"
+                                disabled={undoingPayment === r.id}
+                                onClick={() => markUnpaid(r)}
+                              >
+                                Mark unpaid
+                              </Button>
+                            )}
                           </span>
                         ) : null}
                       </span>
@@ -476,10 +541,22 @@ export function RegistrationsTable({
                         </Button>
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1">
+                      <span className="flex flex-col items-start gap-1">
+                        <span className="flex flex-wrap items-center gap-1">
                         <StatusBadge status={r.payment_status} />
                         {r.paidVia && r.paidVia !== "online" && (
                           <span className="font-mono text-[0.65rem] text-muted-foreground">{PAID_LABEL[r.paidVia]}</span>
+                        )}
+                        {r.hasDeskPaidPayment && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs text-muted-foreground"
+                            disabled={undoingPayment === r.id}
+                            onClick={() => markUnpaid(r)}
+                          >
+                            Mark unpaid
+                          </Button>
                         )}
                         {replaceButton}
                         {moveButton}
@@ -493,6 +570,7 @@ export function RegistrationsTable({
                         >
                           <X />
                         </Button>
+                        </span>
                       </span>
                     )}
                   </TableCell>

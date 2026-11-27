@@ -18,11 +18,13 @@ export default async function RegistrationsPage({
     return <PlayersRoster tournamentId={id} categories={await loadRoster(id)} />;
   }
 
-  const { rows, categories, allowWalkIn } = await loadOrganizerRegistrations(id);
+  const { rows, categories, allowWalkIn, slug, eventName } = await loadOrganizerRegistrations(id);
 
   return (
     <RegistrationsTable
       tournamentId={id}
+      tournamentSlug={slug}
+      eventName={eventName}
       rows={rows}
       categories={categories}
       allowWalkIn={allowWalkIn}

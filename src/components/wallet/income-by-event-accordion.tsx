@@ -103,20 +103,21 @@ export function IncomeByEventAccordion({
                               ) : null}
                             </span>
                             <span className="shrink-0 text-right">
-                              <span
-                                className={cn(
-                                  "font-mono text-xs",
-                                  removed ? "text-muted-foreground line-through" : "text-bone"
-                                )}
-                              >
-                                {settlementDisplay && line.settlementCents !== null
-                                  ? formatPhp(line.settlementCents)
-                                  : formatPhp(line.netCents)}
-                              </span>
-                              {line.grossCents > 0 && (
-                                <span className="mt-0.5 block font-mono text-[0.6rem] text-muted-foreground">
-                                  {formatPhp(line.grossCents)} collected
-                                </span>
+                              {removed ? (
+                                <span className="font-mono text-xs text-muted-foreground">—</span>
+                              ) : (
+                                <>
+                                  <span className="font-mono text-xs text-bone">
+                                    {settlementDisplay && line.settlementCents !== null
+                                      ? formatPhp(line.settlementCents)
+                                      : formatPhp(line.netCents)}
+                                  </span>
+                                  {line.grossCents > 0 && (
+                                    <span className="mt-0.5 block font-mono text-[0.6rem] text-muted-foreground">
+                                      {formatPhp(line.grossCents)} collected
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </span>
                           </li>

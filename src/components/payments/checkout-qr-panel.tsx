@@ -13,6 +13,14 @@ import {
   QRPH_DESK_SCAN_REMINDER,
 } from "@/lib/payments/qrph-desk-copy";
 
+export type CheckoutPaymentPollResult = {
+  paid?: boolean;
+  partial?: boolean;
+  balanceDueCents?: number;
+  error?: string;
+  expired?: boolean;
+};
+
 export function CheckoutQrPanel({
   qrImageUrl,
   checkoutUrl,
@@ -22,7 +30,12 @@ export function CheckoutQrPanel({
   paymentHoldExpiresAt,
   qrExpiresAt,
   onPaid,
+  onPartial,
   onHoldExpired,
+  pollPaymentStatus,
+  paidSuccessTitle = "You're in",
+  paidSuccessSubtitle = "Payment received — your entry is confirmed.",
+  payPrompt = "to confirm your slot",
 }: {
   qrImageUrl: string;
   checkoutUrl?: string | null;
@@ -32,7 +45,12 @@ export function CheckoutQrPanel({
   paymentHoldExpiresAt?: string | null;
   qrExpiresAt?: string | null;
   onPaid?: () => void;
+  onPartial?: (balanceDueCents: number) => void;
   onHoldExpired?: () => void;
+  pollPaymentStatus?: (registrationId: string) => Promise<CheckoutPaymentPollResult>;
+  paidSuccessTitle?: string;
+  paidSuccessSubtitle?: string;
+  payPrompt?: string;
 }) {
   const [qr, setQr] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
@@ -57,20 +75,36 @@ export function CheckoutQrPanel({
     if (paid || holdExpired) return;
     const id = window.setInterval(async () => {
       if (document.visibilityState !== "visible") return;
-      const res = await getMyRegistrationPaymentStatusAction(registrationId);
-      if ("error" in res && res.error) return;
-      if ("expired" in res && res.expired) {
-        setHoldExpired(true);
-        onHoldExpired?.();
-        return;
-      }
-      if (res.paid) {
-        setPaid(true);
-        onPaid?.();
+      if (pollPaymentStatus) {
+        const res = await pollPaymentStatus(registrationId);
+        if (res.error) return;
+        if (res.expired) {
+          setHoldExpired(true);
+          onHoldExpired?.();
+          return;
+        }
+        if (res.paid) {
+          setPaid(true);
+          onPaid?.();
+        } else if (res.partial && res.balanceDueCents !== undefined) {
+          onPartial?.(res.balanceDueCents);
+        }
+      } else {
+        const res = await getMyRegistrationPaymentStatusAction(registrationId);
+        if ("error" in res && res.error) return;
+        if ("expired" in res && res.expired) {
+          setHoldExpired(true);
+          onHoldExpired?.();
+          return;
+        }
+        if (res.paid) {
+          setPaid(true);
+          onPaid?.();
+        }
       }
     }, 3000);
     return () => window.clearInterval(id);
-  }, [paid, holdExpired, registrationId, onPaid, onHoldExpired]);
+  }, [paid, holdExpired, registrationId, onPaid, onPartial, onHoldExpired, pollPaymentStatus]);
 
   async function openBrowserCheckout() {
     if (browserCheckoutUrl) {
@@ -116,8 +150,8 @@ export function CheckoutQrPanel({
         <span className="flex size-14 items-center justify-center rounded-full bg-bone text-ink">
           <Check className="size-7" strokeWidth={3} />
         </span>
-        <p className="display text-3xl text-bone">You&apos;re in</p>
-        <p className="text-sm text-muted-foreground">Payment received — your entry is confirmed.</p>
+        <p className="display text-3xl text-bone">{paidSuccessTitle}</p>
+        <p className="text-sm text-muted-foreground">{paidSuccessSubtitle}</p>
       </div>
     );
   }
@@ -127,7 +161,7 @@ export function CheckoutQrPanel({
   return (
     <div className="flex flex-col items-center gap-4 text-center">
       <p className="text-sm text-muted-foreground">
-        Pay <span className="font-mono text-bone">{amount}</span> to confirm your slot
+        Pay <span className="font-mono text-bone">{amount}</span> {payPrompt}
       </p>
       {holdDeadline && (
         <p className="text-sm text-bone/80">

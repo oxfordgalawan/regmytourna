@@ -604,17 +604,28 @@ export async function loadWalletOverview(userId: string) {
       .map((e) => {
         const cats = byEventCategories.get(e.tournamentId);
         const categories = cats
-          ? [...cats.values()].sort((a, b) => b.netCents - a.netCents).map((c) => ({
-              ...c,
-              lines: [...c.lines].sort((a, b) => {
-                if (a.status !== b.status) {
-                  return a.status === "active" ? -1 : 1;
-                }
-                return b.createdAt.localeCompare(a.createdAt);
-              }),
-            }))
+          ? [...cats.values()]
+              .map((c) => {
+                const lines = [...c.lines].sort((a, b) => {
+                  if (a.status !== b.status) {
+                    return a.status === "active" ? -1 : 1;
+                  }
+                  return b.createdAt.localeCompare(a.createdAt);
+                });
+                const active = lines.filter((l) => l.status === "active");
+                return {
+                  ...c,
+                  lines,
+                  netCents: active.reduce((sum, l) => sum + l.netCents, 0),
+                  grossCents: active.reduce((sum, l) => sum + l.grossCents, 0),
+                  entries: active.length,
+                };
+              })
+              .sort((a, b) => b.netCents - a.netCents)
           : [];
-        return { ...e, categories };
+        const entries = categories.reduce((n, c) => n + c.entries, 0);
+        const grossCents = categories.reduce((n, c) => n + c.grossCents, 0);
+        return { ...e, categories, entries, grossCents };
       })
       .sort((a, b) => b.netCents - a.netCents),
     activity,
