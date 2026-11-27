@@ -6,6 +6,7 @@ import { computeRegistrationBalance } from "@/lib/registrations/payment-balance"
 export type OrganizerRegistrationRow = {
   id: string;
   player: string;
+  divisionId: string;
   division: string;
   status: string;
   payment_status: string;
@@ -140,6 +141,7 @@ export async function loadOrganizerRegistrations(tournamentId: string) {
           hasAccount: Boolean(p.user_id),
         };
       }),
+      divisionId: r.division_id,
       division: division?.name ?? "—",
       status: r.status,
       payment_status: r.payment_status,

@@ -2,7 +2,7 @@
 
 import { startTransition, useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, MailWarning, Search, UserPlus, UserRoundPen, X } from "lucide-react";
+import { ArrowRightLeft, Banknote, MailWarning, Search, UserMinus, UserPlus, UserRoundPen, X } from "lucide-react";
 import { FeeCorrectionDialog } from "@/components/organizer/fee-correction-dialog";
 import { toast } from "@/lib/ui/app-toast";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/table";
 import { FilterChips } from "@/components/ui/filter-chips";
 import { ReplacePlayerDialog, type ReplaceTarget } from "@/components/organizer/replace-player-dialog";
+import { MoveEntryDialog, type MoveEntryTarget } from "@/components/organizer/move-entry-dialog";
+import { clearPartnerFromEntryAction } from "@/app/actions/organizer-entry-moves";
 import { PlayerEmailCell } from "@/components/organizer/player-email-cell";
 import { PlayerNameCell } from "@/components/organizer/player-name-cell";
 import { PlayerPhoneCell } from "@/components/organizer/player-phone-cell";
@@ -35,6 +37,7 @@ import { formatPhp } from "@/lib/format";
 export type RegistrationRow = {
   id: string;
   player: string;
+  divisionId: string;
   division: string;
   status: string;
   payment_status: string;
@@ -100,18 +103,26 @@ export function RegistrationsTable({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<(typeof views)[number]["value"]>("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | string>("all");
   const [collect, setCollect] = useState<{ target: CollectTarget; how: "choose" | "cash" | "qr" } | null>(null);
   const [adding, setAdding] = useState(false);
   const [walkIn, setWalkIn] = useState(allowWalkIn);
   const [replacing, setReplacing] = useState<ReplaceTarget | null>(null);
+  const [moving, setMoving] = useState<MoveEntryTarget | null>(null);
+  const [clearingPartner, setClearingPartner] = useState<string | null>(null);
   const [feeCorrectionOpen, setFeeCorrectionOpen] = useState(false);
 
   const visible = rows.filter((r) => r.status !== "cancelled");
   // deferred so typing stays snappy and the result swap can animate
   const deferredQuery = useDeferredValue(query);
+  const divisionOrder = useMemo(
+    () => new Map(categories.map((c, i) => [c.id, i] as const)),
+    [categories]
+  );
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
-    return visible.filter((r) => {
+    const list = visible.filter((r) => {
+      if (categoryFilter !== "all" && r.divisionId !== categoryFilter) return false;
       if (view === "unpaid" && (r.payment_status === "paid" || r.status === "waitlisted")) return false;
       if (view === "to_check_in" && r.checkedIn) return false;
       if (!q) return true;
@@ -125,7 +136,14 @@ export function RegistrationsTable({
         )
       );
     });
-  }, [visible, deferredQuery, view]);
+    const unknownDivisionRank = categories.length;
+    return [...list].sort((a, b) => {
+      const ordA = divisionOrder.get(a.divisionId) ?? unknownDivisionRank;
+      const ordB = divisionOrder.get(b.divisionId) ?? unknownDivisionRank;
+      if (ordA !== ordB) return ordA - ordB;
+      return a.player.localeCompare(b.player, undefined, { sensitivity: "base" });
+    });
+  }, [visible, deferredQuery, view, categoryFilter, divisionOrder, categories.length]);
 
   const checkedIn = visible.filter((r) => r.checkedIn).length;
   const toCollect = visible.filter((r) => r.payment_status !== "paid");
@@ -139,6 +157,26 @@ export function RegistrationsTable({
       setWalkIn(!next);
       toast.error(res.error);
     } else toast.success(next ? "Players can now choose to pay at the venue" : "Pay at the venue turned off");
+  }
+
+  const movableStatuses = new Set(["confirmed", "awaiting_payment", "pending", "awaiting_partner"]);
+
+  async function clearPartner(r: RegistrationRow) {
+    if (
+      !window.confirm(
+        `Remove the partner from this entry (${r.player})? The slot stays open and will show as needing a partner.`
+      )
+    ) {
+      return;
+    }
+    setClearingPartner(r.id);
+    const res = await clearPartnerFromEntryAction(r.id);
+    setClearingPartner(null);
+    if (res.error) toast.error(res.error);
+    else {
+      toast.success("Partner removed — slot open for a new partner");
+      router.refresh();
+    }
   }
 
   async function cancel(r: RegistrationRow) {
@@ -217,9 +255,33 @@ export function RegistrationsTable({
           <span className="font-mono text-sm text-muted-foreground">
             {checkedIn}/{visible.length} checked in
           </span>
-          <ExportRegistrationsButton tournamentId={tournamentId} registrations={visible} />
+          <ExportRegistrationsButton tournamentId={tournamentId} registrations={filtered} />
         </div>
       </div>
+
+      {categories.length > 0 && (
+        <FilterChips
+          label="Category"
+          className="max-w-full pb-1"
+          chips={[
+            {
+              key: "all",
+              label: "All categories",
+              active: categoryFilter === "all",
+              onSelect: () => startTransition(() => setCategoryFilter("all")),
+            },
+            ...categories.map((c) => {
+              const count = visible.filter((r) => r.divisionId === c.id).length;
+              return {
+                key: c.id,
+                label: count > 0 ? `${c.name} · ${count}` : c.name,
+                active: categoryFilter === c.id,
+                onSelect: () => startTransition(() => setCategoryFilter(c.id)),
+              };
+            }),
+          ]}
+        />
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <Table>
@@ -254,6 +316,43 @@ export function RegistrationsTable({
                   <UserRoundPen />
                 </Button>
               ) : null;
+              const movable = movableStatuses.has(r.status);
+              const moveButton = movable ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setMoving({
+                      registrationId: r.id,
+                      divisionId: r.divisionId,
+                      divisionName: r.division,
+                      doubles: Boolean(r.doubles),
+                      players: (r.players ?? []).map((p) => ({
+                        rowId: p.rowId,
+                        name: p.name,
+                        primary: p.primary,
+                      })),
+                    })
+                  }
+                  aria-label={`Move ${r.player} to another category`}
+                  title="Move to another category"
+                >
+                  <ArrowRightLeft />
+                </Button>
+              ) : null;
+              const clearPartnerButton =
+                movable && r.doubles && (r.players?.length ?? 0) >= 2 && !r.needsPartner ? (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={clearingPartner === r.id}
+                    onClick={() => clearPartner(r)}
+                    aria-label={`Clear partner on ${r.player}`}
+                    title="Clear partner slot"
+                  >
+                    <UserMinus />
+                  </Button>
+                ) : null;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="pl-5">
@@ -339,6 +438,8 @@ export function RegistrationsTable({
                           Collect {formatPhp(amountToCollect(r))}
                         </Button>
                         {replaceButton}
+                        {moveButton}
+                        {clearPartnerButton}
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -362,6 +463,8 @@ export function RegistrationsTable({
                       <span className="flex items-center gap-1">
                         <span className="text-xs text-muted-foreground">Pays once moved into a slot</span>
                         {replaceButton}
+                        {moveButton}
+                        {clearPartnerButton}
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -379,6 +482,8 @@ export function RegistrationsTable({
                           <span className="font-mono text-[0.65rem] text-muted-foreground">{PAID_LABEL[r.paidVia]}</span>
                         )}
                         {replaceButton}
+                        {moveButton}
+                        {clearPartnerButton}
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -400,7 +505,11 @@ export function RegistrationsTable({
             {!filtered.length && (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  {visible.length ? "No entries match." : "No entries yet. Online registrations and manual entries appear here."}
+                  {!visible.length
+                    ? "No entries yet. Online registrations and manual entries appear here."
+                    : categoryFilter !== "all"
+                      ? "No entries in this category."
+                      : "No entries match."}
                 </TableCell>
               </TableRow>
             )}
@@ -417,6 +526,9 @@ export function RegistrationsTable({
       />
       {replacing && (
         <ReplacePlayerDialog key={replacing.registrationId} target={replacing} onClose={() => setReplacing(null)} />
+      )}
+      {moving && (
+        <MoveEntryDialog key={moving.registrationId} categories={categories} target={moving} onClose={() => setMoving(null)} />
       )}
       {collect && (
         <CollectPaymentDialog
